@@ -183,3 +183,65 @@ func TestSampleVarKeys(t *testing.T) {
 	}
 	wantIn(t, log, "is not valid; a key holds only letters, digits, _ and -")
 }
+
+func TestVarPrint(t *testing.T) {
+	t.Parallel()
+	for args, want := range map[string]string{
+		"":                     "`v1.2.3`",
+		" print=go":            "`v1.2.3`",
+		" print=raw":           "`v1.2.3`",
+		" print=%q":            "`\"v1.2.3\"`",
+		" print=%x":            "`76312e322e33`",
+		" print=%q code=false": `"v1.2.3"`,
+		" code=false":          "v1.2.3",
+	} {
+		t.Run(args, func(t *testing.T) {
+			t.Parallel()
+			root := varRepo(t, varConfig, "Get <!-- docgen:var name=version"+args+" --><!-- /docgen:var -->.\n")
+			if rc, log := docgen(t, root, "update"); rc != 0 {
+				t.Fatalf("rc %d, log:\n%s", rc, log)
+			}
+			wantIn(t, readPage(t, root, "docs/p.md"), "-->"+want+"<!--")
+		})
+	}
+}
+
+func TestValueArgErrors(t *testing.T) {
+	t.Parallel()
+	for marker, want := range map[string]string{
+		"<!-- docgen:var name=version print=name --><!-- /docgen:var -->":         "docgen:var print=name is not valid for a value with no constant",
+		"<!-- docgen:var name=version print=nope --><!-- /docgen:var -->":         "docgen:var print=nope is not go, raw, name or a fmt verb",
+		"<!-- docgen:const pkg=p name=N print=nope --><!-- /docgen:const -->":     "docgen:const print=nope is not go, raw, name or a fmt verb",
+		"<!-- docgen:config pkg=p type=C print=nope -->\n<!-- /docgen:config -->": "docgen:config print=nope is not go, raw, name or a fmt verb",
+		`<!-- docgen:var name=version print="" --><!-- /docgen:var -->`:           "docgen:var: print= is empty",
+		"<!-- docgen:var name=version print=%d --><!-- /docgen:var -->":           "print=%d is not valid for the value: %!d(string=v1.2.3)",
+		"<!-- docgen:var name=version code=true --><!-- /docgen:var -->":          "docgen:var code= can only be false",
+		"<!-- docgen:const pkg=p name=N code=sh --><!-- /docgen:const -->":        "docgen:const code= can only be false",
+		"<!-- docgen:gomod field=go code=true --><!-- /docgen:gomod -->":          "docgen:gomod code= can only be false",
+		`<!-- docgen:gomod field=go code="" --><!-- /docgen:gomod -->`:            "docgen:gomod: code= is empty",
+		"<!-- docgen:config pkg=p type=C code=false -->\n<!-- /docgen:config -->": "docgen:config has no argument code=",
+	} {
+		t.Run(marker, func(t *testing.T) {
+			t.Parallel()
+			root := pageRepo(t, map[string]string{
+				".docgen.yaml": varConfig,
+				"p/p.go":       "package p\n\n// N is a number.\nconst N = 1\n\n// C holds settings.\ntype C struct{ A int }\n",
+				"docs/p.md":    marker + "\n",
+			})
+			for _, cmd := range []string{"update", "check"} {
+				if rc, log := docgen(t, root, cmd); rc != 1 || !strings.Contains(log, want) {
+					t.Errorf("%s: rc %d, want 1 and %q, log:\n%s", cmd, rc, want, log)
+				}
+			}
+		})
+	}
+}
+
+func TestGoModCodeFalse(t *testing.T) {
+	t.Parallel()
+	root := pageRepo(t, map[string]string{
+		"docs/p.md": "Go <!-- docgen:gomod field=go code=false --><!-- /docgen:gomod -->, <!-- docgen:gomod field=go --><!-- /docgen:gomod -->.\n",
+	})
+	got := updateTwice(t, root, "docs/p.md")
+	wantIn(t, got, "code=false -->1.24.0<!--", "field=go -->`1.24.0`<!--")
+}

@@ -62,16 +62,13 @@ func (vs *valueSet) of(pi *load.Package) *packageValues {
 
 // add records ref for the run of the code, when a value of type t needs one.
 func (vs *valueSet) add(pi *load.Package, ref valueRef, t gotypes.Type) {
-	if goprint.CheckPrint(ref.printAs) == nil && goprint.NeedsRun(t, ref.printAs) {
+	if goprint.NeedsRun(t, ref.printAs) {
 		vs.of(pi).refs[ref] = true
 	}
 }
 
 // text returns the text of the value v of type t with the source ref in pi.
 func (vs *valueSet) text(pi *load.Package, ref valueRef, t gotypes.Type, v constant.Value) (string, error) {
-	if err := goprint.CheckPrint(ref.printAs); err != nil {
-		return "", err
-	}
 	if !goprint.NeedsRun(t, ref.printAs) {
 		return goprint.Print(t, v, ref.printAs)
 	}

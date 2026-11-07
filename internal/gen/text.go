@@ -24,10 +24,10 @@ func (h *textHandler) Bind(a *marker.Args) {
 		a.Fail("text= " + err.Error())
 	}
 	var ok bool
-	if h.code, ok = a.Optional("code"); !ok {
+	if h.code, ok = a.Optional(argCode); !ok {
 		a.Inline()
 	}
-	a.NonEmpty("code")
+	a.NonEmpty(argCode)
 }
 
 func (h *textHandler) fill(_ context.Context, j job) (string, []outFile, error) {

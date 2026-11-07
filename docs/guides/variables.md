@@ -66,4 +66,6 @@ go install example.com/lamp@v1.2.3
 
 A release is one line in `.docgen.yaml`, then `docgen update`, then the tag. A variable that no marker uses fails `check`.
 
+With `print=%q`, the value is in quotes, as `"v1.2.3"`. With `code=false`, it has no backticks.
+
 For details, see [`docgen:var`](../reference/markers.md#docgenvar).

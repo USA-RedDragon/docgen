@@ -47,7 +47,7 @@
 //     constraints of a package outside the module. A tag has letters, digits,
 //     `_` and `.`. A `-tags` in `GOFLAGS` also applies.
 //   - `jobs` is the `-p` of each go command. 0 adds no `-p`. The limits are on the
-//     page Command line of the documentation.
+//     page Configuration of the documentation.
 //   - `depth` limits nested `docgen:docgen` markers. The default is 1, so a marker
 //     in a page of the repository works and a marker in a page of its `root` is an
 //     error. The value is at most 8, and 0 makes each such marker an error. Only
@@ -239,9 +239,9 @@
 //     (port-80).
 //   - `raw`: the underlying value, with no method: `DefaultWait` (250000000). A
 //     literal has no value.
-//   - `name`: the name of the one constant of the type with the value, from the
-//     package of the marker and then the package of the type: `LevelLow + 1`
-//     (LevelHigh). A literal has no value, and neither does a value with no
+//   - `name`: the name of the one constant of the type with the value, as for
+//     `docgen:const`: `LevelLow + 1` (LevelHigh), or `60 * time.Second`
+//     (time.Minute). A literal has no value, and neither does a value with no
 //     such constant.
 //   - A fmt verb, such as `%x`: the value with that verb, also of a literal:
 //     `DefaultColor` (ffaa00).
@@ -272,7 +272,7 @@
 // The value of a constant, or of a package-level var with a constant initial
 // value, exported or not. It goes inline in a sentence.
 //
-//	docgen:const pkg=<path> name=<Name> [print=<go|raw|name|verb>]
+//	docgen:const pkg=<path> name=<Name> [print=<go|raw|name|verb>] [code=false]
 //
 // `print=` sets how the value prints:
 //
@@ -284,7 +284,9 @@
 //     for a port with a String method, `1` for an enum, and `1500000000` for a
 //     `time.Duration` of 1.5s.
 //   - `print=name` is the name of the one constant of the type with the value,
-//     from the package of the marker and then the package of the type.
+//     from the package of the marker and then the package of the type. A
+//     constant of the package of the type is exported and has the package name,
+//     as in Go source: `time.Minute` for `60 * time.Second`.
 //   - `print=%d`, or any other fmt verb, is the value with that verb.
 //
 // An empty value prints as `""`, and line endings in a value print as spaces. A
@@ -292,6 +294,9 @@
 // type prints its exact value. A type with a
 // print method runs in one `go test` for each package, so the tests of that
 // package must compile.
+//
+// With `code=false`, the value has no backticks: 250ms in place of `250ms`. Any
+// other value of `code=` is an error.
 //
 // # docgen:errors
 //
@@ -333,26 +338,41 @@
 // A line of the `go.mod` of the module, or of the `go.mod` at `file=`. It goes inline
 // in a sentence.
 //
-//	docgen:gomod field=<go|toolchain|module> [file=<repo path>]
+//	docgen:gomod field=<go|toolchain|module> [file=<repo path>] [code=false]
+//
+// With `code=false`, the value has no backticks, as for `docgen:const`.
 //
 // # docgen:usage
 //
 // The usage of a command.
 //
-//	docgen:usage cmd=<dir>
+//	docgen:usage cmd=<dir> [args="<args>"]
 //
 // docgen builds the command in that directory, relative to the repository root,
-// and runs it with `-h`. A build failure, a panic, or output with no line that
-// starts with usage, in any letter case, and no flag line, is an error.
+// and runs it with `-h`. With `args=`, the arguments are that value, split on spaces, such as
+// `args="help config"` or `args=--help`. In the value, `\"` starts and ends an
+// argument with spaces: `args="--name \"a b\""`.
+//
+// A build failure, a panic, an exit status other than 0, 1 or 2, or output with
+// no line that starts with usage, in any letter case, and no flag line, is an
+// error. This also applies to arguments that do not ask for help, so a command
+// such as `version` must print a usage line or a flag line, such as
+// `usage: tool version`.
 //
 // # docgen:var
 //
 // The value of a variable of the `vars` setting, as a code span. It goes inline in
 // a sentence.
 //
-//	docgen:var name=<key>
+//	docgen:var name=<key> [print=<go|raw|verb>] [code=false]
 //
-// A key that is not in `vars` is an error.
+// A key that is not in `vars` is an error. The value is a string:
+//
+//   - `print=go`, the default, and `print=raw` are the value as it is.
+//   - `print=%q`, or any other fmt verb, is the string with that verb:
+//     `"v1.2.3"`. A verb that a string cannot use, such as `%d`, is an error.
+//   - `print=name` is an error, since a value of `vars` is not a constant.
+//   - With `code=false`, the value has no backticks, as for `docgen:const`.
 //
 // # docgen:text
 //
@@ -361,6 +381,9 @@
 // language, and `code="text"` is a block with no highlighting, so a value can go in a code block, where markers are text.
 //
 //	docgen:text text="<template>" [code=<language>]
+//
+// Here `code=` is a language. In `docgen:const`, `docgen:var` and `docgen:gomod`,
+// `code=false` is the one value, for a value with no backticks.
 //
 // The template has these forms:
 //

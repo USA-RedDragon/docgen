@@ -70,4 +70,6 @@ var Listen = PortWeb
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+With `code=false`, the value has no backticks, such as 250ms.
+
 For all options, see [`docgen:const`](../reference/markers.md#docgenconst).

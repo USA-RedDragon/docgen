@@ -40,6 +40,6 @@ toolchain go1.24.1
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-`field=` is `go`, `toolchain` or `module`. `file=` reads another `go.mod`.
+`field=` is `go`, `toolchain` or `module`. `file=` reads another `go.mod`. With `code=false`, the value has no backticks, such as 1.24.0.
 
 For details, see [`docgen:gomod`](../reference/markers.md#docgengomod).

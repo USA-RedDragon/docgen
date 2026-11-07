@@ -678,7 +678,7 @@ These do not count:
 
   - `go`: the value as `fmt.Sprint` prints it, with the String, Error, Format and GoString methods of its type: `DefaultWait` (250ms). A literal, such as `3`, has no value, unless its type has one of these methods: `80` (port-80).
   - `raw`: the underlying value, with no method: `DefaultWait` (250000000). A literal has no value.
-  - `name`: the name of the one constant of the type with the value, from the package of the marker and then the package of the type: `LevelLow + 1` (LevelHigh). A literal has no value, and neither does a value with no such constant.
+  - `name`: the name of the one constant of the type with the value, as for `docgen:const`: `LevelLow + 1` (LevelHigh), or `60 * time.Second` (time.Minute). A literal has no value, and neither does a value with no such constant.
   - A fmt verb, such as `%x`: the value with that verb, also of a literal: `DefaultColor` (ffaa00).
 
 A default that is not a constant, such as `hold` or `new(int)`, has no value with any `print=`. A value with the same text as its default, such as `-1`, has no parentheses. A value of a type with one of these methods comes from one `go test` run of the package, as for `docgen:const`.
@@ -1163,16 +1163,18 @@ type Server struct {
 <!-- docgen:doc pkg=. section="docgen:const" -->
 The value of a constant, or of a package-level var with a constant initial value, exported or not. It goes inline in a sentence.
 
-	docgen:const pkg=<path> name=<Name> [print=<go|raw|name|verb>]
+	docgen:const pkg=<path> name=<Name> [print=<go|raw|name|verb>] [code=false]
 
 `print=` sets how the value prints:
 
   - `print=go` is the default. The value prints as `fmt.Sprint` prints it, with the String, Error, Format and GoString methods of its type, so `250 * time.Millisecond` is `250ms`, strings have no quotes and `1e6` is `1e+06`.
   - `print=raw` is the underlying value with no method, and runs no code: `4001` for a port with a String method, `1` for an enum, and `1500000000` for a `time.Duration` of 1.5s.
-  - `print=name` is the name of the one constant of the type with the value, from the package of the marker and then the package of the type.
+  - `print=name` is the name of the one constant of the type with the value, from the package of the marker and then the package of the type. A constant of the package of the type is exported and has the package name, as in Go source: `time.Minute` for `60 * time.Second`.
   - `print=%d`, or any other fmt verb, is the value with that verb.
 
 An empty value prints as `""`, and line endings in a value print as spaces. A verb that the value cannot use is an error. An integer too large for its default type prints its exact value. A type with a print method runs in one `go test` for each package, so the tests of that package must compile.
+
+With `code=false`, the value has no backticks: 250ms in place of `250ms`. Any other value of `code=` is an error.
 <!-- /docgen:doc -->
 
 #### A value as Go prints it
@@ -1239,6 +1241,29 @@ var Listen = PortWeb
 - `raw`: <!-- docgen:const pkg=machine name=Listen print=raw -->`8080`<!-- /docgen:const -->
 - `name`: <!-- docgen:const pkg=machine name=Listen print=name -->`PortWeb`<!-- /docgen:const -->
 - `%06d`: <!-- docgen:const pkg=machine name=Listen print=%06d -->`008080`<!-- /docgen:const -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### A value with no backticks, with `code=false`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/machine/machine.go symbol=DefaultWait -->
+```go
+const DefaultWait = 250 * time.Millisecond
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-const-code.md -->
+#### Before
+
+```
+The default wait is <!-- docgen:const pkg=machine name=DefaultWait code=false --><!-- /docgen:const -->.
+```
+
+#### After
+
+```
+The default wait is <!-- docgen:const pkg=machine name=DefaultWait code=false -->250ms<!-- /docgen:const -->.
 ```
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
@@ -1662,7 +1687,9 @@ A Lamp blinks at these rates:
 <!-- docgen:doc pkg=. section="docgen:gomod" -->
 A line of the `go.mod` of the module, or of the `go.mod` at `file=`. It goes inline in a sentence.
 
-	docgen:gomod field=<go|toolchain|module> [file=<repo path>]
+	docgen:gomod field=<go|toolchain|module> [file=<repo path>] [code=false]
+
+With `code=false`, the value has no backticks, as for `docgen:const`.
 <!-- /docgen:doc -->
 
 <!-- site:editor -->
@@ -1703,14 +1730,41 @@ toolchain go1.24.1
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+#### A Go version with no backticks, with `code=false`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/go.mod -->
+```
+module github.com/USA-RedDragon/docgen/v2
+
+go 1.24.0
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-gomod-code.md -->
+#### Before
+
+```
+This module needs Go <!-- docgen:gomod field=go code=false --><!-- /docgen:gomod --> or later.
+```
+
+#### After
+
+```
+This module needs Go <!-- docgen:gomod field=go code=false -->1.24.0<!-- /docgen:gomod --> or later.
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
 ### docgen:usage
 
 <!-- docgen:doc pkg=. section="docgen:usage" -->
 The usage of a command.
 
-	docgen:usage cmd=<dir>
+	docgen:usage cmd=<dir> [args="<args>"]
 
-docgen builds the command in that directory, relative to the repository root, and runs it with `-h`. A build failure, a panic, or output with no line that starts with usage, in any letter case, and no flag line, is an error.
+docgen builds the command in that directory, relative to the repository root, and runs it with `-h`. With `args=`, the arguments are that value, split on spaces, such as `args="help config"` or `args=--help`. In the value, `\"` starts and ends an argument with spaces: `args="--name \"a b\""`.
+
+A build failure, a panic, an exit status other than 0, 1 or 2, or output with no line that starts with usage, in any letter case, and no flag line, is an error. This also applies to arguments that do not ask for help, so a command such as `version` must print a usage line or a flag line, such as `usage: tool version`.
 <!-- /docgen:doc -->
 
 <!-- site:editor -->
@@ -1751,14 +1805,62 @@ Usage of tool:
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+#### The usage of a help command, with `args=`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/cmd/lamp/main.go symbol=main -->
+```go
+func main() {
+	config := flag.NewFlagSet("lamp config", flag.ExitOnError)
+	config.Duration("wait", 0, "the time before the lamp turns on")
+	if len(os.Args) == 3 && os.Args[1] == "help" && os.Args[2] == "config" {
+		config.SetOutput(os.Stdout)
+		config.Usage()
+		return
+	}
+	fmt.Println("usage: lamp <config|help> [arguments]")
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-usage-args.md -->
+#### Before
+
+```
+# The config command
+
+<!-- docgen:usage cmd=cmd/lamp args="help config" -->
+<!-- /docgen:usage -->
+```
+
+#### After
+
+````
+# The config command
+
+<!-- docgen:usage cmd=cmd/lamp args="help config" -->
+```text
+Usage of lamp config:
+  -wait duration
+    	the time before the lamp turns on
+```
+<!-- /docgen:usage -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
 ### docgen:var
 
 <!-- docgen:doc pkg=. section="docgen:var" -->
 The value of a variable of the `vars` setting, as a code span. It goes inline in a sentence.
 
-	docgen:var name=<key>
+	docgen:var name=<key> [print=<go|raw|verb>] [code=false]
 
-A key that is not in `vars` is an error.
+A key that is not in `vars` is an error. The value is a string:
+
+  - `print=go`, the default, and `print=raw` are the value as it is.
+  - `print=%q`, or any other fmt verb, is the string with that verb: `"v1.2.3"`. A verb that a string cannot use, such as `%d`, is an error.
+  - `print=name` is an error, since a value of `vars` is not a constant.
+  - With `code=false`, the value has no backticks, as for `docgen:const`.
 <!-- /docgen:doc -->
 
 The boxes of `docgen:var` and `docgen:text` use this `.docgen.yaml`:
@@ -1792,12 +1894,38 @@ The current version is <!-- docgen:var name=version -->`v1.2.3`<!-- /docgen:var 
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+#### A quoted value, with `print=%q`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/.docgen.yaml -->
+```yaml
+vars:
+  version: v1.2.3
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-var-print.md -->
+#### Before
+
+```
+The quoted version is <!-- docgen:var name=version print=%q --><!-- /docgen:var -->.
+```
+
+#### After
+
+```
+The quoted version is <!-- docgen:var name=version print=%q -->`"v1.2.3"`<!-- /docgen:var -->.
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
 ### docgen:text
 
 <!-- docgen:doc pkg=. section="docgen:text" -->
 Text from a template, in which `vars` values replace the keys. With no `code=`, the text goes inline in a sentence. With `code=`, it is a code block in that language, and `code="text"` is a block with no highlighting, so a value can go in a code block, where markers are text.
 
 	docgen:text text="<template>" [code=<language>]
+
+Here `code=` is a language. In `docgen:const`, `docgen:var` and `docgen:gomod`, `code=false` is the one value, for a value with no backticks.
 
 The template has these forms:
 

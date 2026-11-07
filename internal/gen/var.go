@@ -4,19 +4,21 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/USA-RedDragon/docgen/internal/markdown"
 	"github.com/USA-RedDragon/docgen/internal/marker"
 )
 
 // A varHandler is a docgen:var marker: the value of the variable name of the vars
-// setting.
+// setting, with the print= and code= values of valueArgs.
 type varHandler struct {
 	noPlan
+	valueArgs
 	name string
 }
 
 func (h *varHandler) Bind(a *marker.Args) {
 	h.name = a.Required(argName)
+	h.bindPrint(a, false)
+	h.bindCode(a)
 	a.Inline()
 }
 
@@ -25,7 +27,10 @@ func (h *varHandler) fill(_ context.Context, j job) (string, []outFile, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	return markdown.CodeSpan(v), nil, nil
+	if v, err = h.stringText(v); err != nil {
+		return "", nil, err
+	}
+	return h.inline(v), nil, nil
 }
 
 func (h *varHandler) varNames() []string {

@@ -12,22 +12,21 @@ import (
 )
 
 // A configHandler is a docgen:config marker: the table of the exported fields
-// of the struct typ of the package pkg. printAs is the print= value of the
-// default values.
+// of the struct typ of the package pkg, with the print= value of valueArgs for
+// the default values.
 type configHandler struct {
 	typeArgs
-	printAs string
+	valueArgs
 }
 
 func (h *configHandler) Bind(a *marker.Args) {
 	h.bindType(a)
-	h.printAs, _ = a.Optional(argPrint)
-	a.NonEmpty(argPrint)
+	h.bindPrint(a, true)
 }
 
 func (h *configHandler) plan(p *plan) {
 	h.pkg = p.shortPkg(h.pkg)
-	h.printAs = p.gen.printValue(h.printAs)
+	h.planPrint(p.gen)
 	p.load(h.pkg)
 	p.values = append(p.values, h)
 }
@@ -47,7 +46,7 @@ func (h *configHandler) addValues(vs *valueSet, loaded *load.Set) {
 	}
 	for _, defs := range defaults.Find(pi, st) {
 		for _, d := range defs {
-			if d.Value == nil || goprint.CheckPrint(h.printAs) != nil || !goprint.NeedsRun(d.Type, h.printAs) {
+			if d.Value == nil || !goprint.NeedsRun(d.Type, h.printAs) {
 				continue
 			}
 			if expr, ok := vs.constExpr(pi, d.Type, d.Value); ok {
@@ -58,9 +57,6 @@ func (h *configHandler) addValues(vs *valueSet, loaded *load.Set) {
 }
 
 func (h *configHandler) fill(_ context.Context, j job) (string, []outFile, error) {
-	if err := goprint.CheckPrint(h.printAs); err != nil {
-		return "", nil, err
-	}
 	pi, err := j.loaded.Package(h.pkg)
 	if err != nil {
 		return "", nil, err
@@ -80,7 +76,7 @@ func (h *configHandler) fill(_ context.Context, j job) (string, []outFile, error
 	if len(fields) == 0 {
 		return "", nil, fmt.Errorf("%s has no exported field", t.Name)
 	}
-	table, err := configTable(j.values, pi, fields, defaults.Find(pi, st), h.printAs)
+	table, err := configTable(j.values, pi, fields, defaults.Find(pi, st), h.valueArgs)
 	if err != nil {
 		return "", nil, err
 	}

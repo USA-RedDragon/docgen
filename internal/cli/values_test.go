@@ -154,11 +154,12 @@ func TestPrintNameInThePackageOfTheMarker(t *testing.T) {
 	t.Parallel()
 	got := fill(t, map[string]string{
 		"o/o.go": "package o\n\n// Level is a level.\ntype Level int\n\n// Low is a level.\nconst Low Level = 1\n",
-		"p/p.go": "package p\n\nimport (\n\t\"time\"\n\n\t\"example.com/w/o\"\n)\n\nconst D = 1500 * time.Millisecond\n\nconst Sec = time.Second\n\nvar Var = o.Low\n",
+		"p/p.go": "package p\n\nimport (\n\t\"time\"\n\n\t\"example.com/w/o\"\n)\n\nconst D = 1500 * time.Millisecond\n\nconst Sec = time.Second\n\nvar Var = o.Low\n\nvar Long = 60 * time.Second\n",
 	}, "<!-- docgen:const pkg=p name=D print=name --><!-- /docgen:const -->\n\n"+
 		"<!-- docgen:const pkg=p name=Sec print=name --><!-- /docgen:const -->\n\n"+
-		"<!-- docgen:const pkg=p name=Var print=name --><!-- /docgen:const -->\n")
-	wantIn(t, got, "name=D print=name -->`D`<!--", "name=Sec print=name -->`Sec`<!--", "name=Var print=name -->`Low`<!--")
+		"<!-- docgen:const pkg=p name=Var print=name --><!-- /docgen:const -->\n\n"+
+		"<!-- docgen:const pkg=p name=Long print=name --><!-- /docgen:const -->\n")
+	wantIn(t, got, "name=D print=name -->`D`<!--", "name=Sec print=name -->`Sec`<!--", "name=Var print=name -->`o.Low`<!--", "name=Long print=name -->`time.Minute`<!--")
 }
 
 func TestConfigPrintNameOfALiteral(t *testing.T) {

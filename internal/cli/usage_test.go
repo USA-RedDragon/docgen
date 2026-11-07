@@ -86,3 +86,61 @@ func TestFlagsOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestUsageArgs(t *testing.T) {
+	t.Parallel()
+	const src = "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"strings\"\n)\n\nfunc main() {\n\tfmt.Printf(\"usage: x %q\\n\", strings.Join(os.Args[1:], \"|\"))\n}\n"
+	for args, want := range map[string]string{
+		"":                    `usage: x "-h"`,
+		` args="help config"`: `usage: x "help|config"`,
+		` args=--help`:        `usage: x "--help"`,
+		` args="a \"b c\" d"`: `usage: x "a|b c|d"`,
+	} {
+		t.Run(args, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			page := "<!-- docgen:usage cmd=cmd/x" + args + " --><!-- /docgen:usage -->\n"
+			writeTree(t, root, map[string]string{"go.mod": flagsMod, "docs/a.md": page, "cmd/x/main.go": src})
+			if rc, log := docgen(t, root, "update"); rc != 0 {
+				t.Fatalf("update: rc %d, log:\n%s", rc, log)
+			}
+			wantIn(t, readPage(t, root, "docs/a.md"), "```text\n"+want+"\n```\n")
+			if rc, log := docgen(t, root, "check"); rc != 0 {
+				t.Errorf("check: rc %d, log:\n%s", rc, log)
+			}
+		})
+	}
+}
+
+func TestUsageArgsErrors(t *testing.T) {
+	t.Parallel()
+	const src = "package main\n\nfunc main() { println(\"version 1\") }\n"
+	for args, want := range map[string]string{
+		`args=""`:      "args= is empty",
+		`args="  "`:    "args= has no argument",
+		`args="a \"b"`: "args= has a \" with no end",
+		"args=version": "cmd/x version: the command printed no usage",
+	} {
+		t.Run(args, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			page := "<!-- docgen:usage cmd=cmd/x " + args + " --><!-- /docgen:usage -->\n"
+			writeTree(t, root, map[string]string{"go.mod": flagsMod, "docs/a.md": page, "cmd/x/main.go": src})
+			if rc, log := docgen(t, root, "check"); rc != 1 || !strings.Contains(log, want) {
+				t.Errorf("rc %d, want 1 and %q, log:\n%s", rc, want, log)
+			}
+		})
+	}
+}
+
+func TestUsageOfTwoArgsOfOneCommand(t *testing.T) {
+	t.Parallel()
+	const src = "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() { fmt.Println(\"usage:\", os.Args[1]) }\n"
+	root := t.TempDir()
+	page := "<!-- docgen:usage cmd=cmd/x --><!-- /docgen:usage -->\n<!-- docgen:usage cmd=cmd/x args=a --><!-- /docgen:usage -->\n"
+	writeTree(t, root, map[string]string{"go.mod": flagsMod, "docs/a.md": page, "cmd/x/main.go": src})
+	if rc, log := docgen(t, root, "update"); rc != 0 {
+		t.Fatalf("update: rc %d, log:\n%s", rc, log)
+	}
+	wantIn(t, readPage(t, root, "docs/a.md"), "usage: -h\n", "usage: a\n")
+}

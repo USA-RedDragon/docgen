@@ -42,4 +42,6 @@ Usage of tool:
 
 The directory is relative to the repository root. A build failure, a crash, or output with no usage is an error.
 
+With `args=`, docgen runs the command with other arguments, such as `args="help config"` for a help command. The output must still hold a usage line or a flag line.
+
 For details, see [`docgen:usage`](../reference/markers.md#docgenusage).

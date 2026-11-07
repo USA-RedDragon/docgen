@@ -15,14 +15,14 @@ import (
 )
 
 // configTable returns the table of fields with the defaults defs, with the print=
-// value printAs.
-func configTable(vs *valueSet, pi *load.Package, fields []types.Field, defs map[*gotypes.Var][]defaults.Default, printAs string) (string, error) {
+// value of va.
+func configTable(vs *valueSet, pi *load.Package, fields []types.Field, defs map[*gotypes.Var][]defaults.Default, va valueArgs) (string, error) {
 	var b strings.Builder
 	b.WriteString("| Field | Type | Default | Description |\n|---|---|---|---|\n")
 	for _, f := range fields {
 		var def []string
 		for _, d := range defs[f.Var] {
-			text, err := defaultText(vs, pi, d, printAs)
+			text, err := defaultText(vs, pi, d, va)
 			if err != nil {
 				return "", err
 			}
@@ -41,12 +41,12 @@ func configTable(vs *valueSet, pi *load.Package, fields []types.Field, defs map[
 }
 
 // defaultText returns the source of the default d and its value.
-func defaultText(vs *valueSet, pi *load.Package, d defaults.Default, printAs string) (string, error) {
+func defaultText(vs *valueSet, pi *load.Package, d defaults.Default, va valueArgs) (string, error) {
 	src := markdown.CodeSpan(d.Source)
 	if d.Value == nil {
 		return src, nil
 	}
-	v, err := defaultValue(vs, pi, d, printAs)
+	v, err := defaultValue(vs, pi, d, va)
 	if err != nil {
 		return "", fmt.Errorf("the default %s: %w", d.Source, err)
 	}
@@ -57,15 +57,16 @@ func defaultText(vs *valueSet, pi *load.Package, d defaults.Default, printAs str
 }
 
 // defaultValue returns the text of the value of the default d with the print=
-// value printAs, as docgen:const prints it, and "" when the source of d is all
+// value of va, as docgen:const prints it, and "" when the source of d is all
 // that the column holds: a literal is its own value, except with a fmt verb, and a
 // value with no constant has no name.
-func defaultValue(vs *valueSet, pi *load.Package, d defaults.Default, printAs string) (string, error) {
+func defaultValue(vs *valueSet, pi *load.Package, d defaults.Default, va valueArgs) (string, error) {
+	printAs := va.printAs
 	if printAs == goprint.PrintName {
 		if d.Literal {
 			return "", nil
 		}
-		v, err := types.ConstantName(pi, d.Type, d.Value)
+		v, err := va.constText(vs, pi, "", d.Type, d.Value)
 		if errors.Is(err, types.ErrNoConstant) {
 			return "", nil
 		}
@@ -80,7 +81,7 @@ func defaultValue(vs *valueSet, pi *load.Package, d defaults.Default, printAs st
 	} else if d.Literal && (printAs == "" || printAs == goprint.PrintRaw) {
 		return "", nil
 	}
-	return vs.text(pi, valueRef{expr, printAs}, d.Type, d.Value)
+	return va.constText(vs, pi, expr, d.Type, d.Value)
 }
 
 var defaultPhrase = regexp.MustCompile(`(?i)\b(0|nil|zero|empty|an? empty \w+|a zero \w+) means\b|defaults to|by default`)

@@ -23,9 +23,9 @@ var (
 	crashTitle = regexp.MustCompile(`(?m)^(?:panic|fatal error): `)
 )
 
-// usageOf builds the command in the directory cmdDir and returns its usage as a
-// code block.
-func (g *Generator) usageOf(ctx context.Context, cmdDir string) (string, error) {
+// usageOf builds the command in the directory cmdDir, runs it with args and
+// returns its usage as a code block.
+func (g *Generator) usageOf(ctx context.Context, cmdDir string, args []string) (string, error) {
 	if err := g.mod.LocalDir("cmd", cmdDir); err != nil {
 		return "", err
 	}
@@ -48,14 +48,15 @@ func (g *Generator) usageOf(ctx context.Context, cmdDir string) (string, error) 
 		return "", err
 	}
 	defer func() { _ = os.RemoveAll(work) }()
-	fmt.Fprintf(g.log, "docgen: running %s -h\n", cmdDir)
+	run := cmdDir + " " + strings.Join(args, " ")
+	fmt.Fprintf(g.log, "docgen: running %s\n", run)
 	bin, name, err := g.buildCommand(ctx, mod, "./"+filepath.ToSlash(rel), work)
 	if err != nil {
 		return "", fmt.Errorf("go build %s: %w", cmdDir, err)
 	}
-	usage, err := g.runHelp(ctx, mod, bin, name)
+	usage, err := g.runHelp(ctx, mod, bin, name, args)
 	if err != nil {
-		return "", fmt.Errorf("%s -h: %w", cmdDir, err)
+		return "", fmt.Errorf("%s: %w", run, err)
 	}
 	return markdown.Fence("text", usage), nil
 }
@@ -79,14 +80,14 @@ func (g *Generator) buildCommand(ctx context.Context, mod, pkg, work string) (st
 	return filepath.Join(work, file), strings.TrimSuffix(file, ".exe"), nil
 }
 
-// runHelp runs the binary bin with -h, as the program name, and returns what
+// runHelp runs the binary bin with args, as the program name, and returns what
 // it prints, standard error first.
-func (g *Generator) runHelp(ctx context.Context, dir, bin, name string) (string, error) {
+func (g *Generator) runHelp(ctx context.Context, dir, bin, name string, args []string) (string, error) {
 	env, err := g.session.Env(ctx)
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.CommandContext(ctx, bin, "-h")
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Args[0] = name
 	cmd.Dir = dir
 	cmd.Env = env
