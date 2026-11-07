@@ -108,6 +108,11 @@
 //     `jobs.test` of a workflow. A last segment `key[A:B]` is the items of the list
 //     at `key` from the item with name `A` to the item with name `B`, and `key[A]`
 //     is the one item `A`.
+//   - `symbol=` in a JSON or TOML file uses the same path form. In JSON the
+//     excerpt is `"key": value`. In TOML it is a key with its value, or a table
+//     `[a.b]` with its keys and sub-tables, and `key[A]` is an item of the array
+//     of tables `[[key]]`. An item is found by its `name` key, or by a number,
+//     its index from 0. `\.` is a dot in a key.
 //   - `symbol=` in a C file is the `#define` of Name or the definition of the
 //     function Name.
 //   - `region=` is the lines between the line `docgen:region <name>` and the next

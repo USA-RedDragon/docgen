@@ -2,7 +2,7 @@
 
 Put code from your repository in a page, so that the page changes when the code changes.
 
-## A symbol
+## A Go declaration, with `symbol=`
 
 Prefer `symbol=`, because the excerpt stays correct when the code moves in the file.
 
@@ -52,7 +52,9 @@ func (l *Lamp) Start(now time.Duration) error {
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-It also works in [YAML](../reference/markers.md#symbol-in-a-yaml-file) and [C](../reference/markers.md#symbol-in-a-c-file) files:
+## A YAML key, with `symbol=`
+
+`symbol=` also works in [YAML](../reference/markers.md#a-yaml-key-with-symbol), [JSON](../reference/markers.md#a-json-member-with-symbol), [TOML](../reference/markers.md#a-toml-table-or-key-with-symbol) and [C](../reference/markers.md#a-c-function-or-define-with-symbol) files. In YAML, the excerpt is a key with its block, or items of a list by name:
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/ci/workflow.yaml -->
@@ -107,6 +109,140 @@ env:
 ```yaml
 - name: Check the docs
   run: docgen check
+```
+<!-- /docgen:code -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+## A JSON member, with `symbol=`
+
+In JSON, the excerpt is a member as `"key": value`, or items of an array by name or by index, with the formatting of the file.
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/config/app.json -->
+```json
+{
+  "server": {
+    "port": 8080,
+    "hosts": ["a.example", "b.example"]
+  },
+  "jobs": [
+    {"name": "build", "run": "go build ./..."},
+    {"name": "test", "run": "go test ./..."},
+    {"name": "docs", "run": "docgen check"}
+  ]
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-code-json.md -->
+#### Before
+
+```
+<!-- docgen:code file=config/app.json symbol=server.port -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.json symbol="jobs[build:test]" -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.json symbol=jobs[2] -->
+<!-- /docgen:code -->
+```
+
+#### After
+
+````
+<!-- docgen:code file=config/app.json symbol=server.port -->
+```json
+"port": 8080
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.json symbol="jobs[build:test]" -->
+```json
+{"name": "build", "run": "go build ./..."},
+{"name": "test", "run": "go test ./..."}
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.json symbol=jobs[2] -->
+```json
+{"name": "docs", "run": "docgen check"}
+```
+<!-- /docgen:code -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+## A TOML table or key, with `symbol=`
+
+In TOML, the excerpt is a table with its keys, a key with its value, or items of an array of tables, with the comments in them.
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/config/app.toml -->
+```toml
+[server]
+port = 8080 # the default port
+hosts = [
+  "a.example",
+  "b.example",
+]
+
+[[jobs]]
+name = "build"
+run = "go build ./..."
+
+[[jobs]]
+name = "test"
+run = """
+go vet ./...
+go test ./..."""
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-code-toml.md -->
+#### Before
+
+```
+<!-- docgen:code file=config/app.toml symbol=server -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.toml symbol=server.hosts -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.toml symbol=jobs[test] -->
+<!-- /docgen:code -->
+```
+
+#### After
+
+````
+<!-- docgen:code file=config/app.toml symbol=server -->
+```toml
+[server]
+port = 8080 # the default port
+hosts = [
+  "a.example",
+  "b.example",
+]
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.toml symbol=server.hosts -->
+```toml
+hosts = [
+  "a.example",
+  "b.example",
+]
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.toml symbol=jobs[test] -->
+```toml
+[[jobs]]
+name = "test"
+run = """
+go vet ./...
+go test ./..."""
 ```
 <!-- /docgen:code -->
 ````
@@ -175,7 +311,7 @@ go test ./...
 
 `lines=` is the last choice, because it fails when the file changes under the excerpt. The error holds the new range when the same text moved.
 
-## Doc comments and region marks
+## An excerpt with its comments and marks, with `raw=true`
 
 Other excerpts leave out the doc comment of a symbol and the region marks. Add `raw=true` to keep the text of the file. With it, `symbol=package` in a Go file is the package clause and its doc comment.
 

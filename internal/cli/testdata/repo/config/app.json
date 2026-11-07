@@ -1,0 +1,11 @@
+{
+  "server": {
+    "port": 8080,
+    "hosts": ["a.example", "b.example"]
+  },
+  "jobs": [
+    {"name": "build", "run": "go build ./..."},
+    {"name": "test", "run": "go test ./..."},
+    {"name": "docs", "run": "docgen check"}
+  ]
+}

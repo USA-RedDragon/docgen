@@ -1,0 +1,16 @@
+[server]
+port = 8080 # the default port
+hosts = [
+  "a.example",
+  "b.example",
+]
+
+[[jobs]]
+name = "build"
+run = "go build ./..."
+
+[[jobs]]
+name = "test"
+run = """
+go vet ./...
+go test ./..."""

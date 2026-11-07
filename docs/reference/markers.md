@@ -131,6 +131,7 @@ The arguments:
 
   - `symbol=` in a Go file is one func, method (`Type.Method`), type, or const or var block, with no doc comment. An Example has no output comment.
   - `symbol=` in a YAML file is the block of the key at a dotted path, such as `jobs.test` of a workflow. A last segment `key[A:B]` is the items of the list at `key` from the item with name `A` to the item with name `B`, and `key[A]` is the one item `A`.
+  - `symbol=` in a JSON or TOML file uses the same path form. In JSON the excerpt is `"key": value`. In TOML it is a key with its value, or a table `[a.b]` with its keys and sub-tables, and `key[A]` is an item of the array of tables `[[key]]`. An item is found by its `name` key, or by a number, its index from 0. `\.` is a dot in a key.
   - `symbol=` in a C file is the `#define` of Name or the definition of the function Name.
   - `region=` is the lines between the line `docgen:region <name>` and the next line `docgen:end`. Each mark is the whole line apart from comment syntax. In a page, a mark in code or in a marker body is text. Other excerpts of the file leave out those two lines.
   - `lines=` is those lines of the file. For a Go file the lines must hold whole declarations or statements. When the file changes, check and update fail. The error holds the new range when the old excerpt moved, and otherwise states that the range is out of date. A range past the last line is an error.
@@ -142,7 +143,7 @@ An excerpt with no text is an error.
 On a scanned page, the excerpt is the text that update writes to that page. An excerpt of the page of its own marker is an error, and so are excerpts that do not settle in 8 passes.
 <!-- /docgen:doc -->
 
-#### symbol= in a Go file
+#### A Go declaration, with `symbol=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/machine.go symbol=Lamp.Start -->
@@ -190,7 +191,7 @@ func (l *Lamp) Start(now time.Duration) error {
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### symbol= in a YAML file
+#### A YAML key, with `symbol=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/ci/workflow.yaml -->
@@ -251,7 +252,137 @@ env:
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### symbol= in a C file
+#### A JSON member, with `symbol=`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/config/app.json -->
+```json
+{
+  "server": {
+    "port": 8080,
+    "hosts": ["a.example", "b.example"]
+  },
+  "jobs": [
+    {"name": "build", "run": "go build ./..."},
+    {"name": "test", "run": "go test ./..."},
+    {"name": "docs", "run": "docgen check"}
+  ]
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-code-json.md -->
+#### Before
+
+```
+<!-- docgen:code file=config/app.json symbol=server.port -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.json symbol="jobs[build:test]" -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.json symbol=jobs[2] -->
+<!-- /docgen:code -->
+```
+
+#### After
+
+````
+<!-- docgen:code file=config/app.json symbol=server.port -->
+```json
+"port": 8080
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.json symbol="jobs[build:test]" -->
+```json
+{"name": "build", "run": "go build ./..."},
+{"name": "test", "run": "go test ./..."}
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.json symbol=jobs[2] -->
+```json
+{"name": "docs", "run": "docgen check"}
+```
+<!-- /docgen:code -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### A TOML table or key, with `symbol=`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/config/app.toml -->
+```toml
+[server]
+port = 8080 # the default port
+hosts = [
+  "a.example",
+  "b.example",
+]
+
+[[jobs]]
+name = "build"
+run = "go build ./..."
+
+[[jobs]]
+name = "test"
+run = """
+go vet ./...
+go test ./..."""
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-code-toml.md -->
+#### Before
+
+```
+<!-- docgen:code file=config/app.toml symbol=server -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.toml symbol=server.hosts -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.toml symbol=jobs[test] -->
+<!-- /docgen:code -->
+```
+
+#### After
+
+````
+<!-- docgen:code file=config/app.toml symbol=server -->
+```toml
+[server]
+port = 8080 # the default port
+hosts = [
+  "a.example",
+  "b.example",
+]
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.toml symbol=server.hosts -->
+```toml
+hosts = [
+  "a.example",
+  "b.example",
+]
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=config/app.toml symbol=jobs[test] -->
+```toml
+[[jobs]]
+name = "test"
+run = """
+go vet ./...
+go test ./..."""
+```
+<!-- /docgen:code -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### A C function or #define, with `symbol=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/native/lamp.c -->
@@ -306,7 +437,7 @@ int lamp_start(int count)
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### region=, lines= and the whole file
+#### A region, a line range or a whole file
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/scripts/build.sh raw=true -->
@@ -364,7 +495,7 @@ go test ./...
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### raw=true
+#### An excerpt with its comments and marks, with `raw=true`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/machine.go symbol=package raw=true -->
