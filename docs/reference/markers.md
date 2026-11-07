@@ -483,7 +483,9 @@ A table of the exported fields of a struct: name, type, default and doc text. Th
 
 	docgen:config pkg=<path> type=<Config> [print=<go|raw|name|verb>]
 
-`print=` has the values of `docgen:const` and applies to the Default column. A literal default shows its source alone for `print=name`. A struct with no exported field is an error.
+`print=` sets how the Default column prints each value, with the same choices as `docgen:const`: `go`, `raw`, `name` or a fmt verb. With `print=name`, a default that is not a constant, such as `3`, prints as written.
+
+A struct with no exported fields is an error.
 <!-- /docgen:doc -->
 
 #### A table with no print=
