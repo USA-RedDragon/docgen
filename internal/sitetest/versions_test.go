@@ -291,12 +291,20 @@ func TestPageInOneVersion(t *testing.T) {
 	holds(t, "main/next.html", read(t, site, "main/next.html"), `<a href="../latest/">Go to the latest version</a>`)
 }
 
+func TestPickerIsInThePage(t *testing.T) {
+	t.Parallel()
+	needPandoc(t)
+	site, _ := buildVersions(t, taggedRepo(t))
+	holds(t, "old version", read(t, site, "v0.9.0/page.html"), `<select aria-label="Version"><option>v0.9.0</option></select>`)
+	lacks(t, "old version", read(t, site, "v0.9.0/page.html"), `data-page="page.html" hidden`)
+}
+
 func TestPicker(t *testing.T) {
 	t.Parallel()
 	needPandoc(t)
 	site, _ := buildVersions(t, taggedRepo(t))
-	holds(t, "deep page", read(t, site, "v0.9.0/sub/deep.html"), `class="version" data-root="../" data-page="sub/deep.html" hidden`, `"versions.json"`, `method: "HEAD"`)
-	holds(t, "top page", read(t, site, "main/page.html"), `class="version" data-root="" data-page="page.html" hidden`)
+	holds(t, "deep page", read(t, site, "v0.9.0/sub/deep.html"), `class="version" data-root="../" data-page="sub/deep.html"`, `"versions.json"`, `method: "HEAD"`)
+	holds(t, "top page", read(t, site, "main/page.html"), `class="version" data-root="" data-page="page.html"`)
 }
 
 func TestSingleTreeHasNoVersions(t *testing.T) {

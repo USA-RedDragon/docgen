@@ -141,8 +141,7 @@ footer { border-top: 1px solid var(--line); color: var(--soft); font-size: 14px;
   .pager .next { grid-column: 1; }
 }
 $if(version)$
-.version[hidden] { display: none; }
-.version select { font: inherit; font-size: 14px; padding: 3px 6px; background: var(--band); color: var(--band-ink); border: 1px solid oklch(from var(--band-soft) l c h / 0.5); }
+.version select { width: 10em; font: inherit; font-size: 14px; padding: 3px 6px; background: var(--band); color: var(--band-ink); border: 1px solid oklch(from var(--band-soft) l c h / 0.5); }
 .banner { margin: 0; background: var(--panel); border-bottom: 1px solid var(--line); border-left: 4px solid var(--accent); padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); font-size: 15px; }
 $endif$
 $if(editor)$
@@ -219,7 +218,7 @@ $endif$
 <header>
   <a class="brand" href="${root}index.html">$site$</a>
 $if(version)$
-  <div class="version" data-root="$root$" data-page="$pagepath$" hidden><select aria-label="Version"></select></div>
+  <div class="version" data-root="$root$" data-page="$pagepath$"><select aria-label="Version"><option>$versionlabel$</option></select></div>
 $endif$
   <nav>$links$</nav>
   <div class="search" role="search" data-root="$root$"><input type="search" placeholder="Search the docs ( / )" aria-label="Search the docs" autocomplete="off" spellcheck="false"><ol hidden></ol></div>
@@ -348,6 +347,7 @@ $if(version)$
     return r.json();
   }).then(function (v) {
     var current = name === "latest" ? v.latest : name;
+    select.textContent = "";
     v.versions.forEach(function (n) {
       var o = document.createElement("option");
       o.value = n;
@@ -362,7 +362,6 @@ $if(version)$
       target.hash = location.hash;
       fetch(target, { method: "HEAD" }).then(function (r) { go(r.ok ? target : front); }, function () { go(front); });
     });
-    box.hidden = false;
   }).catch(function () {});
 })();
 </script>

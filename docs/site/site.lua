@@ -478,6 +478,9 @@ function Pandoc(doc)
   local version = doc.meta.version and stringify(doc.meta.version)
   local latest = doc.meta.latest and stringify(doc.meta.latest)
   local latest_pages = doc.meta.latestpages and read_file(stringify(doc.meta.latestpages))
+  if version then
+    doc.meta.versionlabel = (version == latest or not latest) and version .. " (latest)" or version
+  end
   local ref = version or "main"
   local function pin(url)
     if ref == "main" then
