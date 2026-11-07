@@ -35,7 +35,7 @@ The arguments:
 The output must be the same on each run, or check fails. A program or command with no output gives an empty block, and an Example with an empty `// Output:` comment is an error.
 <!-- /docgen:doc -->
 
-#### test=
+#### The output of an Example, with `test=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/example_test.go symbol=ExampleLamp -->
@@ -71,7 +71,7 @@ true
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### cmd= and exec=
+#### The output of a program or a command, with `cmd=` or `exec=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/examples/hello/main.go symbol=main -->
@@ -667,7 +667,7 @@ The value of a constant, or of a package-level var with a constant initial value
 An empty value prints as `""`, and line endings in a value print as spaces. A verb that the value cannot use is an error. An integer too large for its default type prints its exact value. A type with a print method runs in one `go test` for each package, so the tests of that package must compile.
 <!-- /docgen:doc -->
 
-#### A value with no print=
+#### A value as Go prints it
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/machine.go symbol=DefaultWait -->
@@ -690,7 +690,7 @@ The default wait is <!-- docgen:const pkg=machine name=DefaultWait -->`250ms`<!-
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### print= of a value
+#### A value in another form, with `print=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/port.go -->
@@ -849,7 +849,7 @@ The diagram goes in `states/<pkg>-<type>.svg` next to the page. `diagram=` gives
 Value receiver methods, promoted methods and methods with no receiver name are not recorded, and the output lists them under Not recorded.
 <!-- /docgen:doc -->
 
-#### A machine with no option
+#### A state machine
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/machine.go symbol=LampState -->
@@ -970,7 +970,7 @@ Transitions seen in tests:
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### run= and diagram=
+#### Some of the tests and another diagram path, with `run=` and `diagram=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/door/door.go -->
@@ -1051,7 +1051,7 @@ A doc comment as Markdown: the package doc, or the doc of a type, func, method (
 A `pkg=` that names a directory outside the module, such as a tool with a `go.mod` of its own, is the package doc of that directory. Its path is relative to the repository root. A name with no doc comment and a `section=` with no text are errors. Text in backticks in a doc comment is a code span.
 <!-- /docgen:doc -->
 
-#### name=
+#### The doc comment of one declaration, with `name=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/machine.go symbol=Lamp.Start raw=true -->
@@ -1090,7 +1090,7 @@ Start turns the Lamp on. It returns ErrBusy while the Lamp is on.
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### pkg= alone and section=
+#### A package doc, or one section of it, with `section=`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/doc.go -->
