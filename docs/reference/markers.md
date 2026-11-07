@@ -30,7 +30,7 @@ The arguments:
 
   - `cmd=` is the standard output of `go run` on the Go program in that directory, relative to the repository root, from its nearest `go.mod`.
   - `exec=` is the standard output of a shell command, run with `sh -c` in the repository root. A nonzero exit status is an error.
-  - `test=` is the `// Output:` comment of the Example, which `go test` checks. `<pkg>.Example` is the package Example.
+  - `test=` is the expected output of an Example function, as written in its `// Output:` comment. `go test` fails when the real output differs, so the page cannot hold wrong output. Give the package and the function, such as `test=machine.ExampleLamp`. `test=machine.Example` is the Example of the package itself.
 
 The output must be the same on each run, or check fails. A program or command with no output gives an empty block, and an Example with an empty `// Output:` comment is an error.
 <!-- /docgen:doc -->
