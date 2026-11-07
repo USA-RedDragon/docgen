@@ -3,7 +3,8 @@ package states
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"go/ast"
 	"os"
@@ -241,7 +242,7 @@ func (r *recording) writeOverlay(work, pkgDir string) (string, error) {
 		return "", err
 	}
 	ov[filepath.Join(pkgDir, hookFile)] = filepath.Join(work, hookFile)
-	ovJSON, err := json.Marshal(map[string]map[string]string{"Replace": ov})
+	ovJSON, err := json.Marshal(map[string]map[string]string{"Replace": ov}, json.Deterministic(true), jsontext.EscapeForHTML(true))
 	if err != nil {
 		return "", err
 	}

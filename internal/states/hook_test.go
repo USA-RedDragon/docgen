@@ -1,9 +1,10 @@
 package states
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"go/parser"
 	"go/token"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -264,5 +265,44 @@ func TestHookStable(t *testing.T) {
 	}
 	if string(first) != string(second) {
 		t.Error("two renders differ")
+	}
+}
+
+func TestOverlayJSONBytes(t *testing.T) {
+	t.Parallel()
+	src := t.TempDir()
+	a, b := filepath.Join(src, "b.go"), filepath.Join(src, "a<b>.go")
+	for _, f := range []string{a, b} {
+		if err := os.WriteFile(f, []byte("package p\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := &recording{edits: map[string][]edit{a: nil, b: nil}, hook: []byte("package p\n")}
+	work := t.TempDir()
+	ovPath, err := r.writeOverlay(work, "/p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(ovPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	esc := strings.NewReplacer("<", `\u003c`, ">", `\u003e`).Replace
+	ov := map[string]string{
+		b:                filepath.Join(work, "1.go"),
+		a:                filepath.Join(work, "2.go"),
+		"/p/" + hookFile: filepath.Join(work, hookFile),
+	}
+	var want strings.Builder
+	want.WriteString(`{"Replace":{`)
+	for i, k := range slices.Sorted(maps.Keys(ov)) {
+		if i > 0 {
+			want.WriteString(",")
+		}
+		want.WriteString(`"` + esc(k) + `":"` + esc(ov[k]) + `"`)
+	}
+	want.WriteString("}}")
+	if string(got) != want.String() {
+		t.Errorf("overlay JSON:\n got %s\nwant %s", got, want.String())
 	}
 }
