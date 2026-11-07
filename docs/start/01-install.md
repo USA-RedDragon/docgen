@@ -31,7 +31,20 @@ Use a `go:generate` line to run it with your other generators:
 ```
 <!-- /docgen:text -->
 
-A `tool` directive also works. See [Run docgen as a tool](../reference/command.md#run-docgen-as-a-tool).
+## Run docgen as a tool
+
+A `tool` directive also pins a version:
+
+<!-- docgen:text text="go get -tool github.com/USA-RedDragon/docgen@{version}\ngo tool docgen check" code=sh -->
+```sh
+go get -tool github.com/USA-RedDragon/docgen@v0.1.0
+go tool docgen check
+```
+<!-- /docgen:text -->
+
+It adds the docgen dependencies to your `go.mod` and raises its `go` line to the docgen version. Do not use it in a library that supports an earlier Go version.
+
+For a GitHub Action and a pre-commit hook, see [Check the docs in CI](03-check-in-ci.md).
 
 ## Next
 

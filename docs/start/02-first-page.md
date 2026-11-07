@@ -58,7 +58,7 @@ docgen: 1 stale; run docgen update and commit the result
 
 Write prose outside the markers. docgen never changes it. Do not edit a marker body by hand, because the next `update` writes over it and `check` fails until then.
 
-docgen scans each Markdown file of the repository. To narrow the scan, see [Command line](../reference/command.md#choose-what-to-scan).
+docgen scans each Markdown file of the repository. To narrow the scan, see [Configuration](../reference/configuration.md#choose-what-to-scan).
 
 ## Next
 

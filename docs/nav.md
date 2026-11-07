@@ -27,6 +27,7 @@ The pages of the docs site, in reading order, by section. The site navigation co
 - Reference
   - [Markers](reference/markers.md)
   - [Command line](reference/command.md)
+  - [Configuration](reference/configuration.md)
   - [Sample page](reference/sample-page.md)
 - Project
   - [Versioning and compatibility](project/versioning.md)
