@@ -206,6 +206,38 @@ func TestConstantName(t *testing.T) {
 	}
 }
 
+func TestConstantNameOfAnotherPackage(t *testing.T) {
+	t.Parallel()
+	pi := loadSource(t, map[string]string{
+		"p.go":   "package p\n\nimport (\n\t\"time\"\n\n\t\"example.com/m/p/q\"\n)\n\n// Wait is a duration.\nvar Wait = 60 * time.Second\n\n// Use reads Q.\nfunc Use() q.Q { return q.One }\n",
+		"q/q.go": "package q\n\n// Q is a type.\ntype Q int\n\n// The values.\nconst (\n\tOne Q = 1\n\tTwo Q = 2\n\tthree Q = 3\n\tTres Q = 3\n\tfour Q = 4\n)\n",
+	})
+	duration := pi.Pkg.Types.Scope().Lookup("Wait").Type()
+	q := pi.Pkg.Types.Imports()[1].Scope().Lookup("Q").Type()
+	for _, c := range []struct {
+		typ     gotypes.Type
+		value   int64
+		want    string
+		wantErr string
+	}{
+		{duration, 60_000_000_000, "time.Minute", ""},
+		{q, 2, "q.Two", ""},
+		{q, 3, "q.Tres", ""},
+		{q, 4, "", "no constant of type example.com/m/p/q.Q has the value 4"},
+	} {
+		got, err := ConstantName(pi, c.typ, constant.MakeInt64(c.value))
+		if c.wantErr != "" {
+			if err == nil || err.Error() != c.wantErr {
+				t.Errorf("ConstantName(%s, %d): got %v, want %q", c.typ, c.value, err, c.wantErr)
+			}
+			continue
+		}
+		if err != nil || got != c.want {
+			t.Errorf("ConstantName(%s, %d) = %q, %v, want %q", c.typ, c.value, got, err, c.want)
+		}
+	}
+}
+
 func TestValue(t *testing.T) {
 	t.Parallel()
 	pi := loadSource(t, map[string]string{"p.go": constantSource})

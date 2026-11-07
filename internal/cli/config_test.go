@@ -490,7 +490,7 @@ func New(c C) {
 		"| `D` | `int` | `255` |",
 		"| `E` | `Mode` | `ModeFast` |",
 		"| `F` | `int` | `hold` |",
-		"| `G` | `time.Duration` | `60 * time.Second` (Minute) |",
+		"| `G` | `time.Duration` | `60 * time.Second` (time.Minute) |",
 		"| `H` | `Mode` | `1` |",
 	)
 }

@@ -82,27 +82,33 @@ func ordered(v constant.Value) bool {
 }
 
 // ConstantName returns the name of the one constant of type t with the value v, in
-// pi or else in the package of t. An unexported or untyped constant counts. No such
-// constant is an error wrapping ErrNoConstant.
+// pi or else in the package of t. In pi an unexported or untyped constant counts.
+// A constant of the package of t is exported, and its name has the package name,
+// such as time.Minute. No such constant is an error wrapping ErrNoConstant.
 func ConstantName(pi *load.Package, t gotypes.Type, v constant.Value) (string, error) {
 	t = gotypes.Default(t)
-	scopes := []*gotypes.Scope{pi.Pkg.Types.Scope()}
+	pkgs := []*gotypes.Package{pi.Pkg.Types}
 	if n := named(t); n != nil && n.Obj().Pkg() != nil && n.Obj().Pkg() != pi.Pkg.Types {
-		scopes = append(scopes, n.Obj().Pkg().Scope())
+		pkgs = append(pkgs, n.Obj().Pkg())
 	}
-	for _, scope := range scopes {
-		consts := constantsOf(scope, func(c *gotypes.Const) bool {
-			return gotypes.Identical(gotypes.Default(c.Type()), t) && constant.Compare(c.Val(), token.EQL, v)
+	for _, pkg := range pkgs {
+		other := pkg != pi.Pkg.Types
+		consts := constantsOf(pkg.Scope(), func(c *gotypes.Const) bool {
+			return (!other || c.Exported()) && gotypes.Identical(gotypes.Default(c.Type()), t) && constant.Compare(c.Val(), token.EQL, v)
 		})
-		switch len(consts) {
-		case 0:
+		if len(consts) == 0 {
 			continue
-		case 1:
-			return consts[0].Name(), nil
 		}
 		found := make([]string, 0, len(consts))
 		for _, c := range consts {
-			found = append(found, c.Name())
+			name := c.Name()
+			if other {
+				name = pkg.Name() + "." + name
+			}
+			found = append(found, name)
+		}
+		if len(found) == 1 {
+			return found[0], nil
 		}
 		return "", fmt.Errorf("several constants of type %s have the value %s: %s", t, v, strings.Join(found, ", "))
 	}
