@@ -1,0 +1,19 @@
+- id: docgen-check
+  name: docgen check
+  description: Fail when a docgen marker, region, diagram, variable or link is stale, unused or broken.
+  entry: docgen check
+  language: golang
+  pass_filenames: false
+  always_run: true
+  stages: [pre-commit, pre-merge-commit, pre-push, manual]
+  minimum_pre_commit_version: '3.2.0'
+
+- id: docgen-update
+  name: docgen update
+  description: Fill the docgen markers of the Markdown pages.
+  entry: docgen update
+  language: golang
+  pass_filenames: false
+  always_run: true
+  stages: [manual]
+  minimum_pre_commit_version: '3.2.0'

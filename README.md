@@ -12,6 +12,9 @@ Install the command. The minimum Go version is <!-- docgen:gomod field=go -->`1.
 go install github.com/USA-RedDragon/docgen@latest
 ```
 
+- GitHub Action: <!-- docgen:text text="`uses: USA-RedDragon/docgen@{version}`" -->`uses: USA-RedDragon/docgen@v0.1.0`<!-- /docgen:text -->. See [Check the docs in CI](docs/start/03-check-in-ci.md#use-the-github-action).
+- pre-commit hook: `id: docgen-check` of the repository `https://github.com/USA-RedDragon/docgen`. See [Check the docs in CI](docs/start/03-check-in-ci.md#use-pre-commit).
+
 ## Getting started
 
 Put a marker in any Markdown page:
@@ -54,6 +57,7 @@ Read the docs at <https://usa-reddragon.github.io/docgen/>. Each release has its
 - [Get started](docs/start/01-install.md)
 - [Markers](docs/reference/markers.md)
 - [Command line](docs/reference/command.md)
+- [Configuration](docs/reference/configuration.md)
 - [Versioning](docs/project/versioning.md)
 
 ## Versioning

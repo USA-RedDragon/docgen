@@ -1,0 +1,77 @@
+name: docgen
+description: Check or fill the docgen markers of the Markdown pages of a repository.
+author: USA-RedDragon
+
+branding:
+  icon: book-open
+  color: blue
+
+inputs:
+  command:
+    description: check or update.
+    required: false
+    default: check
+  directory:
+    description: The directory to scan, relative to the working directory. Empty uses the docs setting of .docgen.yaml.
+    required: false
+    default: ''
+  module:
+    description: The directory of the Go module, relative to the repository root. Empty uses the module setting.
+    required: false
+    default: ''
+  tags:
+    description: Comma-separated build tags. Empty uses the tags setting.
+    required: false
+    default: ''
+  jobs:
+    description: The -p of each go command. Empty uses the jobs setting.
+    required: false
+    default: ''
+  diff:
+    description: With check, print a unified diff of each stale page and generated file. update ignores it.
+    required: false
+    default: 'true'
+  version:
+    description: A docgen version to install, such as v0.1.0 or latest. Empty builds the docgen code at the ref of the action.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Run docgen
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_DIRECTORY: ${{ inputs.directory }}
+        INPUT_MODULE: ${{ inputs.module }}
+        INPUT_TAGS: ${{ inputs.tags }}
+        INPUT_JOBS: ${{ inputs.jobs }}
+        INPUT_DIFF: ${{ inputs.diff }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        if ! command -v go >/dev/null; then
+          echo "::error::go is not on PATH. Add actions/setup-go before this step."
+          exit 1
+        fi
+        case $INPUT_COMMAND in
+        check | update) ;;
+        *)
+          echo "::error::command is '$INPUT_COMMAND'; it must be check or update."
+          exit 1
+          ;;
+        esac
+        args=("$INPUT_COMMAND")
+        if [ -n "$INPUT_MODULE" ]; then args+=(-module "$INPUT_MODULE"); fi
+        if [ -n "$INPUT_TAGS" ]; then args+=(-tags "$INPUT_TAGS"); fi
+        if [ -n "$INPUT_JOBS" ]; then args+=(-jobs "$INPUT_JOBS"); fi
+        if [ "$INPUT_COMMAND" = check ] && [ "$INPUT_DIFF" = true ]; then args+=(-diff); fi
+        if [ -n "$INPUT_DIRECTORY" ]; then args+=("$INPUT_DIRECTORY"); fi
+        bin=$(mktemp -d "$RUNNER_TEMP/docgen.XXXXXX")
+        if [ -n "$INPUT_VERSION" ]; then
+          GOBIN=$bin go install "github.com/USA-RedDragon/docgen@$INPUT_VERSION"
+        else
+          (cd "$ACTION_PATH" && GOWORK=off go build -o "$bin/docgen" .)
+        fi
+        exec "$bin/docgen" "${args[@]}"
