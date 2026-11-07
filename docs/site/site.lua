@@ -183,11 +183,14 @@ local function first_code(blocks)
 end
 
 -- rendered returns the blocks of Markdown text, with its images resolved from
--- dir and its headings kept out of the table of contents.
+-- dir and its headings kept out of the table of contents. The second result is
+-- the list of the relative image paths of the text, as the text gives them.
 local function rendered(text, dir)
-  return pandoc.read(text, "gfm").blocks:walk({
+  local images = {}
+  local blocks = pandoc.read(text, "gfm").blocks:walk({
     Image = function(img)
       if not img.src:match("^%a[%w+.-]*:") then
+        table.insert(images, img.src)
         img.src = dir == "" and img.src or dir .. "/" .. img.src
       end
       return img
@@ -198,6 +201,7 @@ local function rendered(text, dir)
       return h
     end,
   })
+  return blocks, images
 end
 
 -- marker_args returns the key=value arguments of the text of an open marker, by
@@ -233,7 +237,8 @@ end
 -- blocks from index i up to the close mark. Each heading at the level of the
 -- first one starts a panel, and the code block of the last panel, as Markdown, is
 -- one more panel named Preview, with its images resolved from dir. It also
--- returns the index of the close mark.
+-- returns the index of the close mark, and the relative image paths of the code
+-- of the last panel.
 local function docgen_panels(blocks, i, dir)
   local panels, level = {}, nil
   while i <= #blocks and not is_mark(blocks[i], "/docgen:docgen") do
@@ -247,10 +252,35 @@ local function docgen_panels(blocks, i, dir)
     i = i + 1
   end
   local text = #panels > 0 and first_code(panels[#panels].blocks)
+  local images = {}
   if text then
-    table.insert(panels, { title = "Preview", blocks = rendered(text, dir), page = true })
+    local preview
+    preview, images = rendered(text, dir)
+    table.insert(panels, { title = "Preview", blocks = preview, page = true })
   end
-  return panels, i
+  return panels, i, images
+end
+
+-- generated_files returns a block for each image of the last version of the
+-- page of a docgen:docgen marker that is a file under the root of the marker.
+-- docgen update writes such a file, so the editor shows it as a file of that
+-- version. page is the path of the page in root, images holds the paths that the
+-- page gives, dir is the directory of the page from the page of the site, and
+-- version is the name of the last version.
+local function generated_files(page, root, images, dir, version)
+  local out, seen = pandoc.Blocks({}), {}
+  for _, src in ipairs(images) do
+    local p = not src:match("^/") and not src:match("[?#]") and resolve(dir_of(page), src)
+    if p and p ~= "" and not seen[p] and read_file(root == "" and p or root .. "/" .. p) then
+      seen[p] = true
+      out:insert(pandoc.Div({}, pandoc.Attr("", { "editor-generated" }, {
+        { "data-path", p },
+        { "data-src", dir == "" and src or dir .. "/" .. src },
+        { "data-version", version },
+      })))
+    end
+  end
+  return out
 end
 
 -- expand_tabs returns s with each tab as spaces up to a column of 4, which is
@@ -331,20 +361,27 @@ end
 -- docgen_file returns the file of the docgen:docgen marker with arguments args at
 -- index i, its root, and the index of the close mark.
 local function docgen_file(blocks, i, args, here, fail)
-  local panels
-  panels, i = docgen_panels(blocks, i + 1, docgen_dir(args, here))
-  local out = pandoc.Blocks({})
+  local dir = docgen_dir(args, here)
+  local panels, images
+  panels, i, images = docgen_panels(blocks, i + 1, dir)
+  local out, last = pandoc.Blocks({}), nil
   for _, p in ipairs(panels) do
     if not p.page and not first_code(p.blocks) then
       fail("has a tab with no code: " .. p.title)
+    end
+    if not p.page then
+      last = p.title
     end
     out:insert(plain_version(p.title, p.blocks, p.page and "editor-preview" or "editor-version"))
   end
   if #out == 0 or not args.page then
     fail("has a docgen:docgen marker with no page= or no code; run docgen update")
   end
+  local path = resolve("", args.page) or args.page
+  local root = resolve("", args.root or "") or ""
+  out:extend(generated_files(path, root, images, dir, last))
   -- A docgen:docgen body is the whole page, so its lines start at 1.
-  return { path = resolve("", args.page) or args.page, line = 1, blocks = out, whole = true }, resolve("", args.root or "") or "", i
+  return { path = path, line = 1, blocks = out, whole = true }, root, i
 end
 
 -- code_blocks returns the version of the file f of docgen:code markers, with the
@@ -502,19 +539,35 @@ function Pandoc(doc)
     write_file(outdir .. "/.editor", "")
   end
 
+  -- site_image copies the image file of the path img of the page to the site
+  -- once, and returns its path from the page of the site.
+  local copied = {}
+  local function site_image(img)
+    local p = resolve(here, img)
+    if not (p and copied[p]) then
+      local data = p and read_file(p)
+      if not data then
+        navlib.fail(src .. ": image " .. img .. " not found")
+      end
+      write_file(outdir .. "/" .. out_path(p), data)
+      copied[p] = true
+    end
+    return relative(page_dir, out_path(p))
+  end
+
   doc = doc:walk({
     Image = function(img)
       if img.src:match("^%a[%w+.-]*:") then
         return {}
       end
-      local p = resolve(here, img.src)
-      local data = p and read_file(p)
-      if not data then
-        navlib.fail(src .. ": image " .. img.src .. " not found")
-      end
-      write_file(outdir .. "/" .. out_path(p), data)
-      img.src = relative(page_dir, out_path(p))
+      img.src = site_image(img.src)
       return img
+    end,
+    Div = function(d)
+      if d.classes:includes("editor-generated") then
+        d.attributes["data-src"] = site_image(d.attributes["data-src"])
+        return d
+      end
     end,
     Link = function(l)
       if #l.content == 0 then

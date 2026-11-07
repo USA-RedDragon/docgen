@@ -13,6 +13,7 @@ const languages = {
   cpp: { name: "C++", support: (cm) => cm.cpp() },
   hpp: { name: "C++", support: (cm) => cm.cpp() },
   sh: { name: "Shell Script" },
+  svg: { name: "SVG" },
 };
 const fileNames = { "go.mod": { name: "Go Module" } };
 const plainText = { name: "Plain Text" };
@@ -166,7 +167,8 @@ function styles(cm) {
 }
 
 // explorer returns the file tree of the paths of files, and calls open with the
-// index of the file of a clicked item. It sets the items of buttons by index.
+// index of the file of a clicked item. It sets the items of buttons by index. The
+// item of a generated file gets a badge.
 function explorer(files, root, open, buttons) {
   const top = { dirs: new Map(), files: [] };
   files.forEach((file, index) => {
@@ -189,6 +191,10 @@ function explorer(files, root, open, buttons) {
     }
     for (const { name, index } of [...node.files].sort((a, b) => a.name.localeCompare(b.name))) {
       const button = el("button", { type: "button", style: `--depth: ${depth + 1}`, title: files[index].path }, name);
+      if (files[index].image) {
+        button.classList.add("vs-gen");
+        button.append(el("span", { class: "vs-badge", "aria-hidden": "true" }, "U"));
+      }
       button.addEventListener("click", () => open(index));
       buttons[index] = button;
       items.append(el("li", null, button));
@@ -208,10 +214,13 @@ function explorer(files, root, open, buttons) {
  * from the --vs-fit property of host, and with none it is the limit of the style.
  *
  * @param {HTMLElement} host The element to fill.
- * @param {{path: string, versions: {name?: string, text: string, lines?: string[]}[], preview?: Node}[]} files
+ * @param {{path: string, versions: {name?: string, text: string, lines?: string[]}[], preview?: Node, image?: {src: string, owner: number, version: number}}[]} files
  *   The files. path is the path to show. lines is the label of each line of the
  *   text, and with none the editor shows no line numbers. A file with two versions
- *   or more shows a switch. preview is the rendered file.
+ *   or more shows a switch. preview is the rendered file. image makes the file an
+ *   image that a version of another file generates: src is its URL, owner is the
+ *   index of that file, and version is the index of that version. The file exists
+ *   only in that version, and it has no versions of its own.
  * @param {string} [root] The name of the top folder of the explorer.
  */
 export async function mountEditor(host, files, root) {
@@ -219,6 +228,8 @@ export async function mountEditor(host, files, root) {
   const look = styles(cm);
   const id = `vs-${++mounted}`;
   const chosen = files.map(() => 0);
+  const views = files.map(() => "image");
+  const sources = new Map();
   const entries = [];
   files.forEach((file, index) => {
     entries.push({ index, title: file.path.split("/").pop() });
@@ -258,13 +269,59 @@ export async function mountEditor(host, files, root) {
 
   const crumbs = el("div", { class: "vs-crumbs" });
   const toggle = el("div", { class: "vs-switch", role: "group", "aria-label": "Version" });
+  const viewSwitch = el("div", { class: "vs-switch", role: "group", "aria-label": "View" });
+  for (const [value, name] of [
+    ["image", "Image"],
+    ["source", "Source"],
+  ]) {
+    const button = el("button", { type: "button", value }, name);
+    button.addEventListener("click", () => {
+      views[current.index] = value;
+      show(current);
+    });
+    viewSwitch.append(button);
+  }
   const language = el("span");
   const place = el("span");
 
-  function render() {
-    const file = files[current.index];
+  // exists reports whether the file of index is in the chosen version.
+  function exists(index) {
+    const { image } = files[index];
+    return !image || chosen[image.owner] === image.version;
+  }
+
+  // source returns the text of the image file of index, from the site.
+  function source(index) {
+    if (!sources.has(index)) {
+      sources.set(
+        index,
+        fetch(files[index].image.src)
+          .then((response) => (response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status}`))))
+          .then((text) => text.replace(/\n$/, ""))
+          .catch((error) => `The source of ${files[index].path} did not load: ${error.message}`),
+      );
+    }
+    return sources.get(index);
+  }
+
+  // textOf returns the text and line labels that the editor shows for entry.
+  async function textOf(entry) {
+    const file = files[entry.index];
+    if (!file.image) {
+      return file.versions[chosen[entry.index]];
+    }
+    const text = await source(entry.index);
+    return { text, lines: text.split("\n").map((_, n) => String(n + 1)) };
+  }
+
+  async function render() {
+    const entry = current;
+    const file = files[entry.index];
     const info = languageOf(file.path);
-    const version = file.versions[chosen[current.index]];
+    const version = await textOf(entry);
+    if (entry !== current || code.hidden) {
+      return;
+    }
     view.setState(
       cm.EditorState.create({
         doc: version.text,
@@ -290,33 +347,71 @@ export async function mountEditor(host, files, root) {
       tab.tabIndex = entries[n] === entry ? 0 : -1;
     });
     tree.forEach((button, n) => button.setAttribute("aria-current", String(n === entry.index)));
+    markGenerated();
     pick.value = String(entry.index);
     crumbs.textContent = file.path.split("/").join(" › ");
-    language.textContent = entry.preview ? `${languageOf(file.path).name} Preview` : languageOf(file.path).name;
     place.textContent = file.path;
-    toggle.hidden = entry.preview || file.versions.length < 2;
+    const owner = file.image ? file.image.owner : entry.index;
+    toggle.hidden = entry.preview || files[owner].versions.length < 2;
     toggle.replaceChildren(
-      ...file.versions.map((version, n) => {
-        const button = el("button", { type: "button", "aria-pressed": String(n === chosen[entry.index]) }, version.name || "");
+      ...files[owner].versions.map((version, n) => {
+        const button = el("button", { type: "button", "aria-pressed": String(n === chosen[owner]) }, version.name || "");
         button.addEventListener("click", () => {
-          chosen[entry.index] = n;
+          chosen[owner] = n;
           show(entry);
         });
         return button;
       }),
     );
-    code.hidden = Boolean(entry.preview);
-    preview.hidden = !entry.preview;
+    const present = exists(entry.index);
+    const picture = file.image && present && views[entry.index] === "image";
+    viewSwitch.hidden = !file.image || !present;
+    [...viewSwitch.children].forEach((button) => button.setAttribute("aria-pressed", String(button.value === views[entry.index])));
+    language.textContent = entry.preview || picture ? `${languageOf(file.path).name} Preview` : languageOf(file.path).name;
+    const rendered = entry.preview || picture || !present;
+    code.hidden = rendered;
+    preview.hidden = !rendered;
+    preview.classList.toggle("vs-media", Boolean(file.image));
     if (entry.preview) {
       preview.replaceChildren(file.preview);
+    } else if (!present) {
+      const after = files[owner].versions[file.image.version].name;
+      preview.replaceChildren(
+        el("p", { class: "vs-absent" }, `${file.path} does not exist yet. docgen update writes it. Select ${after} to see it.`),
+      );
+    } else if (picture) {
+      preview.replaceChildren(el("img", { src: file.image.src, alt: file.path }));
     } else {
       render();
     }
   }
 
+  // markGenerated sets the state of the item of each generated file of the
+  // explorer and of the file list.
+  function markGenerated() {
+    files.forEach((file, index) => {
+      if (!file.image) {
+        return;
+      }
+      const name = file.path.split("/").pop();
+      const after = files[file.image.owner].versions[file.image.version].name;
+      const present = exists(index);
+      const note = present
+        ? `Generated by docgen update in ${after}; not in the page before`
+        : `Not created yet; docgen update writes this file. Select ${after} to see it`;
+      const button = tree[index];
+      if (button) {
+        button.classList.toggle("vs-not-yet", !present);
+        button.title = `${file.path}\n${note}`;
+        button.setAttribute("aria-label", `${name}, ${present ? "generated" : "not created yet"}`);
+      }
+      pick.options[index].textContent = `${file.path} (${present ? "generated" : "not created yet"})`;
+    });
+  }
+
   const side = el("div", { class: "vs-side", id: `${id}-side` }, el("p", { class: "vs-title" }, "EXPLORER"));
   side.append(explorer(files, root, (index) => show(entries.find((e) => e.index === index && !e.preview)), tree));
-  const bar = el("div", { class: "vs-bar" }, crumbs, toggle);
+  const bar = el("div", { class: "vs-bar" }, crumbs, el("div", { class: "vs-switches" }, viewSwitch, toggle));
   const explorerButton = toolButton("vs-explorer", explorerIcon);
   explorerButton.setAttribute("aria-controls", side.id);
   explorerButton.addEventListener("click", toggleExplorer);
@@ -333,7 +428,7 @@ export async function mountEditor(host, files, root) {
   };
   explorerViews.add(syncExplorer);
   syncExplorer();
-  narrow.addEventListener("change", () => current.preview || render());
+  narrow.addEventListener("change", () => code.hidden || render());
   show(current);
   host.replaceChildren(box);
 }
@@ -359,12 +454,13 @@ function joinParts(parts) {
   return { text: text.join("\n"), lines: parts.some((part) => part.line) ? lines : undefined };
 }
 
-// readFiles returns the file list of the plain .editor block host.
+// readFiles returns the file list of the plain .editor block host. The files that
+// a page generates follow that page.
 function readFiles(host) {
-  return [...host.querySelectorAll(".editor-file")].map((node) => {
+  return [...host.querySelectorAll(".editor-file")].flatMap((node) => {
     const preview = node.querySelector(".editor-preview")?.cloneNode(true);
     preview?.querySelector("h5")?.remove();
-    return {
+    const file = {
       path: node.dataset.path,
       versions: [...node.querySelectorAll(".editor-version")].map((version) => ({
         name: version.dataset.name,
@@ -377,6 +473,12 @@ function readFiles(host) {
       })),
       preview,
     };
+    const generated = [...node.querySelectorAll(".editor-generated")].map((image) => ({
+      path: image.dataset.path,
+      versions: [],
+      image: { src: image.dataset.src, version: file.versions.findIndex((version) => version.name === image.dataset.version) },
+    }));
+    return [file, ...generated.filter((image) => image.image.version >= 0)];
   });
 }
 
@@ -405,7 +507,8 @@ function treeRows(files, root) {
 // height of the image is not known yet.
 function previewHeight(host) {
   const nodes = [...host.querySelectorAll(".editor-preview")];
-  return Math.max(0, ...nodes.map((node) => (node.querySelector("img") ? 9999 : node.offsetHeight)));
+  const images = host.querySelector(".editor-generated") ? 9999 : 0;
+  return Math.max(images, ...nodes.map((node) => (node.querySelector("img") ? 9999 : node.offsetHeight)));
 }
 
 // fitHeight returns the height in pixels that shows the longest file of block
@@ -421,9 +524,23 @@ function fitHeight({ host, files, preview }) {
   return Math.max(main, tree) + statusHeight;
 }
 
+// ownersOf sets the owner of each generated file of files to the index of the
+// file before it that is not generated.
+function ownersOf(files) {
+  let owner = 0;
+  files.forEach((file, index) => {
+    if (file.image) {
+      file.image.owner = owner;
+    } else {
+      owner = index;
+    }
+  });
+  return files;
+}
+
 const blocks = [...document.querySelectorAll(".editor")].map((host) => ({
   host,
-  files: readFiles(host),
+  files: ownersOf(readFiles(host)),
   preview: previewHeight(host),
 }));
 

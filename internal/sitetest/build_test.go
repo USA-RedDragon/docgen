@@ -996,3 +996,87 @@ func TestConstGuideEditorBlock(t *testing.T) {
 		t.Errorf("%d editor blocks, want 2", n)
 	}
 }
+
+// generatedSrc returns the data-src of the generated file path of block, from the
+// page of the site.
+func generatedSrc(t *testing.T, block, path string) string {
+	t.Helper()
+	_, rest, ok := strings.Cut(block, `<div class="editor-generated" data-path="`+path+`" data-src="`)
+	if !ok {
+		t.Fatalf("no generated file %s in:\n%s", path, block)
+	}
+	src, rest, _ := strings.Cut(rest, `"`)
+	if !strings.HasPrefix(rest, ` data-version="After">`) {
+		t.Errorf("the generated file %s is not of the version After:\n%s", path, block)
+	}
+	return src
+}
+
+func TestStatesBoxListsTheDiagram(t *testing.T) {
+	t.Parallel()
+	needPandoc(t)
+	for _, c := range []struct{ page, out string }{
+		{"docs/guides/state-machines.md", "guides/state-machines.html"},
+		{"docs/reference/markers.md", "reference/markers.html"},
+	} {
+		t.Run(c.page, func(t *testing.T) {
+			t.Parallel()
+			text, err := os.ReadFile(filepath.Join("../..", c.page))
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := repo(t)
+			const states = "internal/cli/testdata/repo/docs/machines/states"
+			for _, name := range []string{"machine-lamp.svg", "door-open.svg"} {
+				svg, err := os.ReadFile(filepath.Join("../..", states, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeRepoFile(t, root, states+"/"+name, string(svg))
+			}
+			writeRepoFile(t, root, "docs/nav.md", "- [Home](../README.md)\n- [Page]("+strings.TrimPrefix(c.page, "docs/")+")\n")
+			writeRepoFile(t, root, c.page, string(text))
+			got := buildPage(t, root, nil, c.out)
+			for _, name := range []string{"machine-lamp.svg", "door-open.svg"} {
+				src := generatedSrc(t, got, "docs/machines/states/"+name)
+				if want := "../" + states + "/" + name; src != want {
+					t.Errorf("src %s, want %s", src, want)
+				}
+				exists(t, filepath.Join(root, "artifacts/docs-site", filepath.Dir(c.out), src))
+				contains(t, got, `<img src="`+src+`"`)
+			}
+		})
+	}
+}
+
+func TestGeneratedFilesAreImagesOfTheLastVersionUnderTheRoot(t *testing.T) {
+	t.Parallel()
+	needPandoc(t)
+	body := "#### Before\n\n```\n![Old](states/old.svg)\n```\n\n#### After\n\n````\n# Sample\n\n" +
+		"![A](states/a.svg) ![A again](./states/a.svg) ![Out](../../../out.svg) ![Web](https://example.com/w.svg) ![Up](../b.svg)\n````\n"
+	root := editorRepo(t, "# Page\n\n<!-- docgen:docgen root=sample page=docs/m/a.md -->\n"+body+"<!-- /docgen:docgen -->\n")
+	writeRepoFile(t, root, "sample/docs/m/states/old.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n")
+	writeRepoFile(t, root, "sample/docs/b.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n")
+	writeRepoFile(t, root, "out.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n")
+	block := editorBlock(t, buildPage(t, root, nil, "page.html"))
+	parts := strings.Split(block, `<div class="editor-generated"`)[1:]
+	tags := make([]string, 0, len(parts))
+	for _, part := range parts {
+		tag, _, _ := strings.Cut(part, ">")
+		tags = append(tags, tag)
+	}
+	if len(tags) != 2 {
+		t.Errorf("%d generated files, want 2:\n%s", len(tags), block)
+	}
+	for path, want := range map[string]string{"docs/m/states/a.svg": "sample/docs/m/states/a.svg", "docs/b.svg": "sample/docs/b.svg"} {
+		if src := generatedSrc(t, block, path); src != want {
+			t.Errorf("src of %s is %s, want %s", path, src, want)
+		}
+		exists(t, filepath.Join(root, "artifacts/docs-site", want))
+	}
+	for _, bad := range []string{"old.svg", "out.svg", "example.com"} {
+		if tag := strings.Join(tags, "\n"); strings.Contains(tag, bad) {
+			t.Errorf("a generated file holds %s:\n%s", bad, tag)
+		}
+	}
+}

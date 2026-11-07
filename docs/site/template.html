@@ -145,7 +145,7 @@ $if(version)$
 .banner { margin: 0; background: var(--panel); border-bottom: 1px solid var(--line); border-left: 4px solid var(--accent); padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); font-size: 15px; }
 $endif$
 $if(editor)$
-.editor { container-type: inline-size; margin-block: 16px; --vs-limit: max(280px, min(60vh, 360px)); --vs-bg: light-dark(#fff, #1e1e1e); --vs-fg: light-dark(#3b3b3b, #d4d4d4); --vs-side: light-dark(#f3f3f3, #252526); --vs-side-fg: light-dark(#616161, #bbb); --vs-tabs: light-dark(#ececec, #2d2d2d); --vs-tab-fg: light-dark(#6f6f6f, #a6a6a6); --vs-hover: light-dark(#e8e8e8, #2a2d2e); --vs-pick: light-dark(#e4e6f1, #37373d); --vs-edge: light-dark(#d4d4d4, #3c3c3c); --vs-accent: #007acc; --vs-status: light-dark(#0064a8, #007acc); --vs-line: light-dark(#237893, #858585); --vs-keyword: light-dark(#0000ff, #569cd6); --vs-control: light-dark(#af00db, #c586c0); --vs-string: light-dark(#a31515, #ce9178); --vs-number: light-dark(#098658, #b5cea8); --vs-comment: light-dark(#008000, #6a9955); --vs-type: light-dark(#267f99, #4ec9b0); --vs-function: light-dark(#795e26, #dcdcaa); --vs-variable: light-dark(#001080, #9cdcfe); }
+.editor { container-type: inline-size; margin-block: 16px; --vs-limit: max(280px, min(60vh, 360px)); --vs-bg: light-dark(#fff, #1e1e1e); --vs-fg: light-dark(#3b3b3b, #d4d4d4); --vs-side: light-dark(#f3f3f3, #252526); --vs-side-fg: light-dark(#616161, #bbb); --vs-tabs: light-dark(#ececec, #2d2d2d); --vs-tab-fg: light-dark(#6f6f6f, #a6a6a6); --vs-hover: light-dark(#e8e8e8, #2a2d2e); --vs-pick: light-dark(#e4e6f1, #37373d); --vs-edge: light-dark(#d4d4d4, #3c3c3c); --vs-accent: #007acc; --vs-status: light-dark(#0064a8, #007acc); --vs-line: light-dark(#237893, #858585); --vs-keyword: light-dark(#0000ff, #569cd6); --vs-control: light-dark(#af00db, #c586c0); --vs-string: light-dark(#a31515, #ce9178); --vs-number: light-dark(#098658, #b5cea8); --vs-comment: light-dark(#008000, #6a9955); --vs-type: light-dark(#267f99, #4ec9b0); --vs-function: light-dark(#795e26, #dcdcaa); --vs-variable: light-dark(#001080, #9cdcfe); --vs-added: light-dark(#007100, #73c991); --vs-check: light-dark(#e6e6e6, #d0d0d0); }
 .editor.large { --vs-limit: 75vh; }
 .editor[data-pending] { height: min(var(--vs-fit, 100vh), var(--vs-limit)); overflow: hidden; }
 .editor-file > h4 { margin: 18px 0 6px; }
@@ -167,6 +167,10 @@ $if(editor)$
 .vs-tree button { display: block; width: 100%; padding: 2px 8px 2px calc(8px + var(--depth) * 10px); background: none; border: 0; text-align: left; white-space: nowrap; cursor: pointer; }
 .vs-tree summary:hover, .vs-tree button:hover { background: var(--vs-hover); }
 .vs-tree button[aria-current="true"] { background: var(--vs-pick); color: var(--vs-fg); }
+.vs-tree button.vs-gen { display: flex; gap: 8px; color: var(--vs-added); }
+.vs-tree button.vs-gen.vs-not-yet { color: var(--vs-tab-fg); font-style: italic; opacity: 0.7; }
+.vs-badge { margin-left: auto; font-size: 11px; font-weight: 600; }
+.vs-not-yet .vs-badge { display: none; }
 .vs.vs-closed { grid-template-columns: minmax(0, 1fr); }
 .vs.vs-closed .vs-side { display: none; }
 .vs-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -180,6 +184,7 @@ $if(editor)$
 .vs-tabs button[aria-selected="true"] { background: var(--vs-bg); color: var(--vs-fg); border-top-color: var(--vs-accent); }
 .vs-bar { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: 26px; padding: 2px 12px; color: var(--vs-tab-fg); }
 .vs-crumbs { min-width: 0; overflow-wrap: anywhere; }
+.vs-switches { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-left: auto; }
 .vs-switch { display: flex; border: 1px solid var(--vs-edge); }
 .vs-switch[hidden] { display: none; }
 .vs-switch button { padding: 1px 10px; background: none; border: 0; cursor: pointer; }
@@ -190,6 +195,9 @@ $if(editor)$
 .vs-preview { height: 100%; padding: 4px 20px; overflow: auto; font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
 .vs-preview img { max-width: 100%; height: auto; }
 .vs-preview table { display: block; overflow-x: auto; }
+.vs-preview.vs-media { display: grid; place-items: center; padding: 16px; }
+.vs-media img { display: block; max-width: 100%; height: auto; background-color: #fff; background-image: conic-gradient(var(--vs-check) 25%, transparent 0 50%, var(--vs-check) 0 75%, transparent 0); background-size: 16px 16px; box-shadow: 0 0 0 1px var(--vs-edge); }
+.vs-absent { max-width: 36em; margin: 0; color: var(--vs-tab-fg); text-align: center; font-family: system-ui, sans-serif; font-size: 13px; }
 .vs-status { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 16px; padding: 2px 10px; background: var(--vs-status); color: #fff; font-size: 12px; }
 .vs-status span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .vs-status span:last-child { flex: none; }
@@ -198,7 +206,7 @@ $if(editor)$
   .vs-side, .vs-crumbs, .vs-explorer { display: none; }
   .vs-pick { display: block; }
   .vs-bar { justify-content: flex-end; }
-  .vs-bar:has(.vs-switch[hidden]) { display: none; }
+  .vs-bar:not(:has(.vs-switch:not([hidden]))) { display: none; }
 }
 :root.vs-locked { overflow: hidden; }
 dialog.vs-theatre { position: fixed; inset: 0; width: 100%; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); border: 0; background: var(--vs-bg); color: var(--vs-fg); --vs-code-size: 16px; }
