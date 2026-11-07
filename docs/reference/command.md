@@ -4,7 +4,7 @@ The commands, flags, settings and exit codes of `docgen`.
 
 ## Usage
 
-<!-- docgen:flags cmd=. -->
+<!-- docgen:usage cmd=. -->
 ```text
 Usage: docgen <command> [flags] [directory]
 
@@ -27,7 +27,7 @@ Flags:
   -tags string
     	comma-separated build tags of each go command and package load
 ```
-<!-- /docgen:flags -->
+<!-- /docgen:usage -->
 
 The repository root is the nearest directory at or above the working directory with a `.docgen.yaml` file or a `.git` entry, or else the working directory.
 

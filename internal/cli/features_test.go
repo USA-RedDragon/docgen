@@ -54,7 +54,7 @@ func parallelRepo(t *testing.T) string {
 		files["p"+n+"/p.go"] = "package p" + n + "\n\n// S is a state.\ntype S int\n\n// The states.\nconst (\n\tOff S = iota\n\tOn\n)\n\n// M is a machine.\ntype M struct{ s S }\n\n// State returns the state.\nfunc (m *M) State() S { return m.s }\n\n// Go moves it.\nfunc (m *M) Go() { m.s = On }\n"
 		files["p"+n+"/p_test.go"] = "package p" + n + "\n\nimport (\n\t\"fmt\"\n\t\"testing\"\n)\n\nfunc TestM(t *testing.T) { (&M{}).Go() }\n\nfunc ExampleM() {\n\tfmt.Println(\"ex " + n + "\")\n\t// Output: ex " + n + "\n}\n"
 		files["cmd/c"+n+"/main.go"] = "package main\n\nimport \"flag\"\n\nfunc main() { flag.Int(\"n" + n + "\", 1, \"a flag\"); flag.Parse() }\n"
-		fmt.Fprintf(&b, "<!-- docgen:output cmd=examples/e%s -->\n<!-- /docgen:output -->\n\n<!-- docgen:output cmd=examples/none%s -->\n<!-- /docgen:output -->\n\n<!-- docgen:states pkg=p%s type=M -->\n<!-- /docgen:states -->\n\n<!-- docgen:output test=p%s.ExampleM -->\n<!-- /docgen:output -->\n\n<!-- docgen:flags cmd=cmd/c%s -->\n<!-- /docgen:flags -->\n\n", n, n, n, n, n)
+		fmt.Fprintf(&b, "<!-- docgen:output cmd=examples/e%s -->\n<!-- /docgen:output -->\n\n<!-- docgen:output cmd=examples/none%s -->\n<!-- /docgen:output -->\n\n<!-- docgen:states pkg=p%s type=M -->\n<!-- /docgen:states -->\n\n<!-- docgen:output test=p%s.ExampleM -->\n<!-- /docgen:output -->\n\n<!-- docgen:usage cmd=cmd/c%s -->\n<!-- /docgen:usage -->\n\n", n, n, n, n, n)
 	}
 	files["docs/p.md"] = b.String()
 	return writeRepo(t, files)

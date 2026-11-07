@@ -219,11 +219,11 @@
 //
 //	docgen:gomod field=<go|toolchain|module> [file=<repo path>]
 //
-// # docgen:flags
+// # docgen:usage
 //
 // The usage of a command.
 //
-//	docgen:flags cmd=<dir>
+//	docgen:usage cmd=<dir>
 //
 // docgen builds the command in that directory, relative to the repository root,
 // and runs it with `-h`. A build failure, a panic, or output with no line that

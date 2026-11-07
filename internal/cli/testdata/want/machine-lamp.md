@@ -151,13 +151,13 @@ const (
 
 It needs Go <!-- docgen:gomod field=go -->`1.24.0`<!-- /docgen:gomod --> or later.
 
-<!-- docgen:flags cmd=cmd/tool -->
+<!-- docgen:usage cmd=cmd/tool -->
 ```text
 Usage of tool:
   -n int
     	how many lines to print (default 3)
 ```
-<!-- /docgen:flags -->
+<!-- /docgen:usage -->
 
 <!-- docgen:doc pkg=cmd/tool section=Flags -->
 It takes one flag.

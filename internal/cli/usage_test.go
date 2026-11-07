@@ -9,7 +9,7 @@ import (
 
 const (
 	flagsMod  = "module example.com/acme/widget\n\ngo 1.24.0\n"
-	flagsPage = "<!-- docgen:flags cmd=cmd/x -->\n```text\ngood body\n```\n<!-- /docgen:flags -->\n"
+	flagsPage = "<!-- docgen:usage cmd=cmd/x -->\n```text\ngood body\n```\n<!-- /docgen:usage -->\n"
 )
 
 func TestFlagsErrors(t *testing.T) {
@@ -68,7 +68,7 @@ func TestFlagsOutput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
-			page := "<!-- docgen:flags cmd=" + c.cmd + " --><!-- /docgen:flags -->\n"
+			page := "<!-- docgen:usage cmd=" + c.cmd + " --><!-- /docgen:usage -->\n"
 			writeTree(t, root, map[string]string{"go.mod": c.mod, "docs/a.md": page, c.dir + "main.go": c.src})
 			if rc, log := docgen(t, root, "update"); rc != 0 {
 				t.Fatalf("update: rc %d, log:\n%s", rc, log)

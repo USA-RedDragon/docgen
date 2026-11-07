@@ -50,8 +50,8 @@ The period is <!-- docgen:const pkg=machine name=period --><!-- /docgen:const --
 
 It needs Go <!-- docgen:gomod field=go --><!-- /docgen:gomod --> or later.
 
-<!-- docgen:flags cmd=cmd/tool -->
-<!-- /docgen:flags -->
+<!-- docgen:usage cmd=cmd/tool -->
+<!-- /docgen:usage -->
 
 <!-- docgen:doc pkg=cmd/tool section=Flags -->
 <!-- /docgen:doc -->

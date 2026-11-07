@@ -14,14 +14,14 @@ func main() {
 }
 ```
 <!-- /docgen:code -->
-<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-flags.md -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-usage.md -->
 #### Before
 
 ```
 # Flags
 
-<!-- docgen:flags cmd=cmd/tool -->
-<!-- /docgen:flags -->
+<!-- docgen:usage cmd=cmd/tool -->
+<!-- /docgen:usage -->
 ```
 
 #### After
@@ -29,17 +29,17 @@ func main() {
 ````
 # Flags
 
-<!-- docgen:flags cmd=cmd/tool -->
+<!-- docgen:usage cmd=cmd/tool -->
 ```text
 Usage of tool:
   -n int
     	how many lines to print (default 3)
 ```
-<!-- /docgen:flags -->
+<!-- /docgen:usage -->
 ````
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
 The directory is relative to the repository root. A build failure, a crash, or output with no usage is an error.
 
-For details, see [`docgen:flags`](../reference/markers.md#docgenflags).
+For details, see [`docgen:usage`](../reference/markers.md#docgenusage).

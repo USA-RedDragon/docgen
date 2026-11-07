@@ -1195,12 +1195,12 @@ toolchain go1.24.1
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-### docgen:flags
+### docgen:usage
 
-<!-- docgen:doc pkg=. section="docgen:flags" -->
+<!-- docgen:doc pkg=. section="docgen:usage" -->
 The usage of a command.
 
-	docgen:flags cmd=<dir>
+	docgen:usage cmd=<dir>
 
 docgen builds the command in that directory, relative to the repository root, and runs it with `-h`. A build failure, a panic, or output with no line that starts with usage, in any letter case, and no flag line, is an error.
 <!-- /docgen:doc -->
@@ -1217,14 +1217,14 @@ func main() {
 }
 ```
 <!-- /docgen:code -->
-<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-flags.md -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-usage.md -->
 #### Before
 
 ```
 # Flags
 
-<!-- docgen:flags cmd=cmd/tool -->
-<!-- /docgen:flags -->
+<!-- docgen:usage cmd=cmd/tool -->
+<!-- /docgen:usage -->
 ```
 
 #### After
@@ -1232,13 +1232,13 @@ func main() {
 ````
 # Flags
 
-<!-- docgen:flags cmd=cmd/tool -->
+<!-- docgen:usage cmd=cmd/tool -->
 ```text
 Usage of tool:
   -n int
     	how many lines to print (default 3)
 ```
-<!-- /docgen:flags -->
+<!-- /docgen:usage -->
 ````
 <!-- /docgen:docgen -->
 <!-- /site:editor -->

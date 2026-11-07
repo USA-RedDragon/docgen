@@ -344,7 +344,7 @@ func TestPathsOutsideTheRepository(t *testing.T) {
 		"gomod":    {"<!-- docgen:gomod field=module file=../go.mod --><!-- /docgen:gomod -->\n", "file=../go.mod is outside the repository"},
 		"example":  {"<!-- docgen:output cmd=../sub -->\n<!-- /docgen:output -->\n", "cmd=../sub is outside the repository"},
 		"absolute": {"<!-- docgen:code file=/etc/hostname -->\n<!-- /docgen:code -->\n", "is outside the repository"},
-		"flags":    {"<!-- docgen:flags cmd=../tool -->\n<!-- /docgen:flags -->\n", "cmd=../tool is outside the repository"},
+		"usage":    {"<!-- docgen:usage cmd=../tool -->\n<!-- /docgen:usage -->\n", "cmd=../tool is outside the repository"},
 		"doc":      {"<!-- docgen:doc pkg=../tool -->\n<!-- /docgen:doc -->\n", "pkg=../tool is outside the repository"},
 		"symlink":  {"<!-- docgen:code file=link.txt -->\n<!-- /docgen:code -->\n", "file=link.txt is outside the repository"},
 	} {

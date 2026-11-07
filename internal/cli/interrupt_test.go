@@ -179,7 +179,7 @@ func TestInterruptCompile(t *testing.T) {
 	if err := os.WriteFile(cc, []byte(holdCC(hold)), 0o700); err != nil { //nolint:gosec // the stub must be executable
 		t.Fatal(err)
 	}
-	text := "<!-- docgen:flags cmd=cmd/hold --><!-- /docgen:flags -->\n"
+	text := "<!-- docgen:usage cmd=cmd/hold --><!-- /docgen:usage -->\n"
 	writeTree(t, root, map[string]string{
 		"go.mod":           "module example.com/w\n\ngo 1.24.0\n",
 		"cmd/hold/main.go": "package main\n\n// int f(void);\nimport \"C\"\n\nfunc main() {}\n",
@@ -253,19 +253,19 @@ func TestInterrupt(t *testing.T) {
 			},
 		},
 		{
-			name:   "flags",
+			name:   "usage",
 			sig:    syscall.SIGINT,
-			work:   "flags-",
-			marker: "<!-- docgen:flags cmd=cmd/hold --><!-- /docgen:flags -->\n",
+			work:   "usage-",
+			marker: "<!-- docgen:usage cmd=cmd/hold --><!-- /docgen:usage -->\n",
 			files: func(hold string) map[string]string {
 				return map[string]string{"cmd/hold/main.go": holdMain(hold)}
 			},
 		},
 		{
-			name:   "flags, child of the program",
+			name:   "usage, child of the program",
 			sig:    syscall.SIGINT,
-			work:   "flags-",
-			marker: "<!-- docgen:flags cmd=cmd/hold --><!-- /docgen:flags -->\n",
+			work:   "usage-",
+			marker: "<!-- docgen:usage cmd=cmd/hold --><!-- /docgen:usage -->\n",
 			files: func(hold string) map[string]string {
 				return map[string]string{"cmd/hold/main.go": holdParent(hold)}
 			},

@@ -219,7 +219,7 @@ func TestTestThroughASymlink(t *testing.T) {
 func TestCommandWithAFileLink(t *testing.T) {
 	t.Parallel()
 	root, outside := outsideRepo(t, map[string]string{
-		"docs/p.md": "<!-- docgen:flags cmd=cmd/x -->\n<!-- /docgen:flags -->\n",
+		"docs/p.md": "<!-- docgen:usage cmd=cmd/x -->\n<!-- /docgen:usage -->\n",
 	}, map[string]string{"main.go": "package main\n\nfunc main() { println(\"usage: " + leak + "\") }\n"})
 	link(t, filepath.Join(outside, "main.go"), filepath.Join(root, "cmd/x/main.go"))
 	wantRefused(t, root, "cmd=cmd/x is outside the repository")

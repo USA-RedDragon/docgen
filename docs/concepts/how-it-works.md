@@ -83,7 +83,7 @@ The diagram is an SVG file with one box per state, in value order. A transition 
 ## Limits
 
 - A compile error in a `_test.go` file fails the markers that run the tests of that package. Other markers of the package still work.
-- A program from `docgen:flags` or `exec=` that starts its own session keeps running after an interrupt, because the signal goes to the process group.
+- A program from `docgen:usage` or `exec=` that starts its own session keeps running after an interrupt, because the signal goes to the process group.
 - An inline marker at the start of a line starts an HTML block in Markdown, so its backticks show as text. Put text before the marker.
 - The body of a block marker gets no prefix, so a block marker in a list or a blockquote has its generated body outside the list or the quote.
 - `docgen:errors` lists only the names that resolve. A doc comment that names an error that does not exist adds no row and no error.

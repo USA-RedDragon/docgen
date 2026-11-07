@@ -54,13 +54,13 @@ A directory with a `go.mod` of its own is another module:
 
 - `pkg=` does not match it as a package of the main module.
 - `docgen:doc` reads its package doc when `pkg=` is its path from the repository root.
-- `docgen:flags` runs it from its nearest `go.mod`.
+- `docgen:usage` runs it from its nearest `go.mod`.
 
 
 ```text
 <!-- docgen:doc pkg=tools/gen -->
 <!-- /docgen:doc -->
 
-<!-- docgen:flags cmd=tools/gen -->
-<!-- /docgen:flags -->
+<!-- docgen:usage cmd=tools/gen -->
+<!-- /docgen:usage -->
 ```

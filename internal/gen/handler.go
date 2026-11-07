@@ -107,8 +107,8 @@ func newHandler(kind string) handler {
 		return &docHandler{}
 	case "gomod":
 		return &goModHandler{}
-	case "flags":
-		return &flagsHandler{}
+	case "usage":
+		return &usageHandler{}
 	case "configulator":
 		return &configulatorHandler{}
 	case "docgen":

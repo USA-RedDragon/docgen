@@ -223,9 +223,9 @@ func TestDanglingReferences(t *testing.T) {
 		{tag: `output exec=""`, want: "exec= is empty", parse: true},
 		{tag: "output exec=false", want: "exit status 1"},
 
-		{tag: "flags cmd=nope", want: "no Go command in nope"},
-		{tag: `flags cmd=""`, want: "cmd= is required", parse: true},
-		{tag: "flags cmd=data", want: "no Go command in data"},
+		{tag: "usage cmd=nope", want: "no Go command in nope"},
+		{tag: `usage cmd=""`, want: "cmd= is required", parse: true},
+		{tag: "usage cmd=data", want: "no Go command in data"},
 
 		{tag: "docgen root=nope page=docs/s.md", want: "root=nope is not a directory"},
 		{tag: `docgen root="" page=docs/s.md`, want: "root= is required", parse: true},

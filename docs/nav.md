@@ -11,7 +11,7 @@ The pages of the docs site, in reading order, by section. The site navigation co
   - [Show a constant](guides/const.md)
   - [Show code](guides/code.md)
   - [Show output](guides/output.md)
-  - [Show command usage](guides/flags.md)
+  - [Show command usage](guides/usage.md)
   - [Document a config struct](guides/config-tables.md)
   - [Document a configulator config](guides/configulator.md)
   - [Document errors](guides/errors.md)
