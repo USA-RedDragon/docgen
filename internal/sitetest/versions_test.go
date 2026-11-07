@@ -39,6 +39,15 @@ func remove(t *testing.T, root, name string) {
 }
 
 // gitRepo returns a repository with one commit and no tags.
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	root := repo(t)
@@ -297,6 +306,17 @@ func TestPickerIsInThePage(t *testing.T) {
 	site, _ := buildVersions(t, taggedRepo(t))
 	holds(t, "old version", read(t, site, "v0.9.0/page.html"), `<select aria-label="Version"><option>v0.9.0</option></select>`)
 	lacks(t, "old version", read(t, site, "v0.9.0/page.html"), `data-page="page.html" hidden`)
+}
+
+func TestPickerLabelsMainWithItsCommit(t *testing.T) {
+	t.Parallel()
+	needPandoc(t)
+	root := taggedRepo(t)
+	site, _ := buildVersions(t, root)
+	sha := strings.TrimSpace(gitOut(t, root, "rev-parse", "--short", "HEAD"))
+	holds(t, "main", read(t, site, "main/page.html"), `<option>main (`+sha+`)</option>`)
+	holds(t, "versions.json", read(t, site, "versions.json"), `"main":"`+sha+`"`)
+	lacks(t, "main", read(t, site, "main/page.html"), `main (latest)`)
 }
 
 func TestPicker(t *testing.T) {

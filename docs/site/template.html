@@ -351,7 +351,7 @@ $if(version)$
     v.versions.forEach(function (n) {
       var o = document.createElement("option");
       o.value = n;
-      o.textContent = n === v.latest ? n + " (latest)" : n;
+      o.textContent = n === "main" && v.main ? "main (" + v.main + ")" : n === v.latest ? n + " (latest)" : n;
       select.appendChild(o);
     });
     function reset() { select.value = current; }

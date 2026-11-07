@@ -124,7 +124,7 @@ local function site(out, tags)
   for _, tag in ipairs(tags) do
     table.insert(names, tag)
   end
-  write_file(out .. "/versions.json", pandoc.json.encode({ latest = latest(tags) or "main", versions = names }) .. "\n")
+  write_file(out .. "/versions.json", pandoc.json.encode({ latest = latest(tags) or "main", main = os.getenv("DOCS_MAIN_SHA") or "", versions = names }) .. "\n")
   write_file(out .. "/index.html", [[
 <!doctype html>
 <html lang="en">

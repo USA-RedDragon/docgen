@@ -479,7 +479,14 @@ function Pandoc(doc)
   local latest = doc.meta.latest and stringify(doc.meta.latest)
   local latest_pages = doc.meta.latestpages and read_file(stringify(doc.meta.latestpages))
   if version then
-    doc.meta.versionlabel = (version == latest or not latest) and version .. " (latest)" or version
+    local sha = doc.meta.mainsha and stringify(doc.meta.mainsha) or ""
+    if version == "main" and sha ~= "" then
+      doc.meta.versionlabel = "main (" .. sha .. ")"
+    elseif version == latest then
+      doc.meta.versionlabel = version .. " (latest)"
+    else
+      doc.meta.versionlabel = version
+    end
   end
   local ref = version or "main"
   local function pin(url)

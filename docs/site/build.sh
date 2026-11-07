@@ -145,13 +145,14 @@ extract() {
 
 # build_version builds version $1 into a directory of that name.
 build_version() {
+	mainsha=$(git -C "$root" rev-parse --short HEAD 2>/dev/null || :)
 	if [ "$1" != main ]; then
 		cd "$work/$1"
 	fi
 	if [ -n "$kept" ]; then
-		build_pages "$out/$1" "$work/$1.pages" -M version="$1" -M latest="$latest" -M latestpages="$work/$latest.pages"
+		build_pages "$out/$1" "$work/$1.pages" -M version="$1" -M mainsha="$mainsha" -M latest="$latest" -M latestpages="$work/$latest.pages"
 	else
-		build_pages "$out/$1" "$work/$1.pages" -M version="$1"
+		build_pages "$out/$1" "$work/$1.pages" -M version="$1" -M mainsha="$mainsha"
 	fi
 }
 
@@ -201,7 +202,7 @@ build_versions() {
 	fi
 	cp -R "$out/${latest:-main}" "$out/latest"
 	# shellcheck disable=SC2086
-	pandoc lua "$DOCS_SITE/versions.lua" site "$out" $kept
+	DOCS_MAIN_SHA=$(git -C "$root" rev-parse --short HEAD 2>/dev/null || :) pandoc lua "$DOCS_SITE/versions.lua" site "$out" $kept
 	: >"$out/.nojekyll"
 }
 
