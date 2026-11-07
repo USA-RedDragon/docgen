@@ -15,7 +15,7 @@ Here is the step of the [docs workflow](../../.github/workflows/docs.yaml):
 
 Your repository runs docgen by its version:
 
-<!-- docgen:text text="- name: Check the generated parts of the docs\n  run: go run github.com/USA-RedDragon/docgen@{version} check" lang=yaml -->
+<!-- docgen:text text="- name: Check the generated parts of the docs\n  run: go run github.com/USA-RedDragon/docgen@{version} check" code=yaml -->
 ```yaml
 - name: Check the generated parts of the docs
   run: go run github.com/USA-RedDragon/docgen@v0.1.0 check

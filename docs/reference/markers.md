@@ -1285,9 +1285,9 @@ The current version is <!-- docgen:var name=version -->`v1.2.3`<!-- /docgen:var 
 ### docgen:text
 
 <!-- docgen:doc pkg=. section="docgen:text" -->
-A code block with a template, in which `vars` values replace the keys.
+Text from a template, in which `vars` values replace the keys. With no `code=`, the text goes inline in a sentence. With `code=`, it is a code block in that language, and `code="text"` is a block with no highlighting, so a value can go in a code block, where markers are text.
 
-	docgen:text text="<template>" [lang=<lang>]
+	docgen:text text="<template>" [code=<language>]
 
 The template has these forms:
 
@@ -1295,8 +1295,6 @@ The template has these forms:
   - `{{` is a literal `{`.
   - `\n` is a line ending, since an argument is one line.
   - `\\` is a backslash, so `\\n` is a backslash and an `n`.
-
-`lang=` is the language of the block. The default is `text`.
 <!-- /docgen:doc -->
 
 <!-- site:editor -->
@@ -1310,14 +1308,14 @@ vars:
 #### Before
 
 ```
-<!-- docgen:text text="go install example.com/lamp@{version}\n# {{version} holds the version." lang=sh -->
+<!-- docgen:text text="go install example.com/lamp@{version}\n# {{version} holds the version." code=sh -->
 <!-- /docgen:text -->
 ```
 
 #### After
 
 ````
-<!-- docgen:text text="go install example.com/lamp@{version}\n# {{version} holds the version." lang=sh -->
+<!-- docgen:text text="go install example.com/lamp@{version}\n# {{version} holds the version." code=sh -->
 ```sh
 go install example.com/lamp@v1.2.3
 # {version} holds the version.

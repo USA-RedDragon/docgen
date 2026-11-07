@@ -31,7 +31,7 @@ The current version is <!-- docgen:var name=version -->`v1.2.3`<!-- /docgen:var 
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-[`docgen:text`](text.md) puts it in a code block, such as an install line:
+[`docgen:text`](text.md) puts it in other text, or in a code block with `code=`:
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/.docgen.yaml -->
@@ -46,7 +46,7 @@ vars:
 ```
 Version <!-- docgen:var name=version --><!-- /docgen:var --> is out. Install it:
 
-<!-- docgen:text text="go install example.com/lamp@{version}" lang=sh -->
+<!-- docgen:text text="go install example.com/lamp@{version}" code=sh -->
 <!-- /docgen:text -->
 ```
 
@@ -55,7 +55,7 @@ Version <!-- docgen:var name=version --><!-- /docgen:var --> is out. Install it:
 ````
 Version <!-- docgen:var name=version -->`v1.2.3`<!-- /docgen:var --> is out. Install it:
 
-<!-- docgen:text text="go install example.com/lamp@{version}" lang=sh -->
+<!-- docgen:text text="go install example.com/lamp@{version}" code=sh -->
 ```sh
 go install example.com/lamp@v1.2.3
 ```

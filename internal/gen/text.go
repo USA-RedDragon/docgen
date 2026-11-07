@@ -9,12 +9,13 @@ import (
 	"github.com/USA-RedDragon/docgen/internal/marker"
 )
 
-// A textHandler is a docgen:text marker: a code block in the language lang with
-// the template parts, with each variable replaced by its value.
+// A textHandler is a docgen:text marker: the template parts with each variable
+// replaced by its value, inline in the page, or as a code block in the language
+// code when code is set.
 type textHandler struct {
 	noPlan
 	parts []part
-	lang  string
+	code  string
 }
 
 func (h *textHandler) Bind(a *marker.Args) {
@@ -23,10 +24,10 @@ func (h *textHandler) Bind(a *marker.Args) {
 		a.Fail("text= " + err.Error())
 	}
 	var ok bool
-	if h.lang, ok = a.Optional("lang"); !ok {
-		h.lang = "text"
+	if h.code, ok = a.Optional("code"); !ok {
+		a.Inline()
 	}
-	a.NonEmpty("lang")
+	a.NonEmpty("code")
 }
 
 func (h *textHandler) fill(_ context.Context, j job) (string, []outFile, error) {
@@ -34,7 +35,10 @@ func (h *textHandler) fill(_ context.Context, j job) (string, []outFile, error) 
 	if err != nil {
 		return "", nil, err
 	}
-	return markdown.Fence(h.lang, text), nil, nil
+	if h.code == "" {
+		return text, nil, nil
+	}
+	return markdown.Fence(h.code, text), nil, nil
 }
 
 func (h *textHandler) varNames() []string {

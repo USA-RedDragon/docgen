@@ -30,7 +30,7 @@ func TestVarMarker(t *testing.T) {
 
 func TestTextMarker(t *testing.T) {
 	t.Parallel()
-	text := `<!-- docgen:text text="go run x@{version} check\n# {{version}" lang=sh -->` + "\n<!-- /docgen:text -->\n"
+	text := `<!-- docgen:text text="go run x@{version} check\n# {{version}" code=sh -->` + "\n<!-- /docgen:text -->\n"
 	root := varRepo(t, varConfig, text)
 	if rc, log := docgen(t, root, "update"); rc != 0 {
 		t.Fatalf("rc %d, log:\n%s", rc, log)
@@ -41,13 +41,13 @@ func TestTextMarker(t *testing.T) {
 	}
 }
 
-func TestTextMarkerDefaultLanguage(t *testing.T) {
+func TestTextMarkerWithNoLang(t *testing.T) {
 	t.Parallel()
 	root := varRepo(t, "", "<!-- docgen:text text=plain -->\n<!-- /docgen:text -->\n")
 	if rc, log := docgen(t, root, "update"); rc != 0 {
 		t.Fatalf("rc %d, log:\n%s", rc, log)
 	}
-	wantIn(t, readPage(t, root, "docs/p.md"), "```text\nplain\n```\n")
+	wantIn(t, readPage(t, root, "docs/p.md"), "-->plain<!-- /docgen:text -->")
 }
 
 func TestUnknownVar(t *testing.T) {

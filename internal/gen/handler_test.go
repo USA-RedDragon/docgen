@@ -54,7 +54,7 @@ func TestHandlerArgErrors(t *testing.T) {
 		{"var name=a print=raw", "line 1: docgen:var has no argument print="},
 		{"text", "line 1: docgen:text: text= is required"},
 		{`text text=""`, "line 1: docgen:text: text= is required"},
-		{`text text=a lang=""`, "line 1: docgen:text: lang= is empty"},
+		{`text text=a code=""`, "line 1: docgen:text: code= is empty"},
 		{"text text=a name=b", "line 1: docgen:text has no argument name="},
 		{"text text=a{b", "line 1: docgen:text text= has a { with no }; {{ writes a literal {"},
 		{"text text={}", "line 1: docgen:text text= has a {} with no name"},
@@ -94,7 +94,7 @@ func TestHandlerArgs(t *testing.T) {
 		"docgen root=a page=b",
 		"docgen root=a page=b module=c",
 		"var name=a-b_1",
-		`text text="a {b}" lang=sh`,
+		`text text="a {b}" code=sh`,
 	} {
 		kind, _, _ := strings.Cut(tag, " ")
 		pg := newPage("p.md", "p.md", "<!-- docgen:"+tag+" -->\n<!-- /docgen:"+kind+" -->\n")

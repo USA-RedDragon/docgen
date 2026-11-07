@@ -293,7 +293,7 @@ func TestEscapesOfQuotedArguments(t *testing.T) {
 		return "<!-- docgen:" + kind + " " + args + " -->\n<!-- /docgen:" + kind + " -->\n"
 	}
 	root := pageRepo(t, map[string]string{"docs/p.md": body("output", `exec="echo \"hi\""`) +
-		body("text", `text="printf \"a\\nb\"\nnext"`) +
+		body("text", `text="printf \"a\\nb\"\nnext" code=text`) +
 		body("output", `exec="printf '%s' 'a\b'"`)})
 	if rc, log := docgen(t, root, "update"); rc != 0 {
 		t.Fatalf("rc %d, log:\n%s", rc, log)
@@ -332,5 +332,29 @@ func TestCodeRaw(t *testing.T) {
 		if rc, log := docgen(t, root, "check"); rc != 0 {
 			t.Errorf("%s: check: rc %d, log:\n%s", c.args, rc, log)
 		}
+	}
+}
+
+func TestTextInlineAndBlock(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		".docgen.yaml": "vars:\n  v: x1\n",
+		"docs/p.md":    "A <!-- docgen:text text=\"tool@{v}\" --><!-- /docgen:text --> b.\n\n<!-- docgen:text text=\"tool@{v}\" code=sh -->\n<!-- /docgen:text -->\n",
+	})
+	if rc, log := docgen(t, root, "update"); rc != 0 {
+		t.Fatalf("update: rc %d, log:\n%s", rc, log)
+	}
+	b, err := os.ReadFile(filepath.Join(root, "docs/p.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"-->tool@x1<!-- /docgen:text --> b.", "```sh\ntool@x1\n```"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("page has no %q:\n%s", want, b)
+		}
+	}
+	if rc, log := docgen(t, root, "check"); rc != 0 {
+		t.Fatalf("check: rc %d, log:\n%s", rc, log)
 	}
 }

@@ -19,7 +19,7 @@ The pages of the docs site, in reading order, by section. The site navigation co
   - [Show a doc comment](guides/doc-comments.md)
   - [Show a go.mod value](guides/gomod.md)
   - [Use variables](guides/variables.md)
-  - [Write a code block with variables](guides/text.md)
+  - [Write text with variables](guides/text.md)
   - [Run docgen on docgen](guides/sample.md)
   - [Use a module in a subdirectory](guides/module-in-subdirectory.md)
 - Concepts

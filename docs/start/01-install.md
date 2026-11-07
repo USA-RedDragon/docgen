@@ -17,7 +17,7 @@ go install github.com/USA-RedDragon/docgen@latest
 
 To give everyone and CI the same version, run docgen with a version in place of installing it. This does not change the `go.mod` of your repository:
 
-<!-- docgen:text text="go run github.com/USA-RedDragon/docgen@{version} check" lang=sh -->
+<!-- docgen:text text="go run github.com/USA-RedDragon/docgen@{version} check" code=sh -->
 ```sh
 go run github.com/USA-RedDragon/docgen@v0.1.0 check
 ```
@@ -25,7 +25,7 @@ go run github.com/USA-RedDragon/docgen@v0.1.0 check
 
 Use a `go:generate` line to run it with your other generators:
 
-<!-- docgen:text text="//go:generate go run github.com/USA-RedDragon/docgen@{version} update" lang=go -->
+<!-- docgen:text text="//go:generate go run github.com/USA-RedDragon/docgen@{version} update" code=go -->
 ```go
 //go:generate go run github.com/USA-RedDragon/docgen@v0.1.0 update
 ```
