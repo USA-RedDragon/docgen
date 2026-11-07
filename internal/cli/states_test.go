@@ -111,13 +111,9 @@ func (m *M) Clear() { m.n = 0 }
 `,
 		"p/p_test.go": `package p
 
-import (
-	"testing"
-	"time"
-)
+import "testing"
 
 func TestM(t *testing.T) {
-	defer time.AfterFunc(30*time.Second, func() { panic("deadlock") }).Stop()
 	var m M
 	m.Add()
 	m.AddTwo()

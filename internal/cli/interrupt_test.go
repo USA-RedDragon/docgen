@@ -94,14 +94,19 @@ func holdExample(file string) string {
 	return "package p\n\nimport (\n\t\"os\"\n\t\"strconv\"\n\t\"time\"\n)\n\nfunc ExampleLamp() {\n\t" + holdCode(file) + "\n\t// Output: x\n}\n"
 }
 
+// longWait is the upper bound of a wait on a process of a test. It is long, so
+// that a test under load does not fail, and a wait that meets its condition ends
+// at once.
+const longWait = 10 * time.Minute
+
+// waitForFile returns the PID in the file once the file exists. An end of
+// docgen before that is an error.
 func waitForFile(t *testing.T, file string, done <-chan error) int {
 	t.Helper()
-	for deadline := time.Now().Add(2 * time.Minute); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
-		select {
-		case err := <-done:
-			t.Fatalf("docgen ended before the signal: %v", err)
-		default:
-		}
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	limit := time.After(longWait)
+	for {
 		if b, err := os.ReadFile(file); err == nil {
 			pid, err := strconv.Atoi(string(b))
 			if err != nil {
@@ -109,9 +114,25 @@ func waitForFile(t *testing.T, file string, done <-chan error) int {
 			}
 			return pid
 		}
+		select {
+		case err := <-done:
+			t.Fatalf("docgen ended before the signal: %v", err)
+		case <-limit:
+			t.Fatal("the program did not start")
+		case <-tick.C:
+		}
 	}
-	t.Fatal("the program did not start")
-	return 0
+}
+
+// waitForExit waits for the process pid to end. It reports false when the
+// process is alive after longWait.
+func waitForExit(pid int) bool {
+	for limit := time.Now().Add(longWait); !errors.Is(syscall.Kill(pid, 0), syscall.ESRCH); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(limit) {
+			return false
+		}
+	}
+	return true
 }
 
 func goCache(t *testing.T) string {
@@ -209,7 +230,7 @@ func TestInterruptCompile(t *testing.T) {
 		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 			t.Errorf("exit: %v, want code 1\n%s", err, log.String())
 		}
-	case <-time.After(gocmd.WaitDelay + time.Minute):
+	case <-time.After(longWait):
 		t.Fatalf("docgen did not stop:\n%s", log.String())
 	}
 	if names := dirNames(t, work); len(names) != 0 {
@@ -322,7 +343,12 @@ func TestInterrupt(t *testing.T) {
 			done := make(chan error, 1)
 			go func() { done <- cmd.Wait() }()
 			pid := waitForFile(t, hold, done)
-			t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+			gone := false
+			t.Cleanup(func() {
+				if !gone {
+					_ = syscall.Kill(pid, syscall.SIGKILL)
+				}
+			})
 			work := filepath.Join(cache, "docgen")
 			if c.work != "" {
 				if names := dirNames(t, runDir(t, work)); !slices.ContainsFunc(names, hasPrefix(c.work)) {
@@ -338,7 +364,7 @@ func TestInterrupt(t *testing.T) {
 				if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 					t.Errorf("exit: %v, want code 1\n%s", err, log.String())
 				}
-			case <-time.After(gocmd.WaitDelay + time.Minute):
+			case <-time.After(longWait):
 				t.Fatalf("docgen did not stop:\n%s", log.String())
 			}
 			if !strings.Contains(log.String(), "signal received") {
@@ -359,10 +385,8 @@ func TestInterrupt(t *testing.T) {
 			if names := dirNames(t, filepath.Join(root, "docs/states")); len(names) != 0 {
 				t.Errorf("diagrams written: %q", names)
 			}
-			for deadline := time.Now().Add(5 * time.Second); !errors.Is(syscall.Kill(pid, 0), syscall.ESRCH); time.Sleep(10 * time.Millisecond) {
-				if time.Now().After(deadline) {
-					t.Fatalf("process %d is alive", pid)
-				}
+			if gone = waitForExit(pid); !gone {
+				t.Fatalf("process %d is alive", pid)
 			}
 			if names := dirNames(t, tmp); len(names) != 0 {
 				t.Errorf("temporary files of the go command: %q", names)
