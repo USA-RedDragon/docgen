@@ -58,23 +58,6 @@ func NewLamp(cfg Config) (*Lamp, error) {
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-For `print=` and other options, see [`docgen:config`](../reference/markers.md#docgenconfig).
+Tip: apply each default in an `if` that compares the field with its zero value, such as `if cfg.Tries == 0 { l.tries = 1 }`. A default that the code computes in another way is not in the table.
 
-For a config that uses [configulator](https://github.com/USA-RedDragon/configulator), see [Document a configulator config](configulator.md).
-
-## Get a default into the table
-
-Apply the default with a plain test of the zero value:
-
-```go
-wait := c.Wait
-if wait == 0 {
-	wait = DefaultWait
-}
-```
-
-The column then holds `DefaultWait` and its value.
-
-For a default that the code computes in another way, state it in the doc comment of the field, for example with "0 means". The column then holds "not machine-readable; see the description".
-
-For the exact rules, see [How docgen works](../concepts/how-it-works.md#defaults).
+For all the rules and options, see [`docgen:config`](../reference/markers.md#docgenconfig).

@@ -38,7 +38,7 @@ func (h *configHandler) addValues(vs *valueSet, loaded *load.Set) {
 		return
 	}
 	t, err := lookupType(pi, h.typ)
-	if err != nil {
+	if err != nil || types.Generic(t) {
 		return
 	}
 	st, ok := types.Struct(t)
@@ -68,6 +68,9 @@ func (h *configHandler) fill(_ context.Context, j job) (string, []outFile, error
 	t, err := lookupType(pi, h.typ)
 	if err != nil {
 		return "", nil, err
+	}
+	if types.Generic(t) {
+		return "", nil, fmt.Errorf("%s is generic", t.Name)
 	}
 	st, ok := types.Struct(t)
 	if !ok {

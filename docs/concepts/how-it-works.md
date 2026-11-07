@@ -27,12 +27,12 @@ Facts come from the code and from the tests, and not from doc text:
 - A transition comes from a call that a test made.
 - The output of an Example comes from the comment that `go test` checks.
 
-A fact with no source in the code or the tests is not in the output. For a default with no source, the Default column holds "zero value". If the doc text states a default, the column holds "not machine-readable; see the description".
+A fact with no source in the code or the tests is not in the output.
 
 ## Defaults
 
 <!-- docgen:doc pkg=. section=Defaults -->
-The Default column holds the value that your code applies, not what a doc comment states. In this code, the default of `Wait` is `DefaultWait`:
+The Default column of `docgen:config` holds the value that your code applies, not what a doc comment states. In this code, the default of `Wait` is `DefaultWait`:
 
 	func NewLamp(c Config) *Lamp {
 		wait := c.Wait
@@ -42,17 +42,10 @@ The Default column holds the value that your code applies, not what a doc commen
 		return &Lamp{wait: wait}
 	}
 
-docgen gets the default in two steps:
-
- 1. It collects the copies of each field in the package: assignments such as `wait := c.Wait`, composite literal keys, and arguments of calls to functions of the package.
- 2. It reads the value that an `if` or a tagless `switch` case assigns to a copy, when that `if` or case tests a copy for `0`, `""` or `nil`.
-
-The column then holds one of these:
-
-  - The value, with its constant value when it has one: `DefaultWait` (250ms).
-  - "not machine-readable; see the description", when the code has no such test and the doc comment states a default, for example with "0 means".
-  - "zero value", in all other cases.
+`wait` is a copy of `c.Wait`. The condition of the `if` is `wait == 0`, and its body has `wait = DefaultWait`. docgen finds this in the source and does not run the code to find it.
 <!-- /docgen:doc -->
+
+For the rules of the Default column, see [`docgen:config`](../reference/markers.md#docgenconfig).
 
 ## States and transitions
 

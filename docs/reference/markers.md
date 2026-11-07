@@ -479,16 +479,89 @@ go test ./...
 ### docgen:config
 
 <!-- docgen:doc pkg=. section="docgen:config" -->
-A table of the exported fields of a struct: name, type, default and doc text. The doc text can be a trailing comment.
+A table of the fields of a struct type, with the columns Field, Type, Default and Description.
 
 	docgen:config pkg=<path> type=<Config> [print=<go|raw|name|verb>]
 
-`print=` sets how the Default column prints each value, with the same choices as `docgen:const`: `go`, `raw`, `name` or a fmt verb. With `print=name`, a default that is not a constant, such as `3`, prints as written.
+`type=` is a struct type of the package, exported or not. It can also be an alias or a defined type of a struct type, or of an instance of a generic struct type, such as `type Small = Gen[int]`.
 
-A struct with no exported fields is an error.
+The rows:
+
+  - Each exported field is one row, in source order.
+  - An embedded field with an exported type name, such as `Timing` or `*url.URL`, is one row. The type name is the field name.
+  - An unexported field has no row.
+  - An embedded field with an unexported type name has no row.
+  - The fields of an embedded struct have no rows.
+
+The Field column holds the field name. The Type column holds the field type as it is in Go source in the package of the marker:
+
+  - A type of another package has the package name, such as `time.Duration` or `map[string]*url.URL`.
+  - Pointers, slices, maps, channels, funcs, struct types with their tags and instances of generic types, such as `q.G[string]`, are as in Go source.
+  - An alias is the alias name.
+  - A cgo type has the prefix `C.`, such as `C.int`.
+
+The Description column holds the doc comment of the field:
+
+  - With no doc comment, it holds the trailing comment. With neither, it is empty.
+  - Each name in one declaration, such as `A, B int // The limits.`, has that comment.
+  - For an alias or a defined type of a struct, the comments come from the declaration of that struct, also in another package.
+  - Line breaks and blank lines become spaces.
+  - A `|` becomes `\|`. Other text, such as HTML, backticks and doc links, stays as written, so Markdown renders it.
+
+The Default column holds each default of the field as written in the code, with its value in parentheses. Two or more defaults are joined with "or", in the order of file names and lines. A default written the same way twice is there once. A field with no default has one of these:
+
+  - "not machine-readable; see the description", when the field doc has a phrase from the list below.
+  - "zero value", when it does not.
+
+The phrases match in any case and across a line break: `0 means`, `nil means`, `zero means`, `empty means`, `a zero <word> means`, `an empty <word> means`, `defaults to` and `by default`. Other text, such as "Zero value means" or "The default is", gives "zero value".
+
+docgen finds a default in the files of the package of `pkg=`. Files that end in `_test.go`, and the code of other packages, do not count. For a default that is set in another package, use `pkg=` of that package and an alias of the type there, such as `type Config = server.Config`.
+
+A default is the value V of an assignment `y = V` in this form:
+
+	if x == 0 {
+		y = V
+	}
+
+x and y are copies of the same field. A copy is one of these:
+
+  - The field itself, such as `c.Wait`, for any value of the struct type.
+  - A variable or field that gets a copy: `wait := c.Wait`, `wait = c.Wait` or `var wait = c.Wait`.
+  - A field that gets a copy in a composite literal, such as `wait` in `Lamp{wait: c.Wait}`. Then `l.wait` is a copy for any `Lamp` l.
+  - A parameter of a function or method of the package that gets a copy as its argument, such as `n` of `func use(n int)` in `use(c.Wait)`.
+
+The forms of the test:
+
+  - The condition of an `if`, or a case of a `switch` with no tag.
+  - `x == Z` or `x <= Z`, where Z is `0`, `0.0`, `""`, `nil`, or a constant with the value 0 or "".
+  - The `if` can have an init statement: `if x := c.Wait; x == 0`.
+  - The assignment can be in a nested `if` or block of the body.
+
+These do not count:
+
+  - The tests `0 == x`, `x < 1`, `!x`, `x == false`, `len(x) == 0` and `x == 0 && y`.
+  - A `switch x` with a tag, and the `else` of an `if`.
+  - An assignment with `:=` or `+=`, with two or more targets, or in a `for` or `range` loop or a func literal.
+
+`print=` sets the text of the value in parentheses, with the same choices as `docgen:const`. With no `print=`, the `print` setting applies. Its default is `go`.
+
+  - `go`: the value as `fmt.Sprint` prints it, with the String, Error, Format and GoString methods of its type: `DefaultWait` (250ms). A literal, such as `3`, has no value, unless its type has one of these methods: `80` (port-80).
+  - `raw`: the underlying value, with no method: `DefaultWait` (250000000). A literal has no value.
+  - `name`: the name of the one constant of the type with the value, from the package of the marker and then the package of the type: `LevelLow + 1` (LevelHigh). A literal has no value, and neither does a value with no such constant.
+  - A fmt verb, such as `%x`: the value with that verb, also of a literal: `DefaultColor` (ffaa00).
+
+A default that is not a constant, such as `hold` or `new(int)`, has no value with any `print=`. A value with the same text as its default, such as `-1`, has no parentheses. A value of a type with one of these methods comes from one `go test` run of the package, as for `docgen:const`.
+
+These are errors:
+
+  - `pkg=` with no package, or `type=` that is not a type of the package.
+  - A type that is not a struct, a generic type, or a struct with no row.
+  - An empty `print=`, or a value that is not `go`, `raw`, `name` or one fmt verb.
+  - A verb that a default cannot use, such as `%d` for a string.
+  - `print=name` when two constants of the type have the value.
 <!-- /docgen:doc -->
 
-#### A table with no print=
+#### Defaults as Go prints them
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/machine.go symbol=Config -->
@@ -546,7 +619,7 @@ func NewLamp(cfg Config) (*Lamp, error) {
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### print= of a table
+#### Underlying values, with `print=raw`
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/v2/machine/machine.go symbol=DefaultWait -->
@@ -600,6 +673,310 @@ func NewLamp(cfg Config) (*Lamp, error) {
 | `Wait` | `time.Duration` | `DefaultWait` (250000000) | Wait is how long the Lamp stays on. 0 means DefaultWait. |
 | `Tries` | `int` | `1` | Tries is the number of blinks. 0 means 1, and it is at most MaxTries. |
 | `Name` | `string` | zero value | Name is a label. |
+<!-- /docgen:config -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### Constant names, with `print=name`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=LevelOff -->
+```go
+const (
+	// LevelOff gives no light.
+	LevelOff Level = iota
+	// LevelLow gives some light.
+	LevelLow
+	// LevelHigh gives full light.
+	LevelHigh
+)
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Look -->
+```go
+type Look struct {
+	// Level is the brightness at start.
+	Level Level
+	// Color is an RGB color.
+	Color uint32
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=NewLook -->
+```go
+func NewLook(l Look) Look {
+	if l.Level == LevelOff {
+		l.Level = LevelLow + 1
+	}
+	if l.Color == 0 {
+		l.Color = DefaultColor
+	}
+	return l
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/dimmer/config-name.md -->
+#### Before
+
+```
+<!-- docgen:config pkg=dimmer type=Look print=name -->
+<!-- /docgen:config -->
+```
+
+#### After
+
+```
+<!-- docgen:config pkg=dimmer type=Look print=name -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Level` | `Level` | `LevelLow + 1` (LevelHigh) | Level is the brightness at start. |
+| `Color` | `uint32` | `DefaultColor` | Color is an RGB color. |
+<!-- /docgen:config -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### Values with a fmt verb, such as `print=%x`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=DefaultColor -->
+```go
+const DefaultColor = 0xffaa00
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Look -->
+```go
+type Look struct {
+	// Level is the brightness at start.
+	Level Level
+	// Color is an RGB color.
+	Color uint32
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=NewLook -->
+```go
+func NewLook(l Look) Look {
+	if l.Level == LevelOff {
+		l.Level = LevelLow + 1
+	}
+	if l.Color == 0 {
+		l.Color = DefaultColor
+	}
+	return l
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/dimmer/config-verb.md -->
+#### Before
+
+```
+<!-- docgen:config pkg=dimmer type=Look print=%x -->
+<!-- /docgen:config -->
+```
+
+#### After
+
+```
+<!-- docgen:config pkg=dimmer type=Look print=%x -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Level` | `Level` | `LevelLow + 1` (2) | Level is the brightness at start. |
+| `Color` | `uint32` | `DefaultColor` (ffaa00) | Color is an RGB color. |
+<!-- /docgen:config -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### A field whose default is not machine-readable
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Steps -->
+```go
+type Steps struct {
+	// Step is the change of one press. 0 means 1.
+	Step int
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=NewSteps -->
+```go
+func NewSteps(s Steps) Steps {
+	if s.Step < 1 {
+		s.Step = 1
+	}
+	return s
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/dimmer/config-text.md -->
+#### Before
+
+```
+<!-- docgen:config pkg=dimmer type=Steps -->
+<!-- /docgen:config -->
+```
+
+#### After
+
+```
+<!-- docgen:config pkg=dimmer type=Steps -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Step` | `int` | not machine-readable; see the description | Step is the change of one press. 0 means 1. |
+<!-- /docgen:config -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### A field with no default
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Tag -->
+```go
+type Tag struct {
+	// Name is a label next to the Dimmer.
+	Name string
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/dimmer/config-zero.md -->
+#### Before
+
+```
+<!-- docgen:config pkg=dimmer type=Tag -->
+<!-- /docgen:config -->
+```
+
+#### After
+
+```
+<!-- docgen:config pkg=dimmer type=Tag -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Name` | `string` | zero value | Name is a label next to the Dimmer. |
+<!-- /docgen:config -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### Rows of embedded fields
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Timing -->
+```go
+type Timing struct {
+	// Fade is the time of a change of level.
+	Fade time.Duration
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=counts -->
+```go
+type counts struct {
+	// Presses is the number of presses.
+	Presses int
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Setup -->
+```go
+type Setup struct {
+	// Timing holds the times.
+	Timing
+	counts
+	// Look is the light at start.
+	Look Look
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/dimmer/config-embedded.md -->
+#### Before
+
+```
+<!-- docgen:config pkg=dimmer type=Setup -->
+<!-- /docgen:config -->
+```
+
+#### After
+
+```
+<!-- docgen:config pkg=dimmer type=Setup -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Timing` | `Timing` | zero value | Timing holds the times. |
+| `Look` | `Look` | zero value | Look is the light at start. |
+<!-- /docgen:config -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### Field types from other packages
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Group -->
+```go
+type Group struct {
+	// Main is the first lamp.
+	Main *machine.Lamp
+	// Spares are the other lamps.
+	Spares []machine.Lamp
+	// States holds the state of each lamp by name.
+	States map[string]machine.LampState
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/dimmer/config-types.md -->
+#### Before
+
+```
+<!-- docgen:config pkg=dimmer type=Group -->
+<!-- /docgen:config -->
+```
+
+#### After
+
+```
+<!-- docgen:config pkg=dimmer type=Group -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Main` | `*machine.Lamp` | zero value | Main is the first lamp. |
+| `Spares` | `[]machine.Lamp` | zero value | Spares are the other lamps. |
+| `States` | `map[string]machine.LampState` | zero value | States holds the state of each lamp by name. |
+<!-- /docgen:config -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### A description from a trailing comment
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Range -->
+```go
+type Range struct {
+	Min Level // Min is the lowest level.
+	// Max is the highest level.
+	Max Level // This comment is not in the table.
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/dimmer/config-trailing.md -->
+#### Before
+
+```
+<!-- docgen:config pkg=dimmer type=Range -->
+<!-- /docgen:config -->
+```
+
+#### After
+
+```
+<!-- docgen:config pkg=dimmer type=Range -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Min` | `Level` | zero value | Min is the lowest level. |
+| `Max` | `Level` | zero value | Max is the highest level. |
 <!-- /docgen:config -->
 ```
 <!-- /docgen:docgen -->
