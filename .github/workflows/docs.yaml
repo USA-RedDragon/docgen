@@ -1,0 +1,83 @@
+name: Docs
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-26.04
+
+    env:
+      PANDOC_VERSION: "3.13"
+      PANDOC_SHA256: 38aa33b325a2bc96a4c39409631212db55702f564250bcdbead180b3bf646389
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # A tag push also rebuilds /main/, so it needs the main branch.
+          ref: ${{ github.ref_type == 'tag' && 'main' || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Check the generated parts of the docs
+        run: go run . check
+
+      - name: Install pandoc
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/pandoc.tar.gz" "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-amd64.tar.gz"
+          echo "${PANDOC_SHA256}  $RUNNER_TEMP/pandoc.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/pandoc.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/pandoc-${PANDOC_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Test the site scripts
+        run: go test ./internal/sitetest
+
+      - name: Build the docs site
+        if: github.event_name == 'pull_request'
+        run: docs/site/build.sh
+
+      - name: Build all versions of the docs site
+        if: github.event_name == 'push'
+        run: docs/site/build.sh --versions
+
+      - name: Upload the docs site
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: artifacts/docs-site
+          include-hidden-files: true
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: docs
+    runs-on: ubuntu-26.04
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    concurrency:
+      group: docs-pages
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy the docs site
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

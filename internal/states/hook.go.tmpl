@@ -1,0 +1,141 @@
+package {{.Package}}
+
+import (
+	__dgos "os"
+	__dgstrconv "strconv"
+	__dgsync "sync"
+{{- range .Imports}}
+	{{.Alias}} {{printf "%q" .Path}}
+{{- end}}
+)
+
+var __dgMu __dgsync.Mutex
+
+type __dgKey struct {
+	edge     bool
+	view     string
+	from, to uint64
+	method   string
+}
+
+var __dgSeen = make(map[__dgKey]bool, 1<<16)
+
+var __dgLine = make([]byte, 0, 1<<12)
+
+var __dgOut *__dgos.File
+
+func init() {
+	if p := __dgos.Getenv("DOCGEN_STATES_OUT"); p != "" {
+		__dgOut, _ = __dgos.OpenFile(p, __dgos.O_APPEND|__dgos.O_CREATE|__dgos.O_WRONLY, 0o644)
+	}
+}
+
+func __dgBit(b bool) uint64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func __dgWrite(line []byte) {
+	if __dgOut != nil {
+		_, _ = __dgOut.Write(line)
+	}
+}
+
+var _ = __dgstrconv.Itoa
+{{range .Machines}}{{/*
+The In function reads the state with __dgMu released and the depth above zero:
+the state method can call instrumented methods, and those calls then count as
+nested calls.
+*/}}
+type __dgComps{{.Type}} = [{{len .Comps}}]uint64
+
+type __dgViewNames{{.Type}} = [{{len .Comps}}]string
+
+var __dgDepth{{.Type}} = make(map[*{{.Type}}]int, 1<<12)
+
+var __dgKnown{{.Type}} = make(map[*{{.Type}}]bool, 1<<12)
+
+var __dgViews{{.Type}} = __dgViewNames{{.Type}}{ {{- range $i, $c := .Comps}}{{if $i}}, {{end}}{{printf "%q" $c.View}}{{end -}} }
+
+func __dgState{{.Type}}(r *{{.Type}}) __dgComps{{.Type}} { return __dgComps{{.Type}}{ {{- range $i, $c := .Comps}}{{if $i}}, {{end}}{{$c.Value}}{{end -}} } }
+
+func __dgFmt{{.Type}}(b []byte, i int, v uint64) []byte {
+	switch i {
+{{- range $i, $c := .Comps}}
+	case {{$i}}:
+		b = {{$c.Format}}
+{{- end}}
+	}
+	return b
+}
+
+func __dgSeen{{.Type}}(edge bool, i int, from uint64, m string, to uint64) {
+	k := __dgKey{edge: edge, view: __dgViews{{.Type}}[i], from: from, to: to, method: m}
+	if __dgSeen[k] {
+		return
+	}
+	__dgSeen[k] = true
+	b := __dgLine[:0]
+	if edge {
+		b = append(b, "edge\t"...)
+	} else {
+		b = append(b, "init\t"...)
+	}
+	b = append(b, __dgViews{{.Type}}[i]...)
+	b = append(b, '\t')
+	b = __dgFmt{{.Type}}(b, i, from)
+	if edge {
+		b = append(b, '\t')
+		b = append(b, m...)
+		b = append(b, '\t')
+		b = __dgFmt{{.Type}}(b, i, to)
+	}
+	b = append(b, '\n')
+	__dgWrite(b)
+	__dgLine = b[:0]
+}
+
+func __dgIn{{.Type}}(r *{{.Type}}) (*{{.Type}}, __dgComps{{.Type}}, bool) {
+	var s __dgComps{{.Type}}
+	if r == nil {
+		return nil, s, false
+	}
+	__dgMu.Lock()
+	d := __dgDepth{{.Type}}[r]
+	__dgDepth{{.Type}}[r] = d + 1
+	__dgMu.Unlock()
+	if d > 0 {
+		return r, s, false
+	}
+	s = __dgState{{.Type}}(r)
+	__dgMu.Lock()
+	defer __dgMu.Unlock()
+	if !__dgKnown{{.Type}}[r] {
+		__dgKnown{{.Type}}[r] = true
+		for i, v := range s {
+			__dgSeen{{.Type}}(false, i, v, "", 0)
+		}
+	}
+	return r, s, true
+}
+
+func __dgOut{{.Type}}(r *{{.Type}}, from __dgComps{{.Type}}, m string) {
+	to := __dgState{{.Type}}(r)
+	__dgMu.Lock()
+	defer __dgMu.Unlock()
+	__dgDepth{{.Type}}[r]--
+	for i, v := range to {
+		if v != from[i] {
+			__dgSeen{{.Type}}(true, i, from[i], m, v)
+		}
+	}
+}
+
+func __dgDown{{.Type}}(r *{{.Type}}) {
+	__dgMu.Lock()
+	__dgDepth{{.Type}}[r]--
+	__dgMu.Unlock()
+}
+{{end -}}

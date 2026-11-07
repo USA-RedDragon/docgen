@@ -1,0 +1,13 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "local>USA-RedDragon/renovate-configs"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodTidyAll",
+    "gomodUpdateImportPaths"
+  ],
+  "packageRules": [
+  ]
+}

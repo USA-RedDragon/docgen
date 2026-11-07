@@ -1,0 +1,11 @@
+jobs:
+  test:
+    env:
+      GOFLAGS: -mod=readonly
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v6
+      - name: Run the tests
+        run: go test ./...
+      - name: Check the docs
+        run: docgen check

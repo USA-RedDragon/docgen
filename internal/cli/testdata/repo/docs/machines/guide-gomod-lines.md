@@ -1,0 +1,4 @@
+- Module: <!-- docgen:gomod field=module --><!-- /docgen:gomod -->
+- Go: <!-- docgen:gomod field=go --><!-- /docgen:gomod -->
+- Module of the tool: <!-- docgen:gomod field=module file=cmd/tool/go.mod --><!-- /docgen:gomod -->
+- Toolchain of the tool: <!-- docgen:gomod field=toolchain file=cmd/tool/go.mod --><!-- /docgen:gomod -->

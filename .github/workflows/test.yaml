@@ -1,0 +1,65 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  checks:   write
+
+jobs:
+  benchmark-tests:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - run: go generate ./...
+
+      - run: CGO_ENABLED=0 go test -run ^$ -benchmem -bench=. ./...
+
+  race-tests:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - run: go generate ./...
+
+      - name: Race tests
+        run: go test -timeout 60m ./... -race
+
+  unit-tests:
+    uses: ./.github/workflows/unit-test.yaml
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
+
+  unit-tests-coverage:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/unit-test.yaml
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: write
+    with:
+      coverage: true
+    secrets:
+      app_key: ${{ secrets.AUTO_COMMIT_APP_KEY }}
+      token: ${{ secrets.GITHUB_TOKEN }}
