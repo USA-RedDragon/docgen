@@ -22,6 +22,7 @@ The pages of the docs site, in reading order, by section. The site navigation co
   - [Write text with variables](guides/text.md)
   - [Run docgen on docgen](guides/sample.md)
   - [Use a module in a subdirectory](guides/module-in-subdirectory.md)
+  - [Use pre-commit](guides/pre-commit.md)
 - Concepts
   - [How docgen works](concepts/how-it-works.md)
 - Reference

@@ -1,43 +1,37 @@
 # Check the docs in CI
 
-In this step you run `docgen check` on each pull request, so that a change to the code cannot leave a page out of date. Use [`go run`](#use-go-run), [the GitHub Action](#use-the-github-action) or [the pre-commit hook](#use-pre-commit).
+In this step you run `docgen check` on each pull request, so that a change to the code cannot leave a page out of date. The [GitHub Action](#add-the-github-action) is the shortest way.
 
-## Use go run
+## Add the GitHub Action
 
-Here is the step of the [docs workflow](../../.github/workflows/docs.yaml):
+Add a workflow, such as `.github/workflows/docs.yaml`. The action runs `docgen check -diff`, so a failed run shows each change in its log:
 
-<!-- docgen:code file=.github/workflows/docs.yaml symbol="jobs.docs.steps[Check the generated parts of the docs]" -->
+<!-- docgen:text text="name: Docs\n\non:\n  pull_request:\n  push:\n    branches:\n      - main\n\npermissions:\n  contents: read\n\njobs:\n  docs:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v7\n      - uses: actions/setup-go@v7\n        with:\n          go-version-file: go.mod\n      - uses: USA-RedDragon/docgen@{version}" code=yaml -->
 ```yaml
-- name: Check the generated parts of the docs
-  run: go run . check
-```
-<!-- /docgen:code -->
+name: Docs
 
-Your repository runs docgen by its version:
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 
-<!-- docgen:text text="- name: Check the generated parts of the docs\n  run: go run github.com/USA-RedDragon/docgen@{version} check" code=yaml -->
-```yaml
-- name: Check the generated parts of the docs
-  run: go run github.com/USA-RedDragon/docgen@v0.1.0 check
-```
-<!-- /docgen:text -->
+permissions:
+  contents: read
 
-No setup step is necessary. The go command downloads the modules at the versions that `go.mod` and `go.sum` pin.
-
-## Use the GitHub Action
-
-The action runs `docgen check` with `-diff`, so the log shows each change. Go must be on `PATH`, so set up Go first:
-
-<!-- docgen:text text="- uses: actions/setup-go@v7\n  with:\n    go-version-file: go.mod\n- uses: USA-RedDragon/docgen@{version}" code=yaml -->
-```yaml
-- uses: actions/setup-go@v7
-  with:
-    go-version-file: go.mod
-- uses: USA-RedDragon/docgen@v0.1.0
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: USA-RedDragon/docgen@v0.1.0
 ```
 <!-- /docgen:text -->
 
-The inputs:
+Go must be on `PATH`, so set up Go before the action. The inputs:
 
 | Input | Default | Meaning |
 |---|---|---|
@@ -51,28 +45,32 @@ The inputs:
 
 An empty input adds no flag, so the [settings](../reference/configuration.md) apply. With no `version`, the action builds docgen from its own ref, so a tag, a branch or a commit SHA in `uses:` runs the docgen code at that ref. The exit code of docgen is the exit code of the step. The action is in [action.yml](../../action.yml).
 
-## Use pre-commit
 
-Add the hook to `.pre-commit-config.yaml`:
+## Use go run instead
 
-<!-- docgen:text text="repos:\n  - repo: https://github.com/USA-RedDragon/docgen\n    rev: {version}\n    hooks:\n      - id: docgen-check\n      - id: docgen-update" code=yaml -->
+Here is the step of the [docs workflow](../../.github/workflows/docs.yaml):
+
+<!-- docgen:code file=.github/workflows/docs.yaml symbol="jobs.docs.steps[Check the generated parts of the docs]" -->
 ```yaml
-repos:
-  - repo: https://github.com/USA-RedDragon/docgen
-    rev: v0.1.0
-    hooks:
-      - id: docgen-check
-      - id: docgen-update
+- name: Check the generated parts of the docs
+  run: go run . check
+```
+<!-- /docgen:code -->
+
+In your repository, run docgen by its version:
+
+<!-- docgen:text text="- name: Check the generated parts of the docs\n  run: go run github.com/USA-RedDragon/docgen@{version} check" code=yaml -->
+```yaml
+- name: Check the generated parts of the docs
+  run: go run github.com/USA-RedDragon/docgen@v0.1.0 check
 ```
 <!-- /docgen:text -->
 
-`docgen-check` runs on each commit, also when no Markdown or Go file changed, because a page can quote any file. pre-commit builds docgen with Go, and installs Go when it is not on `PATH`. `docgen-update` fills the markers, and runs only by hand:
+No setup step is necessary. The go command downloads the modules at the versions that `go.mod` and `go.sum` pin.
 
-```sh
-pre-commit run --hook-stage manual docgen-update
-```
+## Check before each commit
 
-The hooks are in [.pre-commit-hooks.yaml](../../.pre-commit-hooks.yaml).
+To find stale docs before you push, run the same check in a pre-commit hook. See [Use pre-commit](../guides/pre-commit.md).
 
 ## What fails the check
 
