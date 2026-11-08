@@ -46,6 +46,22 @@ A path shows relative to the `root=` of the first `docgen:docgen` marker of the 
 
 `build.sh` copies `editor.js` and the bundle to the root of each version that has an editor block. Only a page with an editor block loads them. They are JavaScript modules, and some browsers load no module from a `file:` URL, so serve the site over HTTP. In those browsers the block stays plain. [docs/site/vendor/README.md](../site/vendor/README.md) holds the versions of the bundle and the command that builds it.
 
+### Pull request preview
+
+Each pull request gets a preview of the site on Cloudflare Pages, in two workflows:
+
+- [docs-preview.yaml](../../.github/workflows/docs-preview.yaml) runs on `pull_request` with a read-only token and no secrets. It runs `go run . update`, builds the site, and uploads it with the number of the pull request as the `docs-preview` artifact.
+- [docs-preview-deploy.yaml](../../.github/workflows/docs-preview-deploy.yaml) runs on `workflow_run` when that build succeeds. It runs no code of the pull request. It checks the artifact, deploys it with `wrangler pages deploy` to the branch `pr-<number>`, and puts the URL in one comment on the pull request.
+
+A `workflow_run` workflow runs from the default branch only, so a change to the deploy workflow has effect after the merge. Until the secret and the account variable are set, the deploy job ends with a notice and does not fail. To set up the preview, the owner:
+
+1. Creates a Cloudflare Pages project for direct upload, named `docgen` or the name in `CLOUDFLARE_PAGES_PROJECT`, in the dashboard or with `npx wrangler pages project create docgen --production-branch=main`.
+2. Creates an API token with the permission Account, Cloudflare Pages, Edit, and adds it as the repository secret `CLOUDFLARE_API_TOKEN`.
+3. Adds the repository variable `CLOUDFLARE_ACCOUNT_ID`, and optionally `CLOUDFLARE_PAGES_PROJECT`, which has the default `docgen`.
+4. Sets Settings, Actions, General, Approval for running fork pull request workflows to require approval for all external contributors, so no fork build runs before a review.
+
+A closed pull request needs no cleanup step. Its preview stays at `pr-<number>.<project>.pages.dev` until someone deletes the deployments in the Cloudflare dashboard.
+
 ### Versioned build
 
 `docs/site/build.sh --versions [out]` builds the site of each version, and the Docs workflow in [docs.yaml](../../.github/workflows/docs.yaml) publishes the result to GitHub Pages on a push to `main` or on a `v*` tag. A pull request builds the current tree only. The output has these paths:
