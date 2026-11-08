@@ -131,6 +131,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.check.outputs.pr }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          SERVER_URL: ${{ github.server_url }}
           ALIAS_URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
@@ -147,7 +148,13 @@ jobs:
           esac
           tag='<!-- docgen-preview -->'
           body=$RUNNER_TEMP/preview-comment.md
-          printf '%s\n**Docs preview**: %s\n\nBuilt from %s.\n' "$tag" "$url" "$HEAD_SHA" >"$body"
+          case $HEAD_SHA in
+          *[!0-9a-f]* | '')
+            echo "::error::the head commit is not a hex SHA."
+            exit 1
+            ;;
+          esac
+          printf '%s\n**Docs preview**: %s\n\nBuilt from [`%s`](%s/%s/commit/%s).\n' "$tag" "$url" "${HEAD_SHA:0:7}" "$SERVER_URL" "$REPO" "$HEAD_SHA" >"$body"
           gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" --jq ".[] | select(.body | startswith(\"$tag\")) | .id" >"$RUNNER_TEMP/preview-comment.ids"
           id=$(head -n 1 "$RUNNER_TEMP/preview-comment.ids")
           if [ -n "$id" ]; then
