@@ -175,6 +175,21 @@ runs:
           if [ -n "$cut" ]; then
             printf '\nThe result is cut to fit the size limit of a comment. The log of the job has all of it.\n' >>"$body"
           fi
+          {
+            printf '\n**To fix:**\n\n'
+            if grep -q '^stale: ' "$RESULT/stderr"; then
+              printf -- '- Run `docgen update` and commit the result.\n'
+            fi
+            if grep -q '^broken: ' "$RESULT/stderr"; then
+              printf -- '- Fix each broken link, image or anchor.\n'
+            fi
+            if grep -q '^unused: ' "$RESULT/stderr"; then
+              printf -- '- Remove each unused region, diagram or variable, or add a marker that uses it.\n'
+            fi
+            if ! grep -q '^\(stale\|broken\|unused\): ' "$RESULT/stderr"; then
+              printf -- '- Fix the errors above, then run `docgen check` again.\n'
+            fi
+          } >>"$body"
         fi
         if [ -n "$id" ]; then
           gh api --method PATCH "repos/$REPO/issues/comments/$id" -F "body=@$body" --silent 2>"$RESULT/gh.err" || gh_failed
