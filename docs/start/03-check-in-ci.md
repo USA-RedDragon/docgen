@@ -31,7 +31,7 @@ jobs:
 ```
 <!-- /docgen:text -->
 
-Go must be on `PATH`, so set up Go before the action. The inputs:
+docgen runs the go command to load the packages of your module, so set up Go before the action. The inputs:
 
 | Input | Default | Meaning |
 |---|---|---|
@@ -41,12 +41,18 @@ Go must be on `PATH`, so set up Go before the action. The inputs:
 | `tags` | | The `-tags` flag. |
 | `jobs` | | The `-jobs` flag. |
 | `diff` | `true` | The `-diff` flag of `check`. `update` ignores it. |
-| `version` | | A docgen version to install, such as `latest`. |
+| `version` | | A docgen version, such as `v0.1.0` or `latest`. Empty uses the ref in `uses:`. |
 | `comment` | `false` | With `true`, comment on the pull request. See [Comment on the pull request](#comment-on-the-pull-request). |
-| `token` | `github.token` | The token for the comment. |
+| `token` | `github.token` | The token for the release download and the comment. |
 | `marker` | `docgen-check` | The name in the hidden HTML comment that marks the comment. |
 
-An empty input adds no flag, so the [settings](../reference/configuration.md) apply. With no `version`, the action builds docgen from its own ref, so a tag, a branch or a commit SHA in `uses:` runs the docgen code at that ref. The exit code of docgen is the exit code of the step. The action is in [action.yml](../../action.yml).
+An empty input adds no flag, so the [settings](../reference/configuration.md) apply. The exit code of docgen is the exit code of the step. The action is in [action.yml](../../action.yml).
+
+How the action gets docgen:
+
+- A release tag, such as `v0.1.0` in `uses:` or in `version`, downloads the prebuilt docgen of that release with `gh`. The action checks its sha256 against the `checksums.txt` of the release, and stops on a mismatch. This takes about a second.
+- A branch or a commit SHA in `uses:` builds docgen from the code at that ref. The build is cached, so the next run with the same code does not build again. Another `version`, such as `latest`, installs with `go install`. Only these two cases use Go to get docgen.
+- When a release has no archive for the runner, or `gh` cannot download it, the action gets docgen from source with Go: a build of the tag in `uses:`, or `go install` of the `version`.
 
 ## Comment on the pull request
 

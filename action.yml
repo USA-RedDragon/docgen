@@ -32,7 +32,7 @@ inputs:
     required: false
     default: 'true'
   version:
-    description: A docgen version to install, such as v0.1.0 or latest. Empty builds the docgen code at the ref of the action.
+    description: A docgen version, such as v0.1.0 or latest. A release tag downloads the release binary, and another version installs with go install. Empty uses the ref of the action.
     required: false
     default: ''
   comment:
@@ -40,7 +40,7 @@ inputs:
     required: false
     default: 'false'
   token:
-    description: The token for the comment.
+    description: The token for the release download and the comment.
     required: false
     default: ${{ github.token }}
   marker:
@@ -51,11 +51,59 @@ inputs:
 runs:
   using: composite
   steps:
+    # github.action_ref and github.action_repository go through env, because
+    # they are empty in a run script of a composite action.
+    - name: Find docgen
+      id: find
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_REPOSITORY: ${{ github.action_repository }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        case $INPUT_COMMAND in
+        check | update) ;;
+        *)
+          echo "::error::command is '$INPUT_COMMAND'; it must be check or update."
+          exit 1
+          ;;
+        esac
+        "$ACTION_PATH/action/install.sh" resolve
+
+    - name: Restore the docgen build
+      id: restore
+      if: steps.find.outputs.mode == 'build'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.find.outputs.dir }}
+        key: ${{ steps.find.outputs.key }}
+
+    - name: Install docgen
+      id: install
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.token }}
+        MODE: ${{ steps.find.outputs.mode }}
+        VERSION: ${{ steps.find.outputs.version }}
+        FALLBACK: ${{ steps.find.outputs.fallback }}
+        DIR: ${{ steps.find.outputs.dir }}
+      run: '"$ACTION_PATH/action/install.sh" install'
+
+    - name: Save the docgen build
+      if: steps.find.outputs.mode == 'build' && steps.install.outputs.built == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.find.outputs.dir }}
+        key: ${{ steps.find.outputs.key }}
+
     - name: Run docgen
       id: docgen
       shell: bash
       env:
-        ACTION_PATH: ${{ github.action_path }}
+        BIN: ${{ steps.install.outputs.bin }}
         INPUT_COMMENT: ${{ inputs.comment }}
         EVENT_NAME: ${{ github.event_name }}
         INPUT_COMMAND: ${{ inputs.command }}
@@ -64,38 +112,20 @@ runs:
         INPUT_TAGS: ${{ inputs.tags }}
         INPUT_JOBS: ${{ inputs.jobs }}
         INPUT_DIFF: ${{ inputs.diff }}
-        INPUT_VERSION: ${{ inputs.version }}
       run: |
-        if ! command -v go >/dev/null; then
-          echo "::error::go is not on PATH. Add actions/setup-go before this step."
-          exit 1
-        fi
-        case $INPUT_COMMAND in
-        check | update) ;;
-        *)
-          echo "::error::command is '$INPUT_COMMAND'; it must be check or update."
-          exit 1
-          ;;
-        esac
         args=("$INPUT_COMMAND")
         if [ -n "$INPUT_MODULE" ]; then args+=(-module "$INPUT_MODULE"); fi
         if [ -n "$INPUT_TAGS" ]; then args+=(-tags "$INPUT_TAGS"); fi
         if [ -n "$INPUT_JOBS" ]; then args+=(-jobs "$INPUT_JOBS"); fi
         if [ "$INPUT_COMMAND" = check ] && [ "$INPUT_DIFF" = true ]; then args+=(-diff); fi
         if [ -n "$INPUT_DIRECTORY" ]; then args+=("$INPUT_DIRECTORY"); fi
-        bin=$(mktemp -d "$RUNNER_TEMP/docgen.XXXXXX")
-        if [ -n "$INPUT_VERSION" ]; then
-          GOBIN=$bin go install "github.com/USA-RedDragon/docgen@$INPUT_VERSION"
-        else
-          (cd "$ACTION_PATH" && GOWORK=off go build -o "$bin/docgen" .)
-        fi
         if [ "$INPUT_COMMENT" != true ] || [ "$INPUT_COMMAND" != check ] || [ "$EVENT_NAME" != pull_request ]; then
-          exec "$bin/docgen" "${args[@]}"
+          exec "$BIN" "${args[@]}"
         fi
         result=$(mktemp -d "$RUNNER_TEMP/docgen-result.XXXXXX")
         echo "result=$result" >>"$GITHUB_OUTPUT"
         set +e
-        { "$bin/docgen" "${args[@]}" 2>&1 1>&3 3>&- | tee "$result/stderr" >&2; } 3>"$result/stdout"
+        { "$BIN" "${args[@]}" 2>&1 1>&3 3>&- | tee "$result/stderr" >&2; } 3>"$result/stdout"
         rc=${PIPESTATUS[0]}
         set -e
         cat "$result/stdout"
