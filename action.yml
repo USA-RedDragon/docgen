@@ -35,14 +35,29 @@ inputs:
     description: A docgen version to install, such as v0.1.0 or latest. Empty builds the docgen code at the ref of the action.
     required: false
     default: ''
+  comment:
+    description: With check on a pull_request event, post or update one comment on the pull request with the result. The job needs pull-requests write.
+    required: false
+    default: 'false'
+  token:
+    description: The token for the comment.
+    required: false
+    default: ${{ github.token }}
+  marker:
+    description: The name in the hidden HTML comment that marks the comment. Letters, digits, dot, dash and underscore only.
+    required: false
+    default: docgen-check
 
 runs:
   using: composite
   steps:
     - name: Run docgen
+      id: docgen
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        EVENT_NAME: ${{ github.event_name }}
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_DIRECTORY: ${{ inputs.directory }}
         INPUT_MODULE: ${{ inputs.module }}
@@ -74,4 +89,97 @@ runs:
         else
           (cd "$ACTION_PATH" && GOWORK=off go build -o "$bin/docgen" .)
         fi
-        exec "$bin/docgen" "${args[@]}"
+        if [ "$INPUT_COMMENT" != true ] || [ "$INPUT_COMMAND" != check ] || [ "$EVENT_NAME" != pull_request ]; then
+          exec "$bin/docgen" "${args[@]}"
+        fi
+        result=$(mktemp -d "$RUNNER_TEMP/docgen-result.XXXXXX")
+        echo "result=$result" >>"$GITHUB_OUTPUT"
+        set +e
+        { "$bin/docgen" "${args[@]}" 2>&1 1>&3 3>&- | tee "$result/stderr" >&2; } 3>"$result/stdout"
+        rc=${PIPESTATUS[0]}
+        set -e
+        cat "$result/stdout"
+        echo "$rc" >"$result/rc"
+        exit "$rc"
+
+    # This step runs after a failed check too, and never fails. The token comes
+    # from the input, and the text of the comment goes to gh api as a file, so no
+    # output of docgen is part of a command line or of an expression.
+    - name: Comment on the pull request
+      if: always() && inputs.comment == 'true' && inputs.command == 'check' && github.event_name == 'pull_request' && steps.docgen.outputs.result != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        RESULT: ${{ steps.docgen.outputs.result }}
+        INPUT_MARKER: ${{ inputs.marker }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set +e
+        warn() {
+          echo "::warning::docgen did not write the pull request comment: $1"
+          exit 0
+        }
+        gh_failed() {
+          warn "gh api failed: $(head -c 300 "$RESULT/gh.err" | tr '\n' ' ')"
+        }
+        if [ ! -f "$RESULT/rc" ]; then warn "docgen did not finish"; fi
+        if ! command -v gh >/dev/null; then warn "gh is not on PATH"; fi
+        case $INPUT_MARKER in
+        '' | *[!A-Za-z0-9._-]*) warn "marker '$INPUT_MARKER' must be letters, digits, dot, dash and underscore only" ;;
+        esac
+        case $PR_NUMBER in
+        '' | *[!0-9]*) warn "the event has no pull request number" ;;
+        esac
+        export GH_HOST=${GITHUB_SERVER_URL#*://}
+        rc=$(cat "$RESULT/rc")
+        tag="<!-- $INPUT_MARKER -->"
+        body=$RESULT/body.md
+        fence() {
+          n=$(grep -o '```*' "$1" | awk '{ if (length > n) n = length } END { print n + 0 }')
+          printf '%*s' $((n < 3 ? 3 : n + 1)) '' | tr ' ' '`'
+        }
+        gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" --jq ".[] | select(.body | startswith(\"$tag\")) | .id" >"$RESULT/ids" 2>"$RESULT/gh.err" || gh_failed
+        id=$(head -n 1 "$RESULT/ids")
+        if [ "$rc" = 0 ]; then
+          if [ -z "$id" ]; then exit 0; fi
+          printf '%s\n**docgen check**: the docs are current.\n' "$tag" >"$body"
+        else
+          # A comment holds at most 65536 characters. A limit in bytes is safe,
+          # because each character is one byte or more.
+          grep -v '^docgen: running ' "$RESULT/stderr" >"$RESULT/lines"
+          cut=
+          if [ "$(wc -c <"$RESULT/lines")" -gt 20000 ]; then
+            head -c 20000 "$RESULT/lines" | sed '$d' >"$RESULT/lines.cut"
+            mv "$RESULT/lines.cut" "$RESULT/lines"
+            cut=1
+          fi
+          f=$(fence "$RESULT/lines")
+          {
+            printf '%s\n**docgen check** exited with code %s.\n\n%stext\n' "$tag" "$rc" "$f"
+            cat "$RESULT/lines"
+            printf '%s\n' "$f"
+          } >"$body"
+          if [ -s "$RESULT/stdout" ]; then
+            f=$(fence "$RESULT/stdout")
+            room=$((60000 - $(wc -c <"$body")))
+            printf '\n<details><summary>Diff</summary>\n\n%sdiff\n' "$f" >>"$body"
+            if [ "$(wc -c <"$RESULT/stdout")" -gt "$room" ]; then
+              head -c "$room" "$RESULT/stdout" | sed '$d' >>"$body"
+              cut=1
+            else
+              cat "$RESULT/stdout" >>"$body"
+            fi
+            printf '%s\n\n</details>\n' "$f" >>"$body"
+          fi
+          if [ -n "$cut" ]; then
+            printf '\nThe result is cut to fit the size limit of a comment. The log of the job has all of it.\n' >>"$body"
+          fi
+        fi
+        if [ -n "$id" ]; then
+          gh api --method PATCH "repos/$REPO/issues/comments/$id" -F "body=@$body" --silent 2>"$RESULT/gh.err" || gh_failed
+          echo "Updated comment $id."
+        else
+          gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" -F "body=@$body" --silent 2>"$RESULT/gh.err" || gh_failed
+          echo "Posted a comment."
+        fi

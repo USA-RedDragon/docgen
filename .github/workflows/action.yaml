@@ -49,3 +49,21 @@ jobs:
             echo "::error::the check of a stale page has outcome $OUTCOME; want failure"
             exit 1
           fi
+
+      # The token of this workflow cannot write, as on a fork pull request, so
+      # the log shows a warning and the outcome stays that of docgen.
+      - name: Check the stale page with a comment
+        id: comment
+        continue-on-error: true
+        uses: ./
+        with:
+          comment: true
+
+      - name: Check that the action with a comment failed
+        env:
+          OUTCOME: ${{ steps.comment.outcome }}
+        run: |
+          if [ "$OUTCOME" != failure ]; then
+            echo "::error::the check of a stale page with a comment has outcome $OUTCOME; want failure"
+            exit 1
+          fi

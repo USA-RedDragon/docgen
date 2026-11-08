@@ -42,9 +42,42 @@ Go must be on `PATH`, so set up Go before the action. The inputs:
 | `jobs` | | The `-jobs` flag. |
 | `diff` | `true` | The `-diff` flag of `check`. `update` ignores it. |
 | `version` | | A docgen version to install, such as `latest`. |
+| `comment` | `false` | With `true`, comment on the pull request. See [Comment on the pull request](#comment-on-the-pull-request). |
+| `token` | `github.token` | The token for the comment. |
+| `marker` | `docgen-check` | The name in the hidden HTML comment that marks the comment. |
 
 An empty input adds no flag, so the [settings](../reference/configuration.md) apply. With no `version`, the action builds docgen from its own ref, so a tag, a branch or a commit SHA in `uses:` runs the docgen code at that ref. The exit code of docgen is the exit code of the step. The action is in [action.yml](../../action.yml).
 
+## Comment on the pull request
+
+With `comment: true`, a `check` run on a `pull_request` event also puts the result in one comment on the pull request. The job needs `pull-requests: write`:
+
+<!-- docgen:text text="permissions:\n  contents: read\n  pull-requests: write\n\njobs:\n  docs:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v7\n      - uses: actions/setup-go@v7\n        with:\n          go-version-file: go.mod\n      - uses: USA-RedDragon/docgen@{version}\n        with:\n          comment: true" code=yaml -->
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: USA-RedDragon/docgen@v0.1.0
+        with:
+          comment: true
+```
+<!-- /docgen:text -->
+
+- The comment holds the stale, unused and broken lines, and the diff in a closed `<details>` block.
+- A hidden HTML comment, `<!-- docgen-check -->` with the default `marker`, starts the comment. The next run edits that comment and adds no other.
+- When the docs are current, the comment changes to one line: the docs are current. It stays, so the pull request keeps a record of the earlier result. With no earlier comment, a clean run adds none.
+- A GitHub comment holds at most 65536 characters. A longer result is cut to fit, with a note, and the log of the job has all of it.
+- The token of a pull request from a fork cannot write. Then the log shows a warning, and the step does not fail for that reason alone.
+- The exit code of docgen stays the exit code of the step. The comment uses `gh api`, which is on GitHub-hosted runners.
 
 ## Use go run instead
 
