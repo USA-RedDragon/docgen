@@ -78,6 +78,7 @@ GitHub Pages serves only [redirect.html](../site/redirect.html), which sends eac
 | Path | Content |
 | --- | --- |
 | `/` | A redirect to `/latest/`. |
+| `/404.html` | The page for a path with no file. Without it, Cloudflare Pages serves `/index.html` for such a path, and its redirect adds `latest/` to the path in a loop. |
 | `/latest/` | A copy of the newest release tag, or of `/main/` when there are no tags. |
 | `/main/` | The current tree, with a banner that states it is not released. |
 | `/v0.1.0/` | One directory for each tag. |

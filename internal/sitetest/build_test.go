@@ -160,6 +160,7 @@ func TestOutputPaths(t *testing.T) {
 		t.Fatalf("default output: rc %d:\n%s", rc, out)
 	}
 	exists(t, filepath.Join(root, "artifacts/docs-site/index.html"))
+	exists(t, filepath.Join(root, "artifacts/docs-site/404.html"))
 	cwd := filepath.Join(filepath.Dir(root), "caller dir")
 	if err := os.MkdirAll(cwd, 0o755); err != nil {
 		t.Fatal(err)

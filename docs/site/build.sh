@@ -216,4 +216,8 @@ else
 	build_pages "$out" "$out/.pages"
 	rm "$out/.pages"
 fi
+# A host such as Cloudflare Pages serves the top index.html for a path with no
+# file when the site has no 404.html, and the redirect of the top index.html
+# then adds latest/ to the path again and again.
+cp "$DOCS_SITE/404.html" "$out/404.html"
 echo "$out/index.html"

@@ -155,7 +155,7 @@ func TestVersionsLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	site, _ := buildVersions(t, root)
-	for _, f := range []string{"index.html", "versions.json", ".nojekyll", ".docgen-site", "latest/index.html", "latest/ten.html", "main/next.html", "main/search-index.js", "v0.9.0/old.html", "v0.9.0/sub/deep.html", "v0.10.0/ten.html"} {
+	for _, f := range []string{"index.html", "404.html", "versions.json", ".nojekyll", ".docgen-site", "latest/index.html", "latest/ten.html", "main/next.html", "main/search-index.js", "v0.9.0/old.html", "v0.9.0/sub/deep.html", "v0.10.0/ten.html"} {
 		exists(t, filepath.Join(site, filepath.FromSlash(f)))
 	}
 	absent(t, site, "page.html", "search-index.js", ".work", ".pages", "main/.search", "v0.9.0/.search", "v0.9.0/.docgen-site", "main/old.html", "v0.10.0/old.html")
