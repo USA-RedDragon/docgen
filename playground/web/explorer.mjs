@@ -1,651 +1,1243 @@
-// The explorer of the playground page: a tree of one memfs folder, after the Explorer of VS Code.
-// It does the file operations (new, rename, move, duplicate, delete, upload, download, copy path) on the memfs
-// and gives the changed paths to the page, which then updates the tabs, the badges and the storage.
-const NS = "http://www.w3.org/2000/svg";
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-const byName = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
-export const parentOf = p => p.slice(0, p.lastIndexOf("/"));
-export const baseName = p => p.slice(p.lastIndexOf("/") + 1);
-export const under = (p, dir) => p === dir || p.startsWith(dir + "/");
-export const previewable = p => /\.(md|markdown|svg)$/i.test(p);
+// The explorer of the playground page: a tree of one memfs folder, after the Explorer of VS Code. It
+// does the file operations (new, rename, move, duplicate, delete, upload, download, copy path) on the
+// memfs and gives the changed paths to the page, which then updates the tabs, the badges and the
+// storage.
+import { element, icon, longPress } from "./dom.mjs";
+import { parentOf, baseName, isUnder, movePath } from "./paths.mjs";
 
-const icons = { go: "go", md: "md", markdown: "md", yaml: "yaml", yml: "yaml", json: "json", toml: "toml", svg: "svg" };
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+/** byName orders names as VS Code does: numbers by value, then case, then code point. */
+const byName = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+/** The localStorage key of the list of open folders. */
+const OPEN_FOLDERS_KEY = "pg-explorer-open";
+const ROW_HEIGHT = 22;
+const HOVER_EXPAND_MS = 500;
+/** The time in which typed letters add up to one name to find. */
+const TYPE_AHEAD_MS = 700;
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || "");
+
+/** previewable reports whether the file path has a preview: Markdown and SVG. */
+export const previewable = path => /\.(md|markdown|svg)$/i.test(path);
+
+const ICON_OF_EXTENSION = { go: "go", md: "md", markdown: "md", yaml: "yaml", yml: "yaml", json: "json", toml: "toml", svg: "svg" };
+
 /** iconOf returns the id of the icon symbol of a file or folder name. */
 export function iconOf(name, dir, open) {
   if (dir) return open ? "fo" : "fc";
   if (name === "go.mod" || name === "go.sum" || name === "go.work") return "mod";
   const dot = name.lastIndexOf(".");
-  return (dot > 0 && icons[name.slice(dot + 1).toLowerCase()]) || "plain";
-}
-/** icon returns an svg element that shows the symbol #id. */
-export function icon(id, cls = "ex-icon") {
-  const s = document.createElementNS(NS, "svg");
-  s.setAttribute("class", cls); s.setAttribute("aria-hidden", "true");
-  const u = document.createElementNS(NS, "use"); u.setAttribute("href", "#" + id);
-  s.append(u);
-  return s;
+  return (dot > 0 && ICON_OF_EXTENSION[name.slice(dot + 1).toLowerCase()]) || "plain";
 }
 
-/** longPress calls fn(x, y, event) when a touch or pen holds still on el for 500 ms. */
-export function longPress(el, fn) {
-  let t = 0, x = 0, y = 0, at = 0;
-  const stop = () => clearTimeout(t);
-  el.addEventListener("pointerdown", e => {
-    if (e.pointerType === "mouse") return;
-    stop(); x = e.clientX; y = e.clientY;
-    t = setTimeout(() => { at = Date.now(); fn(x, y, e); }, 500);
-  });
-  el.addEventListener("pointermove", e => { if (Math.hypot(e.clientX - x, e.clientY - y) > 10) stop(); });
-  for (const n of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(n, stop);
-  const recent = () => Date.now() - at < 800;
-  el.addEventListener("contextmenu", e => { if (recent()) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
-  el.addEventListener("click", e => { if (recent()) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+/** shortcut returns the text of a keyboard shortcut, with the symbols of the Mac on a Mac. */
+function shortcut(text) {
+  if (!IS_MAC) return text;
+  return text.replace("Ctrl+", "⌘").replace("Alt+", "⌥").replace("Shift+", "⇧");
 }
 
-const crcTable = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-const crc32 = d => { let c = 0xffffffff; for (let i = 0; i < d.length; i++) c = crcTable[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-/** zip returns a zip archive (stored, no compression) of entries [[name, bytes or null for a folder]]. */
-function zip(entries) {
-  const enc = new TextEncoder(), parts = [], central = [];
-  const d = new Date(), time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
-  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
-  let off = 0;
-  for (const [n, data] of entries) {
-    const name = enc.encode(data ? n : n + "/"), body = data || new Uint8Array(0), crc = crc32(body);
-    const h = new DataView(new ArrayBuffer(30));
-    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x800, true); h.setUint16(10, time, true); h.setUint16(12, date, true);
-    h.setUint32(14, crc, true); h.setUint32(18, body.length, true); h.setUint32(22, body.length, true); h.setUint16(26, name.length, true);
-    const c = new DataView(new ArrayBuffer(46));
-    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 0x31e, true); c.setUint16(6, 20, true); c.setUint16(8, 0x800, true); c.setUint16(12, time, true); c.setUint16(14, date, true);
-    c.setUint32(16, crc, true); c.setUint32(20, body.length, true); c.setUint32(24, body.length, true); c.setUint16(28, name.length, true);
-    c.setUint32(38, data ? 0o100644 << 16 : (0o40755 << 16) | 0x10, true); c.setUint32(42, off, true);
-    parts.push(new Uint8Array(h.buffer), name, body); central.push(new Uint8Array(c.buffer), name);
-    off += 30 + name.length + body.length;
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let crc = n;
+    for (let bit = 0; bit < 8; bit++) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+    table[n] = crc >>> 0;
   }
-  const size = central.reduce((a, b) => a + b.length, 0);
-  const e = new DataView(new ArrayBuffer(22));
-  e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
-  return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: "application/zip" });
+  return table;
+})();
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 255] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const ZIP_LOCAL_HEADER = 0x04034b50;
+const ZIP_CENTRAL_HEADER = 0x02014b50;
+const ZIP_END = 0x06054b50;
+const ZIP_VERSION = 20;
+/** The "made by" field of a central header: Unix (3), version 3.0 (30). */
+const ZIP_MADE_BY_UNIX = 0x31e;
+/** The flag of a name in UTF-8. */
+const ZIP_UTF8 = 0x800;
+const ZIP_MSDOS_DIRECTORY = 0x10;
+
+/** zip returns a zip archive (stored, no compression) of entries, each [name, bytes, or null for a folder]. */
+function zip(entries) {
+  const textEncoder = new TextEncoder();
+  const parts = [];
+  const central = [];
+  const now = new Date();
+  const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  let offset = 0;
+  for (const [entryName, data] of entries) {
+    const name = textEncoder.encode(data ? entryName : entryName + "/");
+    const body = data || new Uint8Array(0);
+    const crc = crc32(body);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, ZIP_LOCAL_HEADER, true);
+    local.setUint16(4, ZIP_VERSION, true);
+    local.setUint16(6, ZIP_UTF8, true);
+    local.setUint16(10, time, true);
+    local.setUint16(12, date, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, body.length, true);
+    local.setUint32(22, body.length, true);
+    local.setUint16(26, name.length, true);
+    const header = new DataView(new ArrayBuffer(46));
+    header.setUint32(0, ZIP_CENTRAL_HEADER, true);
+    header.setUint16(4, ZIP_MADE_BY_UNIX, true);
+    header.setUint16(6, ZIP_VERSION, true);
+    header.setUint16(8, ZIP_UTF8, true);
+    header.setUint16(12, time, true);
+    header.setUint16(14, date, true);
+    header.setUint32(16, crc, true);
+    header.setUint32(20, body.length, true);
+    header.setUint32(24, body.length, true);
+    header.setUint16(28, name.length, true);
+    // The external attributes: the Unix mode in the high 16 bits, and the MS-DOS folder bit.
+    header.setUint32(38, data ? 0o100644 << 16 : (0o40755 << 16) | ZIP_MSDOS_DIRECTORY, true);
+    header.setUint32(42, offset, true);
+    parts.push(new Uint8Array(local.buffer), name, body);
+    central.push(new Uint8Array(header.buffer), name);
+    offset += 30 + name.length + body.length;
+  }
+  const centralSize = central.reduce((total, part) => total + part.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, ZIP_END, true);
+  end.setUint16(8, entries.length, true);
+  end.setUint16(10, entries.length, true);
+  end.setUint32(12, centralSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
 }
 
 /**
- * createExplorer shows the folder o.root of o.fsys in o.tree. The page gives these functions:
- * open(path, how) opens a file ("file", "preview" or "side"); changes() returns a Map of path to "M" or "U";
- * edited(path) returns true when a file differs from the starter; moved(pairs) and removed(paths, edited) run after file operations;
- * changed() is called after each change of the memfs; busy() returns true during a run; note(text) shows a message;
- * ask({title, text, list, ok}) resolves to true on OK; reset() restores the sample; showTree() makes the tree visible.
+ * readDrop reads the dropped items, each a File or a FileSystemEntry, as a list of [relative path,
+ * bytes or null for a folder].
  */
-export function createExplorer(o) {
-  const { fsys, root, tree } = o;
-  const menu = o.menu;
-  let expanded = new Set(), selected = new Set(), focus = null, anchor = null, edit = null, rows = [], rowOf = new Map(), uid = 0;
-  let drag = null, dropDir = null, hoverDir = null, hoverTimer = 0, typed = "", typedAt = 0;
-  const KEY = "pg-explorer-open";
-  try { const v = JSON.parse(localStorage.getItem(KEY)); if (Array.isArray(v)) expanded = new Set(v); else expanded = null; } catch { expanded = null; }
-  if (!expanded) { expanded = new Set(); const walk = p => { const e = fsys.lookup(p); for (const [n, c] of e.children) if (c.dir) { expanded.add(p + "/" + n); walk(p + "/" + n); } }; walk(root); }
-  const saveOpen = () => { try { localStorage.setItem(KEY, JSON.stringify([...expanded])); } catch {} };
+async function readDrop(items) {
+  const files = [];
+  const readEntry = async (item, prefix) => {
+    const path = prefix + item.name;
+    if (item instanceof File) {
+      files.push([path, new Uint8Array(await item.arrayBuffer())]);
+      return;
+    }
+    if (item.isFile) {
+      const file = await new Promise((resolve, reject) => item.file(resolve, reject));
+      files.push([path, new Uint8Array(await file.arrayBuffer())]);
+      return;
+    }
+    if (!item.isDirectory) return;
+    files.push([path, null]);
+    const reader = item.createReader();
+    for (;;) {
+      const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      if (!batch.length) break;
+      for (const child of batch) await readEntry(child, path + "/");
+    }
+  };
+  for (const item of items) if (item) await readEntry(item, "");
+  return files;
+}
 
-  const ent = p => fsys.lookup(p);
-  const isDir = p => { const e = ent(p); return !!e && e.dir; };
-  const rel = p => p.slice(root.length + 1);
-  const topLevel = ps => ps.filter(p => !ps.some(q => q !== p && under(p, q)));
-  const filesUnder = p => { const out = []; const walk = (q, e) => { if (!e.dir) return out.push(q); for (const [n, c] of e.children) walk(q + "/" + n, c); }; const e = ent(p); if (e) walk(p, e); return out; };
-  const guard = () => { if (o.busy()) { o.note("Wait for the run to end before you change files."); return false; } return true; };
+/**
+ * createExplorer shows the folder page.root of page.fsys in page.tree, with the context menu in
+ * page.menu and the toolbar in page.side. The page gives these functions:
+ * open(path, how) opens a file ("file", "preview" or "side"); changes() returns a Map of path to "M"
+ * or "U"; edited(path) returns true when a file differs from the starter; moved(pairs) and
+ * removed(paths, edited) run after file operations; changed() runs after each change of the memfs;
+ * busy() returns true during a run; note(text) shows a message; ask({title, text, list, ok}) resolves
+ * to true on OK; reset() restores the sample; showTree() makes the tree visible; canSide() returns
+ * true when a preview can open to the side; copied(text) and downloaded(name, blob), when set, get
+ * each copy and download.
+ */
+export function createExplorer(page) {
+  const { fsys, root, tree, menu } = page;
+  let expanded = readOpenFolders();
+  let selected = new Set();
+  let focus = null;
+  /** The start of a Shift selection. */
+  let anchor = null;
+  /** The name input in the tree: {kind: "file" or "folder", parent, dir} or {kind: "rename", path, dir}. */
+  let edit = null;
+  /** The visible rows in order, each {path, name, dir, depth, element}. */
+  let rows = [];
+  let rowOf = new Map();
+  let nextRowId = 0;
+  /** The paths that a drag in the tree moves. */
+  let dragged = null;
+  let dropDir = null;
+  let hoverDir = null;
+  let hoverTimer = 0;
+  let typed = "";
+  let typedAt = 0;
+  let menuReturnFocus = null;
 
+  function readOpenFolders() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(OPEN_FOLDERS_KEY));
+      if (Array.isArray(saved)) return new Set(saved);
+    } catch {
+      // No storage, or a value that is not JSON: all folders open.
+    }
+    const all = new Set();
+    fsys.walk(root, (path, entry) => {
+      if (entry.dir && path !== root) all.add(path);
+    });
+    return all;
+  }
+
+  function saveOpenFolders() {
+    try {
+      localStorage.setItem(OPEN_FOLDERS_KEY, JSON.stringify([...expanded]));
+    } catch {
+      // The open folders then last until a reload.
+    }
+  }
+
+  const entryOf = path => fsys.lookup(path);
+  const isDir = path => {
+    const entry = entryOf(path);
+    return !!entry && entry.dir;
+  };
+  const relative = path => path.slice(root.length + 1);
+  /** folderLabel returns the name of the folder dir in a message. */
+  const folderLabel = dir => (dir === root ? "work" : relative(dir));
+  /** topLevel returns the paths that are not inside another path of the list. */
+  const topLevel = paths => paths.filter(path => !paths.some(other => other !== path && isUnder(path, other)));
+
+  function filesUnder(path) {
+    const files = [];
+    if (!entryOf(path)) return files;
+    fsys.walk(path, (filePath, entry) => {
+      if (!entry.dir) files.push(filePath);
+    });
+    return files;
+  }
+
+  /** canChange shows a note and returns false during a run. */
+  function canChange() {
+    if (!page.busy()) return true;
+    page.note("Wait for the run to end before you change files.");
+    return false;
+  }
+
+  /** nameError returns the error text of the new name raw in the folder dir, or "". self is the current name of a rename. */
   function nameError(raw, dir, self) {
-    const n = raw.trim();
-    if (!n) return "A file or folder name must be provided.";
-    if (n.includes("/")) return "A name cannot contain a slash (/).";
-    if (n === "." || n === "..") return `The name ${n} is not valid as a file or folder name.`;
-    if (n.includes("\0")) return "A name cannot contain a null character.";
-    const d = ent(dir);
-    if (n !== self && d && d.dir && d.children.has(n)) return `A file or folder ${n} already exists in this folder. Choose a different name.`;
+    const name = raw.trim();
+    if (!name) return "A file or folder name must be provided.";
+    if (name.includes("/")) return "A name cannot contain a slash (/).";
+    if (name === "." || name === "..") return `The name ${name} is not valid as a file or folder name.`;
+    if (name.includes("\0")) return "A name cannot contain a null character.";
+    const dirEntry = entryOf(dir);
+    if (name !== self && dirEntry && dirEntry.dir && dirEntry.children.has(name)) {
+      return `A file or folder ${name} already exists in this folder. Choose a different name.`;
+    }
     return "";
+  }
+
+  function selectOnly(path) {
+    selected = new Set([path]);
+    focus = path;
+    anchor = path;
+  }
+
+  /** foldersWithChanges returns the folders under the root that hold a path of changes. */
+  function foldersWithChanges(changes) {
+    const folders = new Set();
+    for (const path of changes.keys()) {
+      for (let dir = parentOf(path); dir.startsWith(root + "/"); dir = parentOf(dir)) folders.add(dir);
+    }
+    return folders;
   }
 
   // Rendering.
+
   function render() {
-    const changes = o.changes();
-    const dirty = new Set();
-    for (const p of changes.keys()) for (let d = parentOf(p); d.startsWith(root + "/"); d = parentOf(d)) dirty.add(d);
-    rows = []; rowOf = new Map();
-    const frag = document.createDocumentFragment();
+    const changes = page.changes();
+    rows = [];
+    rowOf = new Map();
+    const fragment = document.createDocumentFragment();
     let editInput = null;
-    const walk = (dir, depth) => {
-      const e = ent(dir);
-      if (!e || !e.dir) return;
-      if (edit && edit.kind !== "rename" && edit.parent === dir) { const r = newRow(depth); frag.append(r.el); editInput = r.inp; }
-      const kids = [...e.children].sort(([a, x], [b, y]) => (y.dir - x.dir) || byName(a, b));
-      for (const [name, c] of kids) {
-        const p = dir + "/" + name;
-        const r = { path: p, name, dir: c.dir, depth };
-        r.el = rowEl(r);
-        if (edit && edit.kind === "rename" && edit.path === p) editInput = renameInput(r);
-        rows.push(r); rowOf.set(p, r); frag.append(r.el);
-        if (c.dir && expanded.has(p)) walk(p, depth + 1);
+    const addRows = (dir, depth) => {
+      const dirEntry = entryOf(dir);
+      if (!dirEntry || !dirEntry.dir) return;
+      if (edit && edit.kind !== "rename" && edit.parent === dir) {
+        const newRow = newEntryRow(depth);
+        fragment.append(newRow.element);
+        editInput = newRow.input;
+      }
+      const children = [...dirEntry.children].sort(([a, x], [b, y]) => y.dir - x.dir || byName(a, b));
+      for (const [name, child] of children) {
+        const path = dir + "/" + name;
+        const row = { path, name, dir: child.dir, depth };
+        row.element = rowElement(row);
+        if (edit && edit.kind === "rename" && edit.path === path) editInput = renameInput(row);
+        rows.push(row);
+        rowOf.set(path, row);
+        fragment.append(row.element);
+        if (child.dir && expanded.has(path)) addRows(path, depth + 1);
       }
     };
-    walk(root, 0);
-    tree.replaceChildren(frag);
-    for (const p of [...selected]) if (!ent(p)) selected.delete(p);
-    if (focus && !ent(focus)) focus = null;
-    decorate(changes, dirty);
+    addRows(root, 0);
+    tree.replaceChildren(fragment);
+    for (const path of [...selected]) if (!entryOf(path)) selected.delete(path);
+    if (focus && !entryOf(focus)) focus = null;
+    decorate(changes);
     paint();
     if (dropDir) setDrop(dropDir);
-    if (editInput) { editInput.focus(); editInput.dispatchEvent(new Event("select-name")); }
+    if (editInput) {
+      editInput.focus();
+      editInput.dispatchEvent(new Event("select-name"));
+    }
   }
 
-  function rowEl(r) {
-    const el = document.createElement("div");
-    el.className = "ex-row"; el.id = "ex-" + ++uid;
-    el.setAttribute("role", "treeitem"); el.setAttribute("aria-level", r.depth + 1);
-    el.dataset.path = r.path; el.draggable = true; el.title = rel(r.path);
-    el.style.setProperty("--d", r.depth);
-    const tw = document.createElement("span"); tw.className = "ex-tw";
-    if (r.dir) { el.setAttribute("aria-expanded", String(expanded.has(r.path))); tw.append(icon("t-chev", "")); }
-    const ind = document.createElement("span"); ind.className = "ex-ind";
-    const name = document.createElement("span"); name.className = "ex-name"; name.textContent = r.name;
-    const badge = document.createElement("span"); badge.className = "ex-badge"; badge.setAttribute("aria-hidden", "true");
-    el.append(ind, tw, icon("i-" + iconOf(r.name, r.dir, expanded.has(r.path))), name, badge);
-    return el;
+  function rowElement(row) {
+    const open = expanded.has(row.path);
+    const rowNode = element("div", {
+      className: "ex-row",
+      id: "ex-" + ++nextRowId,
+      draggable: true,
+      title: relative(row.path),
+      attributes: { role: "treeitem", "aria-level": row.depth + 1 },
+    });
+    rowNode.dataset.path = row.path;
+    rowNode.style.setProperty("--d", row.depth);
+    const twistie = element("span", { className: "ex-tw" });
+    if (row.dir) {
+      rowNode.setAttribute("aria-expanded", String(open));
+      twistie.append(icon("t-chev", ""));
+    }
+    rowNode.append(
+      element("span", { className: "ex-ind" }),
+      twistie,
+      icon("i-" + iconOf(row.name, row.dir, open)),
+      element("span", { className: "ex-name", textContent: row.name }),
+      element("span", { className: "ex-badge", attributes: { "aria-hidden": "true" } }),
+    );
+    return rowNode;
   }
 
-  function inputBox(value, check, done) {
-    const wrap = document.createElement("span"); wrap.className = "ex-edit";
-    const inp = document.createElement("input"); inp.className = "ex-input"; inp.value = value; inp.spellcheck = false; inp.autocomplete = "off";
-    inp.setAttribute("aria-label", "Name");
-    const msg = document.createElement("div"); msg.className = "ex-msg"; msg.setAttribute("role", "alert"); msg.hidden = true;
-    const upd = () => { const m = check(inp.value); msg.textContent = m; msg.hidden = !m; inp.classList.toggle("bad", !!m); inp.setAttribute("aria-invalid", String(!!m)); return m; };
+  /**
+   * nameInput returns {box, input}: a name input with the start text value and an error message.
+   * check(text) returns the error text of a name, or "". done(name) gets the name on Enter, or on a
+   * blur with a valid name, and null on Escape or on a blur with a bad name.
+   */
+  function nameInput(value, check, done) {
+    const input = element("input", {
+      className: "ex-input",
+      value,
+      spellcheck: false,
+      autocomplete: "off",
+      attributes: { "aria-label": "Name" },
+    });
+    const message = element("div", { className: "ex-msg", hidden: true, attributes: { role: "alert" } });
+    const validate = () => {
+      const error = check(input.value);
+      message.textContent = error;
+      message.hidden = !error;
+      input.classList.toggle("bad", !!error);
+      input.setAttribute("aria-invalid", String(!!error));
+      return error;
+    };
     let ended = false;
-    const end = ok => { if (ended) return; ended = true; done(ok ? inp.value.trim() : null); };
-    inp.addEventListener("input", upd);
-    inp.addEventListener("keydown", e => {
-      e.stopPropagation();
-      if (e.key === "Enter") { e.preventDefault(); if (!upd()) end(true); }
-      else if (e.key === "Escape") { e.preventDefault(); end(false); }
+    const end = accept => {
+      if (ended) return;
+      ended = true;
+      done(accept ? input.value.trim() : null);
+    };
+    input.addEventListener("input", validate);
+    input.addEventListener("keydown", event => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (!validate()) end(true);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        end(false);
+      }
     });
-    inp.addEventListener("blur", () => setTimeout(() => { if (!ended && document.activeElement !== inp) end(!upd()); }, 0));
-    for (const n of ["click", "dblclick", "pointerdown", "mousedown", "contextmenu", "dragstart"]) inp.addEventListener(n, e => e.stopPropagation());
-    inp.addEventListener("select-name", () => { const dot = value.lastIndexOf("."); inp.setSelectionRange(0, dot > 0 && !edit?.dir ? dot : value.length); });
-    wrap.append(inp, msg);
-    return { wrap, inp };
+    // The check runs after the blur event, when document.activeElement shows where the focus went.
+    input.addEventListener("blur", () =>
+      setTimeout(() => {
+        if (!ended && document.activeElement !== input) end(!validate());
+      }, 0),
+    );
+    for (const type of ["click", "dblclick", "pointerdown", "mousedown", "contextmenu", "dragstart"]) {
+      input.addEventListener(type, event => event.stopPropagation());
+    }
+    // The name of a file is selected without its extension, as in VS Code.
+    input.addEventListener("select-name", () => {
+      const dot = value.lastIndexOf(".");
+      input.setSelectionRange(0, dot > 0 && !edit?.dir ? dot : value.length);
+    });
+    return { box: element("span", { className: "ex-edit" }, input, message), input };
   }
 
-  function renameInput(r) {
-    const { wrap, inp } = inputBox(r.name, v => nameError(v, parentOf(r.path), r.name), v => {
-      const path = edit.path; edit = null;
-      if (v && v !== r.name) rename(path, v); else render();
-      tree.focus({ preventScroll: true });
-    });
-    r.el.querySelector(".ex-name").replaceWith(wrap);
-    r.el.draggable = false;
-    return inp;
-  }
-
-  function newRow(depth) {
-    const el = document.createElement("div");
-    el.className = "ex-row ex-new"; el.style.setProperty("--d", depth);
-    const ind = document.createElement("span"); ind.className = "ex-ind";
-    const tw = document.createElement("span"); tw.className = "ex-tw";
-    const { kind, parent } = edit;
-    const { wrap, inp } = inputBox("", v => nameError(v, parent, null), v => {
+  function renameInput(row) {
+    const check = text => nameError(text, parentOf(row.path), row.name);
+    const { box, input } = nameInput(row.name, check, name => {
+      const path = edit.path;
       edit = null;
-      if (v) create(kind, parent + "/" + v); else render();
+      if (name && name !== row.name) rename(path, name);
+      else render();
       tree.focus({ preventScroll: true });
     });
-    el.append(ind, tw, icon(kind === "folder" ? "i-fc" : "i-plain"), wrap);
-    return { el, inp };
+    row.element.querySelector(".ex-name").replaceWith(box);
+    row.element.draggable = false;
+    return input;
+  }
+
+  /** newEntryRow returns {element, input}: the row of the name of a new file or folder. */
+  function newEntryRow(depth) {
+    const { kind, parent } = edit;
+    const check = text => nameError(text, parent, null);
+    const { box, input } = nameInput("", check, name => {
+      edit = null;
+      if (name) create(kind, parent + "/" + name);
+      else render();
+      tree.focus({ preventScroll: true });
+    });
+    const row = element(
+      "div",
+      { className: "ex-row ex-new" },
+      element("span", { className: "ex-ind" }),
+      element("span", { className: "ex-tw" }),
+      icon(kind === "folder" ? "i-fc" : "i-plain"),
+      box,
+    );
+    row.style.setProperty("--d", depth);
+    return { element: row, input };
   }
 
   /** decorate sets the M, U and folder marks without a new render. */
-  function decorate(changes = o.changes(), dirty) {
-    if (!dirty) { dirty = new Set(); for (const p of changes.keys()) for (let d = parentOf(p); d.startsWith(root + "/"); d = parentOf(d)) dirty.add(d); }
-    for (const r of rows) {
-      const m = r.dir ? "" : changes.get(r.path) || "";
-      const dd = r.dir && dirty.has(r.path);
-      r.el.classList.toggle("ex-M", m === "M"); r.el.classList.toggle("ex-U", m === "U"); r.el.classList.toggle("ex-dirty", dd);
-      r.el.lastChild.textContent = m || (dd ? "●" : "");
-      r.el.lastChild.title = m === "M" ? "Modified" : m === "U" ? "New" : dd ? "Contains changes" : "";
+  function decorate(changes = page.changes()) {
+    const changedFolders = foldersWithChanges(changes);
+    for (const row of rows) {
+      const mark = row.dir ? "" : changes.get(row.path) || "";
+      const holdsChanges = row.dir && changedFolders.has(row.path);
+      row.element.classList.toggle("ex-M", mark === "M");
+      row.element.classList.toggle("ex-U", mark === "U");
+      row.element.classList.toggle("ex-dirty", holdsChanges);
+      const badge = row.element.lastChild;
+      badge.textContent = mark || (holdsChanges ? "●" : "");
+      if (mark === "M") badge.title = "Modified";
+      else if (mark === "U") badge.title = "New";
+      else badge.title = holdsChanges ? "Contains changes" : "";
     }
   }
 
+  /** paint shows the selection and the focus. */
   function paint() {
-    let fid = "";
-    for (const r of rows) {
-      const s = selected.has(r.path), f = focus === r.path;
-      r.el.classList.toggle("sel", s); r.el.classList.toggle("foc", f);
-      r.el.setAttribute("aria-selected", String(s));
-      if (f) fid = r.el.id;
+    let focusId = "";
+    for (const row of rows) {
+      const isSelected = selected.has(row.path);
+      const isFocus = focus === row.path;
+      row.element.classList.toggle("sel", isSelected);
+      row.element.classList.toggle("foc", isFocus);
+      row.element.setAttribute("aria-selected", String(isSelected));
+      if (isFocus) focusId = row.element.id;
     }
-    if (fid) tree.setAttribute("aria-activedescendant", fid); else tree.removeAttribute("aria-activedescendant");
+    if (focusId) tree.setAttribute("aria-activedescendant", focusId);
+    else tree.removeAttribute("aria-activedescendant");
   }
-  const scrollTo = p => { const r = rowOf.get(p); if (r) r.el.scrollIntoView({ block: "nearest" }); };
 
-  function setOpen(p, open) {
-    if (open === expanded.has(p)) return;
-    if (open) expanded.add(p); else expanded.delete(p);
-    saveOpen(); render();
+  function scrollTo(path) {
+    const row = rowOf.get(path);
+    if (row) row.element.scrollIntoView({ block: "nearest" });
   }
-  function expandTo(p) {
+
+  function setOpen(path, open) {
+    if (open === expanded.has(path)) return;
+    if (open) expanded.add(path);
+    else expanded.delete(path);
+    saveOpenFolders();
+    render();
+  }
+
+  /** expandTo opens the folders above path. It returns true when it opened one. */
+  function expandTo(path) {
     let changed = false;
-    for (let d = parentOf(p); d.startsWith(root + "/"); d = parentOf(d)) if (!expanded.has(d)) { expanded.add(d); changed = true; }
-    if (changed) saveOpen();
+    for (let dir = parentOf(path); dir.startsWith(root + "/"); dir = parentOf(dir)) {
+      if (expanded.has(dir)) continue;
+      expanded.add(dir);
+      changed = true;
+    }
+    if (changed) saveOpenFolders();
     return changed;
   }
 
-  /** reveal expands the folders above p, selects p and scrolls it into view. */
-  function reveal(p) {
-    if (!ent(p) || edit) return;
-    const changed = expandTo(p);
-    selected = new Set([p]); focus = anchor = p;
-    if (changed) render(); else paint();
-    scrollTo(p);
+  /** openFolder opens the folder dir and the folders above it. */
+  function openFolder(dir) {
+    if (dir === root) return;
+    expandTo(dir + "/x");
+    expanded.add(dir);
+    saveOpenFolders();
   }
 
-  function collapseAll() { expanded.clear(); saveOpen(); render(); }
+  /** reveal opens the folders above path, selects path and scrolls it into view. */
+  function reveal(path) {
+    if (!entryOf(path) || edit) return;
+    const changed = expandTo(path);
+    selectOnly(path);
+    if (changed) render();
+    else paint();
+    scrollTo(path);
+  }
+
+  function collapseAll() {
+    expanded.clear();
+    saveOpenFolders();
+    render();
+  }
 
   // Selection.
-  const indexOf = p => rows.findIndex(r => r.path === p);
-  function rangeTo(p) {
-    const a = indexOf(anchor), b = indexOf(p);
-    if (a < 0 || b < 0) { selected = new Set([p]); anchor = p; return; }
-    selected = new Set(rows.slice(Math.min(a, b), Math.max(a, b) + 1).map(r => r.path));
+
+  const indexOf = path => rows.findIndex(row => row.path === path);
+
+  /** selectRange selects the rows from the anchor to path. */
+  function selectRange(path) {
+    const from = indexOf(anchor);
+    const to = indexOf(path);
+    if (from < 0 || to < 0) {
+      selected = new Set([path]);
+      anchor = path;
+      return;
+    }
+    selected = new Set(rows.slice(Math.min(from, to), Math.max(from, to) + 1).map(row => row.path));
   }
-  const targets = () => { const s = topLevel([...selected]); return s.length ? s : focus ? [focus] : [root]; };
-  const folderFor = p => (!p || p === root ? root : isDir(p) ? p : parentOf(p));
+
+  /** targets returns the paths of an action: the selection, else the focus, else the root. */
+  function targets() {
+    const paths = topLevel([...selected]);
+    if (paths.length) return paths;
+    return focus ? [focus] : [root];
+  }
+
+  /** folderFor returns the folder of a new entry next to path: path when it is a folder, else its parent. */
+  function folderFor(path) {
+    if (!path || path === root) return root;
+    return isDir(path) ? path : parentOf(path);
+  }
 
   // Operations.
+
   function startNew(kind, dir = folderFor(focus)) {
-    if (!guard()) return;
-    o.showTree();
-    if (dir !== root) { expandTo(dir + "/x"); expanded.add(dir); saveOpen(); }
+    if (!canChange()) return;
+    page.showTree();
+    openFolder(dir);
     edit = { kind, parent: dir, dir: kind === "folder" };
     render();
   }
-  function startRename(p) {
-    if (!p || p === root || !ent(p) || !guard()) return;
-    o.showTree();
-    expandTo(p);
-    edit = { kind: "rename", path: p, dir: isDir(p) };
-    selected = new Set([p]); focus = anchor = p;
+
+  function startRename(path) {
+    if (!path || path === root || !entryOf(path) || !canChange()) return;
+    page.showTree();
+    expandTo(path);
+    edit = { kind: "rename", path, dir: isDir(path) };
+    selectOnly(path);
     render();
   }
-  function mapPaths(pairs) {
-    const map = p => { for (const [a, b] of pairs) if (under(p, a)) return b + p.slice(a.length); return p; };
-    expanded = new Set([...expanded].map(map)); saveOpen();
-    selected = new Set([...selected].map(map));
-    if (focus) focus = map(focus);
-    if (anchor) anchor = map(anchor);
+
+  /** movePaths changes the open folders, the selection, the focus and the anchor after the moves of pairs. */
+  function movePaths(pairs) {
+    expanded = new Set([...expanded].map(path => movePath(path, pairs)));
+    saveOpenFolders();
+    selected = new Set([...selected].map(path => movePath(path, pairs)));
+    if (focus) focus = movePath(focus, pairs);
+    if (anchor) anchor = movePath(anchor, pairs);
   }
-  function moveEntry(src, dst) {
-    const a = ent(parentOf(src)), b = ent(parentOf(dst)), e = a.children.get(baseName(src));
-    a.children.delete(baseName(src)); b.children.set(baseName(dst), e);
-    e.mtime = Date.now();
+
+  function moveEntry(from, to) {
+    const fromDir = entryOf(parentOf(from));
+    const toDir = entryOf(parentOf(to));
+    const entry = fromDir.children.get(baseName(from));
+    fromDir.children.delete(baseName(from));
+    toDir.children.set(baseName(to), entry);
+    entry.mtime = Date.now();
   }
-  function rename(p, name) {
-    if (!guard()) return render();
-    const err = nameError(name, parentOf(p), baseName(p));
-    if (err) { o.note(err); return render(); }
-    const q = parentOf(p) + "/" + name;
-    moveEntry(p, q);
-    mapPaths([[p, q]]);
-    selected = new Set([q]); focus = anchor = q;
-    o.moved([[p, q]]);
-    render(); o.changed();
+
+  function rename(path, name) {
+    if (!canChange()) return render();
+    const error = nameError(name, parentOf(path), baseName(path));
+    if (error) {
+      page.note(error);
+      return render();
+    }
+    const newPath = parentOf(path) + "/" + name;
+    moveEntry(path, newPath);
+    movePaths([[path, newPath]]);
+    selectOnly(newPath);
+    page.moved([[path, newPath]]);
+    render();
+    page.changed();
   }
-  function create(kind, p) {
-    if (!guard()) return render();
-    const err = nameError(baseName(p), parentOf(p), null);
-    if (err) { o.note(err); return render(); }
-    if (kind === "folder") { fsys.mkdirAll(p); expanded.add(p); saveOpen(); } else fsys.writeFile(p, new Uint8Array(0));
-    selected = new Set([p]); focus = anchor = p;
-    render(); scrollTo(p); o.changed();
-    if (kind !== "folder") o.open(p, "file");
+
+  function create(kind, path) {
+    if (!canChange()) return render();
+    const error = nameError(baseName(path), parentOf(path), null);
+    if (error) {
+      page.note(error);
+      return render();
+    }
+    if (kind === "folder") {
+      fsys.mkdirAll(path);
+      expanded.add(path);
+      saveOpenFolders();
+    } else {
+      fsys.writeFile(path, new Uint8Array(0));
+    }
+    selectOnly(path);
+    render();
+    scrollTo(path);
+    page.changed();
+    if (kind !== "folder") page.open(path, "file");
   }
-  function copyEntry(e) {
-    const c = fsys.newEntry(e.dir);
-    c.mode = e.mode;
-    if (e.dir) for (const [n, k] of e.children) c.children.set(n, copyEntry(k));
-    else { c.data = e.data.slice(0, e.size); c.size = e.size; }
-    return c;
+
+  function copyEntry(entry) {
+    const copy = fsys.newEntry(entry.dir);
+    copy.mode = entry.mode;
+    if (entry.dir) {
+      for (const [name, child] of entry.children) copy.children.set(name, copyEntry(child));
+    } else {
+      copy.data = entry.data.slice(0, entry.size);
+      copy.size = entry.size;
+    }
+    return copy;
   }
+
+  /** copyName returns the first free name of a copy of name in dir: "a copy.go", then "a copy 2.go". */
   function copyName(dir, name, isFolder) {
-    const d = ent(dir), dot = isFolder ? -1 : name.lastIndexOf(".");
-    const stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : "";
-    for (let i = 1; ; i++) { const n = `${stem} copy${i > 1 ? " " + i : ""}${ext}`; if (!d.children.has(n)) return n; }
+    const children = entryOf(dir).children;
+    const dot = isFolder ? -1 : name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const extension = dot > 0 ? name.slice(dot) : "";
+    for (let i = 1; ; i++) {
+      const candidate = `${stem} copy${i > 1 ? " " + i : ""}${extension}`;
+      if (!children.has(candidate)) return candidate;
+    }
   }
-  function duplicate(ps) {
-    if (!guard()) return;
+
+  function duplicate(paths) {
+    if (!canChange()) return;
     const made = [];
-    for (const p of topLevel(ps)) {
-      if (p === root) continue;
-      const dir = parentOf(p), e = ent(p), n = copyName(dir, baseName(p), e.dir);
-      ent(dir).children.set(n, copyEntry(e));
-      made.push(dir + "/" + n);
+    for (const path of topLevel(paths)) {
+      if (path === root) continue;
+      const dir = parentOf(path);
+      const entry = entryOf(path);
+      const name = copyName(dir, baseName(path), entry.dir);
+      entryOf(dir).children.set(name, copyEntry(entry));
+      made.push(dir + "/" + name);
     }
     if (!made.length) return;
-    selected = new Set(made); focus = anchor = made.at(-1);
-    render(); scrollTo(focus); o.changed();
+    selected = new Set(made);
+    focus = anchor = made.at(-1);
+    render();
+    scrollTo(focus);
+    page.changed();
   }
-  async function remove(ps) {
-    ps = topLevel(ps).filter(p => p !== root && ent(p));
-    if (!ps.length || !guard()) return;
-    const lost = ps.flatMap(filesUnder).filter(o.edited);
-    const folders = ps.filter(isDir).length;
-    const ok = await o.ask({
-      title: ps.length === 1 ? `Delete ${baseName(ps[0])}?` : `Delete ${ps.length} items?`,
-      text: (folders ? "The contents of folders are deleted too. " : "") + (lost.length ? `These files have edits that will be lost: ${lost.map(rel).join(", ")}. ` : "") + "You cannot undo this.",
-      list: ps.length > 1 ? ps.map(rel) : [], ok: "Delete", danger: true,
+
+  async function remove(paths) {
+    paths = topLevel(paths).filter(path => path !== root && entryOf(path));
+    if (!paths.length || !canChange()) return;
+    const lost = paths.flatMap(filesUnder).filter(page.edited);
+    const folders = paths.filter(isDir).length;
+    let text = folders ? "The contents of folders are deleted too. " : "";
+    if (lost.length) text += `These files have edits that will be lost: ${lost.map(relative).join(", ")}. `;
+    text += "You cannot undo this.";
+    const confirmed = await page.ask({
+      title: paths.length === 1 ? `Delete ${baseName(paths[0])}?` : `Delete ${paths.length} items?`,
+      text,
+      list: paths.length > 1 ? paths.map(relative) : [],
+      ok: "Delete",
+      danger: true,
     });
-    if (!ok || !guard()) return tree.focus({ preventScroll: true });
-    const next = rows.slice(indexOf(ps.at(-1)) + 1).find(r => !ps.some(p => under(r.path, p))) || rows.slice(0, indexOf(ps[0])).reverse().find(r => !ps.some(p => under(r.path, p)));
-    for (const p of ps) ent(parentOf(p)).children.delete(baseName(p));
-    for (const q of [...expanded]) if (ps.some(p => under(q, p))) expanded.delete(q);
-    saveOpen();
-    selected = new Set(next ? [next.path] : []); focus = anchor = next ? next.path : null;
-    o.removed(ps, lost);
-    render(); o.changed();
+    if (!confirmed || !canChange()) return tree.focus({ preventScroll: true });
+    // The selection goes to the next row that stays, else to the previous one.
+    const stays = row => !paths.some(path => isUnder(row.path, path));
+    const next =
+      rows.slice(indexOf(paths.at(-1)) + 1).find(stays) ||
+      rows.slice(0, indexOf(paths[0])).reverse().find(stays);
+    for (const path of paths) entryOf(parentOf(path)).children.delete(baseName(path));
+    for (const dir of [...expanded]) if (paths.some(path => isUnder(dir, path))) expanded.delete(dir);
+    saveOpenFolders();
+    selected = new Set(next ? [next.path] : []);
+    focus = anchor = next ? next.path : null;
+    page.removed(paths, lost);
+    render();
+    page.changed();
     tree.focus({ preventScroll: true });
   }
-  /** moveTo moves ps into the folder dir. It returns an error text, or "" when it moved the files. */
-  function moveTo(ps, dir) {
-    ps = topLevel(ps).filter(p => p !== root);
-    if (!guard()) return "busy";
-    for (const p of ps) if (under(dir, p)) return `Cannot move ${baseName(p)} into itself.`;
-    ps = ps.filter(p => parentOf(p) !== dir);
-    if (!ps.length) return "";
-    const d = ent(dir);
-    for (const p of ps) if (d.children.has(baseName(p))) return `A file or folder ${baseName(p)} already exists in ${dir === root ? "the root folder" : rel(dir)}.`;
-    const pairs = ps.map(p => [p, dir + "/" + baseName(p)]);
-    for (const [a, b] of pairs) moveEntry(a, b);
-    mapPaths(pairs);
-    if (dir !== root) { expandTo(dir + "/x"); expanded.add(dir); saveOpen(); }
-    selected = new Set(pairs.map(x => x[1])); focus = anchor = pairs.at(-1)[1];
-    o.moved(pairs);
-    render(); scrollTo(focus); o.changed();
+
+  /** moveTo moves paths into the folder dir. It returns an error text, "busy", or "" when it moved the files. */
+  function moveTo(paths, dir) {
+    paths = topLevel(paths).filter(path => path !== root);
+    if (!canChange()) return "busy";
+    for (const path of paths) if (isUnder(dir, path)) return `Cannot move ${baseName(path)} into itself.`;
+    paths = paths.filter(path => parentOf(path) !== dir);
+    if (!paths.length) return "";
+    const children = entryOf(dir).children;
+    for (const path of paths) {
+      if (children.has(baseName(path))) {
+        const where = dir === root ? "the root folder" : relative(dir);
+        return `A file or folder ${baseName(path)} already exists in ${where}.`;
+      }
+    }
+    const pairs = paths.map(path => [path, dir + "/" + baseName(path)]);
+    for (const [from, to] of pairs) moveEntry(from, to);
+    movePaths(pairs);
+    openFolder(dir);
+    selected = new Set(pairs.map(([, to]) => to));
+    focus = anchor = pairs.at(-1)[1];
+    page.moved(pairs);
+    render();
+    scrollTo(focus);
+    page.changed();
     return "";
   }
-  /** upload writes [[relative path, bytes or null for a folder]] into dir. */
-  async function upload(dir, list) {
-    if (!list.length || !guard()) return;
-    const d = ent(dir);
-    const tops = [...new Set(list.map(([p]) => p.split("/")[0]))];
-    const clash = tops.filter(n => d.children.has(n));
-    if (clash.length) {
-      const ok = await o.ask({ title: "Replace existing files?", text: `The folder ${dir === root ? "work" : rel(dir)} already has items with these names. Replace them?`, list: clash, ok: "Replace", danger: true });
-      if (!ok || !guard()) return;
-      const gone = clash.map(n => dir + "/" + n);
-      for (const p of gone) d.children.delete(baseName(p));
-      o.removed(gone, []);
+
+  /** upload writes files, each [relative path, bytes or null for a folder], into dir. */
+  async function upload(dir, files) {
+    if (!files.length || !canChange()) return;
+    const children = entryOf(dir).children;
+    const topNames = [...new Set(files.map(([path]) => path.split("/")[0]))];
+    const clashes = topNames.filter(name => children.has(name));
+    if (clashes.length) {
+      const confirmed = await page.ask({
+        title: "Replace existing files?",
+        text: `The folder ${folderLabel(dir)} already has items with these names. Replace them?`,
+        list: clashes,
+        ok: "Replace",
+        danger: true,
+      });
+      if (!confirmed || !canChange()) return;
+      const replaced = clashes.map(name => dir + "/" + name);
+      for (const path of replaced) children.delete(baseName(path));
+      page.removed(replaced, []);
     }
-    for (const [p, data] of list) {
-      const q = dir + "/" + p;
-      if (data) fsys.writeFile(q, data); else fsys.mkdirAll(q);
+    for (const [path, data] of files) {
+      if (data) fsys.writeFile(dir + "/" + path, data);
+      else fsys.mkdirAll(dir + "/" + path);
     }
-    if (dir !== root) { expandTo(dir + "/x"); expanded.add(dir); saveOpen(); }
-    const made = tops.map(n => dir + "/" + n);
-    selected = new Set(made); focus = anchor = made.at(-1);
-    render(); scrollTo(focus); o.changed();
-    o.note(`Added ${list.filter(x => x[1]).length} ${list.filter(x => x[1]).length === 1 ? "file" : "files"} to ${dir === root ? "work" : rel(dir)}.`);
+    openFolder(dir);
+    const made = topNames.map(name => dir + "/" + name);
+    selected = new Set(made);
+    focus = anchor = made.at(-1);
+    render();
+    scrollTo(focus);
+    page.changed();
+    const fileCount = files.filter(([, data]) => data).length;
+    page.note(`Added ${fileCount} ${fileCount === 1 ? "file" : "files"} to ${folderLabel(dir)}.`);
   }
+
   async function copyText(text, what) {
-    o.copied && o.copied(text);
-    let ok = false;
-    try { await navigator.clipboard.writeText(text); ok = true; } catch {}
-    if (!ok) {
-      const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0";
-      document.body.append(t); t.select();
-      try { ok = document.execCommand("copy"); } catch {}
-      t.remove(); tree.focus({ preventScroll: true });
+    if (page.copied) page.copied(text);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      // No Clipboard API, or no permission: execCommand below.
     }
-    o.note(ok ? `Copied the ${what}: ${text}` : `The browser did not allow a copy. The ${what} is ${text}`);
+    if (!copied) {
+      const scratch = element("textarea", { value: text });
+      scratch.style.position = "fixed";
+      scratch.style.opacity = "0";
+      document.body.append(scratch);
+      scratch.select();
+      try {
+        copied = document.execCommand("copy");
+      } catch {
+        // copied stays false.
+      }
+      scratch.remove();
+      tree.focus({ preventScroll: true });
+    }
+    page.note(copied ? `Copied the ${what}: ${text}` : `The browser did not allow a copy. The ${what} is ${text}`);
   }
-  /** archive returns {name, blob} of a download of ps. */
-  function archive(ps) {
-    ps = topLevel(ps);
-    if (ps.length === 1 && !isDir(ps[0])) return { name: baseName(ps[0]), blob: new Blob([fsys.readFile(ps[0])], { type: "application/octet-stream" }) };
+
+  /** archive returns {name, blob} of a download of paths: the file itself, or a zip. */
+  function archive(paths) {
+    paths = topLevel(paths);
+    if (paths.length === 1 && !isDir(paths[0])) {
+      const blob = new Blob([fsys.readFile(paths[0])], { type: "application/octet-stream" });
+      return { name: baseName(paths[0]), blob };
+    }
     const entries = [];
-    const add = (p, prefix) => { const e = ent(p); if (!e) return; if (!e.dir) return entries.push([prefix, e.data.slice(0, e.size)]); entries.push([prefix, null]); for (const n of [...e.children.keys()].sort(byName)) add(p + "/" + n, prefix + "/" + n); };
-    for (const p of ps) {
-      if (p === root) for (const n of [...ent(root).children.keys()].sort(byName)) add(root + "/" + n, n);
-      else add(p, baseName(p));
+    const add = (path, name) => {
+      const entry = entryOf(path);
+      if (!entry) return;
+      if (!entry.dir) {
+        entries.push([name, entry.data.slice(0, entry.size)]);
+        return;
+      }
+      entries.push([name, null]);
+      for (const child of [...entry.children.keys()].sort(byName)) add(path + "/" + child, name + "/" + child);
+    };
+    for (const path of paths) {
+      if (path !== root) {
+        add(path, baseName(path));
+        continue;
+      }
+      for (const child of [...entryOf(root).children.keys()].sort(byName)) add(root + "/" + child, child);
     }
-    const name = (ps.length === 1 ? (ps[0] === root ? "work" : baseName(ps[0])) : baseName(parentOf(ps[0])) || "work") + ".zip";
-    return { name, blob: zip(entries) };
+    let name;
+    if (paths.length === 1) name = paths[0] === root ? "work" : baseName(paths[0]);
+    else name = baseName(parentOf(paths[0])) || "work";
+    return { name: name + ".zip", blob: zip(entries) };
   }
-  function download(ps) {
-    const { name, blob } = archive(ps);
-    o.downloaded && o.downloaded(name, blob);
-    const u = URL.createObjectURL(blob), a = document.createElement("a");
-    a.href = u; a.download = name; document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(u), 30000);
+
+  function download(paths) {
+    const { name, blob } = archive(paths);
+    if (page.downloaded) page.downloaded(name, blob);
+    const url = URL.createObjectURL(blob);
+    const link = element("a", { href: url, download: name });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
+
   async function resetSample() {
-    if (!guard()) return;
-    const ok = await o.ask({ title: "Reset the sample?", text: "This restores the starter files of the sample in /work. All your edits, new files and new folders in /work are lost. You cannot undo this.", ok: "Reset Sample", danger: true });
-    if (ok) await o.reset();
+    if (!canChange()) return;
+    const confirmed = await page.ask({
+      title: "Reset the sample?",
+      text:
+        "This restores the starter files of the sample in /work. All your edits, new files and new folders " +
+        "in /work are lost. You cannot undo this.",
+      ok: "Reset Sample",
+      danger: true,
+    });
+    if (confirmed) await page.reset();
     else tree.focus({ preventScroll: true });
   }
 
   // The context menu.
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || "");
-  const k = s => (isMac ? s.replace("Ctrl+", "⌘").replace("Alt+", "⌥").replace("Shift+", "⇧") : s);
-  function items(ps) {
-    const isRoot = ps.length === 1 && ps[0] === root, one = ps.length === 1 ? ps[0] : null, dir = !!one && isDir(one);
-    const busy = o.busy();
-    const list = [];
-    if (one && !dir && previewable(one)) list.push(["Open Preview", () => o.open(one, "preview")], ...(o.canSide() ? [["Open Preview to the Side", () => o.open(one, "side")]] : []), "-");
-    if (one && !dir && !previewable(one)) list.push(["Open", () => o.open(one, "file")], "-");
-    list.push(["New File...", () => startNew("file", folderFor(one || ps[0])), "", busy], ["New Folder...", () => startNew("folder", folderFor(one || ps[0])), "", busy], "-");
-    if (!isRoot) list.push(["Duplicate", () => duplicate(ps), "", busy]);
-    list.push(["Download", () => download(ps)], "-");
-    list.push(["Copy Path", () => copyText(ps.join("\n"), ps.length > 1 ? "paths" : "path"), k("Shift+Alt+C")]);
-    if (!isRoot) list.push(["Copy Relative Path", () => copyText(ps.map(rel).join("\n"), ps.length > 1 ? "relative paths" : "relative path"), k("Ctrl+Shift+Alt+C")]);
-    if (!isRoot) list.push("-", ["Rename...", () => startRename(one), "F2", busy || !one], ["Delete", () => remove(ps), isMac ? "⌘⌫" : "Delete", busy]);
-    list.push("-", ["Collapse All", collapseAll]);
-    if (isRoot) list.push("-", ["Reset Sample...", resetSample, "", busy]);
-    return list;
+
+  /**
+   * menuItems returns the items of the context menu of paths: "-" for a separator, else
+   * [label, action, shortcut, disabled].
+   */
+  function menuItems(paths) {
+    const isRoot = paths.length === 1 && paths[0] === root;
+    const one = paths.length === 1 ? paths[0] : null;
+    const oneFile = !!one && !isDir(one);
+    const busy = page.busy();
+    const newFolder = () => folderFor(one || paths[0]);
+    const relativePaths = () => paths.map(relative).join("\n");
+    const items = [];
+    if (oneFile && previewable(one)) {
+      items.push(["Open Preview", () => page.open(one, "preview")]);
+      if (page.canSide()) items.push(["Open Preview to the Side", () => page.open(one, "side")]);
+      items.push("-");
+    }
+    if (oneFile && !previewable(one)) items.push(["Open", () => page.open(one, "file")], "-");
+    items.push(["New File...", () => startNew("file", newFolder()), "", busy]);
+    items.push(["New Folder...", () => startNew("folder", newFolder()), "", busy], "-");
+    if (!isRoot) items.push(["Duplicate", () => duplicate(paths), "", busy]);
+    items.push(["Download", () => download(paths)], "-");
+    const pathWord = paths.length > 1 ? "paths" : "path";
+    items.push(["Copy Path", () => copyText(paths.join("\n"), pathWord), shortcut("Shift+Alt+C")]);
+    if (!isRoot) {
+      const copyRelative = () => copyText(relativePaths(), "relative " + pathWord);
+      items.push(["Copy Relative Path", copyRelative, shortcut("Ctrl+Shift+Alt+C")]);
+      items.push("-", ["Rename...", () => startRename(one), "F2", busy || !one]);
+      items.push(["Delete", () => remove(paths), IS_MAC ? "⌘⌫" : "Delete", busy]);
+    }
+    items.push("-", ["Collapse All", collapseAll]);
+    if (isRoot) items.push("-", ["Reset Sample...", resetSample, "", busy]);
+    return items;
   }
-  let menuReturn = null;
-  function openMenu(x, y, ps, keyboard) {
+
+  /** openMenu opens the context menu of paths at x, y. With keyboard true, the first item gets the focus. */
+  function openMenu(x, y, paths, keyboard) {
     closeMenu();
-    menuReturn = document.activeElement;
-    const list = items(ps);
-    menu.replaceChildren(...list.map(it => {
-      if (it === "-") return document.createElement("hr");
-      const [label, fn, key, off] = it;
-      const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem"); b.disabled = !!off;
-      const l = document.createElement("span"); l.textContent = label; b.append(l);
-      if (key) { const kb = document.createElement("kbd"); kb.textContent = key; b.append(kb); }
-      b.addEventListener("click", () => { closeMenu(true); fn(); });
-      return b;
-    }));
-    menu.dataset.targets = JSON.stringify(ps);
+    menuReturnFocus = document.activeElement;
+    menu.replaceChildren(
+      ...menuItems(paths).map(item => {
+        if (item === "-") return document.createElement("hr");
+        const [label, action, keys, disabled] = item;
+        const button = element(
+          "button",
+          { type: "button", disabled: !!disabled, attributes: { role: "menuitem" } },
+          element("span", { textContent: label }),
+        );
+        if (keys) button.append(element("kbd", { textContent: keys }));
+        button.addEventListener("click", () => {
+          closeMenu(true);
+          action();
+        });
+        return button;
+      }),
+    );
+    menu.dataset.targets = JSON.stringify(paths);
     menu.hidden = false;
-    const r = menu.getBoundingClientRect();
-    menu.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + "px";
-    menu.style.top = Math.max(4, y + r.height > innerHeight - 4 ? y - r.height : y) + "px";
-    if (r.height > innerHeight - 8) { menu.style.top = "4px"; menu.style.maxHeight = innerHeight - 8 + "px"; menu.style.overflow = "auto"; }
+    const box = menu.getBoundingClientRect();
+    menu.style.left = Math.max(4, Math.min(x, innerWidth - box.width - 4)) + "px";
+    menu.style.top = Math.max(4, y + box.height > innerHeight - 4 ? y - box.height : y) + "px";
+    if (box.height > innerHeight - 8) {
+      menu.style.top = "4px";
+      menu.style.maxHeight = innerHeight - 8 + "px";
+      menu.style.overflow = "auto";
+    }
     const first = menu.querySelector("button:not(:disabled)");
-    if (keyboard && first) first.focus(); else menu.focus({ preventScroll: true });
+    if (keyboard && first) first.focus();
+    else menu.focus({ preventScroll: true });
   }
+
+  /** closeMenu closes the menu. The focus goes back where it was, or to the tree with keepFocus. */
   function closeMenu(keepFocus) {
     if (menu.hidden) return;
     menu.hidden = true;
-    if (!keepFocus && menuReturn && menuReturn.isConnected) menuReturn.focus({ preventScroll: true });
-    else if (keepFocus) tree.focus({ preventScroll: true });
+    if (keepFocus) tree.focus({ preventScroll: true });
+    else if (menuReturnFocus && menuReturnFocus.isConnected) menuReturnFocus.focus({ preventScroll: true });
   }
-  menu.addEventListener("keydown", e => {
-    const bs = [...menu.querySelectorAll("button:not(:disabled)")], i = bs.indexOf(document.activeElement);
-    if (e.key === "ArrowDown") bs[(i + 1) % bs.length].focus();
-    else if (e.key === "ArrowUp") bs[(i - 1 + bs.length) % bs.length].focus();
-    else if (e.key === "Home") bs[0].focus();
-    else if (e.key === "End") bs.at(-1).focus();
-    else if (e.key === "Escape" || e.key === "Tab") closeMenu();
+
+  menu.addEventListener("keydown", event => {
+    const buttons = [...menu.querySelectorAll("button:not(:disabled)")];
+    const index = buttons.indexOf(document.activeElement);
+    if (event.key === "ArrowDown") buttons[(index + 1) % buttons.length].focus();
+    else if (event.key === "ArrowUp") buttons[(index - 1 + buttons.length) % buttons.length].focus();
+    else if (event.key === "Home") buttons[0].focus();
+    else if (event.key === "End") buttons.at(-1).focus();
+    else if (event.key === "Escape" || event.key === "Tab") closeMenu();
     else return;
-    e.preventDefault(); e.stopPropagation();
+    event.preventDefault();
+    event.stopPropagation();
   });
-  document.addEventListener("pointerdown", e => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(true); }, true);
+  document.addEventListener(
+    "pointerdown",
+    event => {
+      if (!menu.hidden && !menu.contains(event.target)) closeMenu(true);
+    },
+    true,
+  );
   addEventListener("resize", () => closeMenu(true));
   addEventListener("blur", () => closeMenu(true));
 
   // Mouse, touch and keyboard.
-  const rowAt = e => { const el = e.target.closest && e.target.closest(".ex-row[data-path]"); return el && tree.contains(el) ? rowOf.get(el.dataset.path) : null; };
-  tree.addEventListener("click", e => {
-    if (edit) return;
-    const r = rowAt(e);
-    tree.focus({ preventScroll: true });
-    if (!r) { selected.clear(); focus = anchor = null; return paint(); }
-    const p = r.path;
-    if (e.ctrlKey || e.metaKey) { if (selected.has(p)) selected.delete(p); else selected.add(p); focus = anchor = p; return paint(); }
-    if (e.shiftKey && anchor) { rangeTo(p); focus = p; return paint(); }
-    selected = new Set([p]); focus = anchor = p;
-    if (r.dir) setOpen(p, !expanded.has(p)); else { paint(); o.open(p, "file"); }
-  });
-  tree.addEventListener("mousedown", e => { if (e.shiftKey || e.detail > 1) e.preventDefault(); });
-  const menuFor = (e, x, y) => {
-    const r = rowAt(e);
-    if (r) { if (!selected.has(r.path)) { selected = new Set([r.path]); anchor = r.path; } focus = r.path; paint(); }
-    openMenu(x, y, r ? targets() : [root], false);
-  };
-  o.side.addEventListener("contextmenu", e => {
-    if (e.target.closest(".ex-input")) return;
-    e.preventDefault();
-    if (!e.clientX && !e.clientY && focus && rowOf.get(focus)) { const b = rowOf.get(focus).el.getBoundingClientRect(); return openMenu(b.left + 24, b.bottom, targets(), true); }
-    if (!tree.contains(e.target)) return openMenu(e.clientX, e.clientY, [root], false);
-    menuFor(e, e.clientX, e.clientY);
-  });
-  longPress(tree, (x, y, e) => { if (!edit) menuFor(e, x, y); });
 
-  tree.addEventListener("keydown", e => {
-    if (edit || e.target !== tree) return;
-    const mod = e.ctrlKey || e.metaKey;
-    let i = indexOf(focus);
-    const r = rows[i];
-    const go = j => {
+  function rowAt(event) {
+    const rowNode = event.target.closest && event.target.closest(".ex-row[data-path]");
+    return rowNode && tree.contains(rowNode) ? rowOf.get(rowNode.dataset.path) : null;
+  }
+
+  function toggleSelected(path) {
+    if (selected.has(path)) selected.delete(path);
+    else selected.add(path);
+  }
+
+  tree.addEventListener("click", event => {
+    if (edit) return;
+    const row = rowAt(event);
+    tree.focus({ preventScroll: true });
+    if (!row) {
+      selected.clear();
+      focus = anchor = null;
+      return paint();
+    }
+    const path = row.path;
+    if (event.ctrlKey || event.metaKey) {
+      toggleSelected(path);
+      focus = anchor = path;
+      return paint();
+    }
+    if (event.shiftKey && anchor) {
+      selectRange(path);
+      focus = path;
+      return paint();
+    }
+    selectOnly(path);
+    if (row.dir) {
+      setOpen(path, !expanded.has(path));
+      return;
+    }
+    paint();
+    page.open(path, "file");
+  });
+  // A Shift click or a double click selects rows, not text.
+  tree.addEventListener("mousedown", event => {
+    if (event.shiftKey || event.detail > 1) event.preventDefault();
+  });
+
+  /** menuAt opens the context menu of the row of event, or of the root, at x, y. */
+  function menuAt(event, x, y) {
+    const row = rowAt(event);
+    if (row) {
+      if (!selected.has(row.path)) {
+        selected = new Set([row.path]);
+        anchor = row.path;
+      }
+      focus = row.path;
+      paint();
+    }
+    openMenu(x, y, row ? targets() : [root], false);
+  }
+
+  page.side.addEventListener("contextmenu", event => {
+    if (event.target.closest(".ex-input")) return;
+    event.preventDefault();
+    // The context menu key gives an event at 0, 0: the menu then opens at the focused row.
+    if (!event.clientX && !event.clientY && focus && rowOf.get(focus)) {
+      const box = rowOf.get(focus).element.getBoundingClientRect();
+      return openMenu(box.left + 24, box.bottom, targets(), true);
+    }
+    if (!tree.contains(event.target)) return openMenu(event.clientX, event.clientY, [root], false);
+    menuAt(event, event.clientX, event.clientY);
+  });
+  longPress(tree, (x, y, event) => {
+    if (!edit) menuAt(event, x, y);
+  });
+
+  /** findTyped adds key to the typed letters and calls moveFocus with the next row whose name starts with them. */
+  function findTyped(key, index, moveFocus) {
+    const now = Date.now();
+    typed = now - typedAt < TYPE_AHEAD_MS ? typed + key.toLowerCase() : key.toLowerCase();
+    typedAt = now;
+    const start = typed.length > 1 ? Math.max(index, 0) : index + 1;
+    for (let n = 0; n < rows.length; n++) {
+      const candidate = (start + n) % rows.length;
+      if (rows[candidate].name.toLowerCase().startsWith(typed)) {
+        moveFocus(candidate);
+        break;
+      }
+    }
+  }
+
+  tree.addEventListener("keydown", event => {
+    if (edit || event.target !== tree) return;
+    const modifier = event.ctrlKey || event.metaKey;
+    const index = indexOf(focus);
+    const row = rows[index];
+    const moveFocus = target => {
       if (!rows.length) return;
-      j = Math.max(0, Math.min(rows.length - 1, j));
-      const p = rows[j].path;
-      focus = p;
-      if (e.shiftKey) rangeTo(p); else if (!mod) { selected = new Set([p]); anchor = p; }
-      paint(); scrollTo(p);
+      const path = rows[Math.max(0, Math.min(rows.length - 1, target))].path;
+      focus = path;
+      if (event.shiftKey) {
+        selectRange(path);
+      } else if (!modifier) {
+        selected = new Set([path]);
+        anchor = path;
+      }
+      paint();
+      scrollTo(path);
     };
-    const page = Math.max(1, Math.floor(tree.clientHeight / 22) - 1);
-    if (e.code === "KeyC" && e.altKey && e.shiftKey) { e.preventDefault(); const ps = targets(); return mod ? copyText(ps.map(rel).join("\n"), "relative path") : copyText(ps.join("\n"), "path"); }
-    switch (e.key) {
-      case "ArrowDown": go(i < 0 ? 0 : i + 1); break;
-      case "ArrowUp": go(i < 0 ? 0 : i - 1); break;
-      case "Home": go(0); break;
-      case "End": go(rows.length - 1); break;
-      case "PageDown": go(i + page); break;
-      case "PageUp": go(i - page); break;
+    const pageRows = Math.max(1, Math.floor(tree.clientHeight / ROW_HEIGHT) - 1);
+    if (event.code === "KeyC" && event.altKey && event.shiftKey) {
+      event.preventDefault();
+      const paths = targets();
+      if (modifier) return copyText(paths.map(relative).join("\n"), "relative path");
+      return copyText(paths.join("\n"), "path");
+    }
+    switch (event.key) {
+      case "ArrowDown":
+        moveFocus(index < 0 ? 0 : index + 1);
+        break;
+      case "ArrowUp":
+        moveFocus(index < 0 ? 0 : index - 1);
+        break;
+      case "Home":
+        moveFocus(0);
+        break;
+      case "End":
+        moveFocus(rows.length - 1);
+        break;
+      case "PageDown":
+        moveFocus(index + pageRows);
+        break;
+      case "PageUp":
+        moveFocus(index - pageRows);
+        break;
       case "ArrowRight":
-        if (!r) go(0);
-        else if (r.dir && !expanded.has(r.path)) setOpen(r.path, true);
-        else if (r.dir && rows[i + 1] && rows[i + 1].depth > r.depth) go(i + 1);
+        if (!row) moveFocus(0);
+        else if (row.dir && !expanded.has(row.path)) setOpen(row.path, true);
+        else if (row.dir && rows[index + 1] && rows[index + 1].depth > row.depth) moveFocus(index + 1);
         break;
       case "ArrowLeft":
-        if (!r) break;
-        if (r.dir && expanded.has(r.path)) setOpen(r.path, false);
-        else if (r.depth > 0) go(indexOf(parentOf(r.path)));
+        if (!row) break;
+        if (row.dir && expanded.has(row.path)) setOpen(row.path, false);
+        else if (row.depth > 0) moveFocus(indexOf(parentOf(row.path)));
         break;
-      case "Enter": if (r) { if (r.dir) setOpen(r.path, !expanded.has(r.path)); else o.open(r.path, "file", true); } break;
+      case "Enter":
+        if (!row) break;
+        if (row.dir) setOpen(row.path, !expanded.has(row.path));
+        else page.open(row.path, "file", true);
+        break;
       case " ":
-        if (!r) break;
-        if (mod) { if (selected.has(r.path)) selected.delete(r.path); else selected.add(r.path); anchor = r.path; paint(); }
-        else if (r.dir) setOpen(r.path, !expanded.has(r.path)); else o.open(r.path, "file");
+        if (!row) break;
+        if (modifier) {
+          toggleSelected(row.path);
+          anchor = row.path;
+          paint();
+        } else if (row.dir) {
+          setOpen(row.path, !expanded.has(row.path));
+        } else {
+          page.open(row.path, "file");
+        }
         break;
-      case "F2": if (r) startRename(r.path); break;
-      case "Delete": remove(targets()); break;
-      case "Backspace": if (e.metaKey) remove(targets()); else return; break;
-      case "Escape": selected = new Set(focus ? [focus] : []); paint(); break;
+      case "F2":
+        if (row) startRename(row.path);
+        break;
+      case "Delete":
+        remove(targets());
+        break;
+      case "Backspace":
+        if (!event.metaKey) return;
+        remove(targets());
+        break;
+      case "Escape":
+        selected = new Set(focus ? [focus] : []);
+        paint();
+        break;
       default:
-        if (mod && e.key.toLowerCase() === "a") { selected = new Set(rows.map(x => x.path)); paint(); break; }
-        if (e.key.length === 1 && !mod && !e.altKey && rows.length) {
-          const now = Date.now(); typed = now - typedAt < 700 ? typed + e.key.toLowerCase() : e.key.toLowerCase(); typedAt = now;
-          const start = typed.length > 1 ? Math.max(i, 0) : i + 1;
-          for (let n = 0; n < rows.length; n++) { const j = (start + n) % rows.length; if (rows[j].name.toLowerCase().startsWith(typed)) { go(j); break; } }
+        if (modifier && event.key.toLowerCase() === "a") {
+          selected = new Set(rows.map(each => each.path));
+          paint();
+          break;
+        }
+        if (event.key.length === 1 && !modifier && !event.altKey && rows.length) {
+          findTyped(event.key, index, moveFocus);
           break;
         }
         return;
     }
-    e.preventDefault();
+    event.preventDefault();
   });
 
   // Drag and drop.
+
   function setDrop(dir) {
     dropDir = dir;
     tree.classList.toggle("ex-drop-root", dir === root);
-    for (const r of rows) r.el.classList.toggle("ex-drop", !!dir && dir !== root && under(r.path, dir));
+    for (const row of rows) row.element.classList.toggle("ex-drop", !!dir && dir !== root && isUnder(row.path, dir));
   }
-  const clearDrop = () => { setDrop(null); clearTimeout(hoverTimer); hoverDir = null; };
-  tree.addEventListener("dragstart", e => {
-    const r = rowAt(e);
-    if (!r || edit) return e.preventDefault();
-    if (!selected.has(r.path)) { selected = new Set([r.path]); anchor = r.path; }
-    focus = r.path; paint();
-    drag = topLevel([...selected]);
-    e.dataTransfer.effectAllowed = "copyMove";
-    e.dataTransfer.setData("text/plain", drag.map(rel).join("\n"));
-    e.dataTransfer.setData("application/x-docgen-paths", JSON.stringify(drag));
-    for (const p of drag) rowOf.get(p)?.el.classList.add("ex-cut");
-  });
-  tree.addEventListener("dragend", () => { drag = null; clearDrop(); for (const r of rows) r.el.classList.remove("ex-cut"); });
-  const dirAt = e => { const r = rowAt(e); return r ? (r.dir ? r.path : parentOf(r.path)) : root; };
-  const external = dt => !!dt && [...dt.types].includes("Files");
-  tree.addEventListener("dragover", e => {
-    const dir = dirAt(e);
-    if (drag) {
-      if (drag.some(p => under(dir, p)) || drag.every(p => parentOf(p) === dir)) { e.dataTransfer.dropEffect = "none"; return setDrop(null); }
-      e.preventDefault(); e.dataTransfer.dropEffect = "move";
-    } else if (external(e.dataTransfer)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }
-    else return;
-    if (dropDir !== dir) setDrop(dir);
-    const r = rowAt(e);
-    const hover = r && r.dir && !expanded.has(r.path) ? r.path : null;
-    if (hover !== hoverDir) {
-      clearTimeout(hoverTimer); hoverDir = hover;
-      if (hover) hoverTimer = setTimeout(() => { if (hoverDir === hover) { expanded.add(hover); saveOpen(); render(); } }, 500);
+
+  function clearDrop() {
+    setDrop(null);
+    clearTimeout(hoverTimer);
+    hoverDir = null;
+  }
+
+  /** dropFolderAt returns the folder of a drop on the row of event: the row when it is a folder, else its folder. */
+  function dropFolderAt(event) {
+    const row = rowAt(event);
+    if (!row) return root;
+    return row.dir ? row.path : parentOf(row.path);
+  }
+
+  const hasFiles = dataTransfer => !!dataTransfer && [...dataTransfer.types].includes("Files");
+
+  tree.addEventListener("dragstart", event => {
+    const row = rowAt(event);
+    if (!row || edit) return event.preventDefault();
+    if (!selected.has(row.path)) {
+      selected = new Set([row.path]);
+      anchor = row.path;
     }
+    focus = row.path;
+    paint();
+    dragged = topLevel([...selected]);
+    event.dataTransfer.effectAllowed = "copyMove";
+    event.dataTransfer.setData("text/plain", dragged.map(relative).join("\n"));
+    event.dataTransfer.setData("application/x-docgen-paths", JSON.stringify(dragged));
+    for (const path of dragged) rowOf.get(path)?.element.classList.add("ex-cut");
   });
-  tree.addEventListener("dragleave", e => { if (!e.relatedTarget || !tree.contains(e.relatedTarget)) clearDrop(); });
-  tree.addEventListener("drop", e => {
-    e.preventDefault();
-    const dir = dirAt(e);
+  tree.addEventListener("dragend", () => {
+    dragged = null;
     clearDrop();
-    if (drag) { const ps = drag; drag = null; const m = moveTo(ps, dir); if (m && m !== "busy") o.note(m); return; }
-    const dt = e.dataTransfer;
-    if (!external(dt)) return;
-    const its = [...dt.items].filter(i => i.kind === "file").map(i => (i.webkitGetAsEntry && i.webkitGetAsEntry()) || i.getAsFile());
-    const files = its.length ? its : [...dt.files];
-    readDrop(files).then(list => upload(dir, list), err => o.note("Could not read the dropped files: " + err));
+    for (const row of rows) row.element.classList.remove("ex-cut");
   });
-  async function readDrop(items) {
-    const out = [];
-    const readEntry = async (en, pre) => {
-      const p = pre + en.name;
-      if (en instanceof File) return out.push([p, new Uint8Array(await en.arrayBuffer())]);
-      if (en.isFile) { const f = await new Promise((res, rej) => en.file(res, rej)); return out.push([p, new Uint8Array(await f.arrayBuffer())]); }
-      if (!en.isDirectory) return;
-      out.push([p, null]);
-      const rd = en.createReader();
-      for (;;) { const b = await new Promise((res, rej) => rd.readEntries(res, rej)); if (!b.length) break; for (const c of b) await readEntry(c, p + "/"); }
-    };
-    for (const it of items) if (it) await readEntry(it, "");
-    return out;
-  }
+  tree.addEventListener("dragover", event => {
+    const dir = dropFolderAt(event);
+    if (dragged) {
+      if (dragged.some(path => isUnder(dir, path)) || dragged.every(path => parentOf(path) === dir)) {
+        event.dataTransfer.dropEffect = "none";
+        return setDrop(null);
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    } else if (hasFiles(event.dataTransfer)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    } else {
+      return;
+    }
+    if (dropDir !== dir) setDrop(dir);
+    // A closed folder under the pointer opens after HOVER_EXPAND_MS.
+    const row = rowAt(event);
+    const hover = row && row.dir && !expanded.has(row.path) ? row.path : null;
+    if (hover === hoverDir) return;
+    clearTimeout(hoverTimer);
+    hoverDir = hover;
+    if (!hover) return;
+    hoverTimer = setTimeout(() => {
+      if (hoverDir !== hover) return;
+      expanded.add(hover);
+      saveOpenFolders();
+      render();
+    }, HOVER_EXPAND_MS);
+  });
+  tree.addEventListener("dragleave", event => {
+    if (!event.relatedTarget || !tree.contains(event.relatedTarget)) clearDrop();
+  });
+  tree.addEventListener("drop", event => {
+    event.preventDefault();
+    const dir = dropFolderAt(event);
+    clearDrop();
+    if (dragged) {
+      const paths = dragged;
+      dragged = null;
+      const error = moveTo(paths, dir);
+      if (error && error !== "busy") page.note(error);
+      return;
+    }
+    const dataTransfer = event.dataTransfer;
+    if (!hasFiles(dataTransfer)) return;
+    const items = [...dataTransfer.items]
+      .filter(item => item.kind === "file")
+      .map(item => (item.webkitGetAsEntry && item.webkitGetAsEntry()) || item.getAsFile());
+    const dropped = items.length ? items : [...dataTransfer.files];
+    readDrop(dropped).then(
+      files => upload(dir, files),
+      error => page.note("Could not read the dropped files: " + error),
+    );
+  });
 
   // The toolbar.
-  const tb = (id, fn) => o.side.querySelector("#" + id).addEventListener("click", fn);
-  tb("exnewfile", () => startNew("file"));
-  tb("exnewdir", () => startNew("folder"));
-  tb("exrefresh", () => render());
-  tb("excollapse", collapseAll);
-  o.side.querySelector("#exhead").addEventListener("dragover", e => { if (drag || external(e.dataTransfer)) { e.preventDefault(); setDrop(root); } });
-  o.side.querySelector("#exhead").addEventListener("drop", e => { tree.dispatchEvent(new DragEvent("drop", { dataTransfer: e.dataTransfer, bubbles: false })); e.preventDefault(); });
+
+  const onToolbar = (id, action) => page.side.querySelector("#" + id).addEventListener("click", action);
+  onToolbar("exnewfile", () => startNew("file"));
+  onToolbar("exnewdir", () => startNew("folder"));
+  onToolbar("exrefresh", () => render());
+  onToolbar("excollapse", collapseAll);
+  const header = page.side.querySelector("#exhead");
+  header.addEventListener("dragover", event => {
+    if (!dragged && !hasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    setDrop(root);
+  });
+  // A drop on the header goes to the root folder, as a drop on the empty part of the tree.
+  header.addEventListener("drop", event => {
+    tree.dispatchEvent(new DragEvent("drop", { dataTransfer: event.dataTransfer, bubbles: false }));
+    event.preventDefault();
+  });
 
   return {
-    render, decorate: () => decorate(), reveal, openMenu, closeMenu, archive,
-    state: () => ({ expanded: [...expanded], selected: [...selected], focus, edit: edit && { ...edit }, rows: rows.map(r => r.path), drop: dropDir }),
+    render,
+    decorate: () => decorate(),
+    reveal,
+    openMenu,
+    closeMenu,
+    archive,
+    state: () => ({
+      expanded: [...expanded],
+      selected: [...selected],
+      focus,
+      edit: edit && { ...edit },
+      rows: rows.map(row => row.path),
+      drop: dropDir,
+    }),
   };
 }
