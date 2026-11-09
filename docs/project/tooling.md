@@ -83,6 +83,9 @@ GitHub Pages serves only [redirect.html](../site/redirect.html), which sends eac
 | `/main/` | The current tree, with a banner that states it is not released. |
 | `/v0.1.0/` | One directory for each tag. |
 | `/versions.json` | The versions, newest first, and the latest version. |
+| `/_redirects` | The rule that makes Cloudflare Pages send `/` to `/latest/` with no page. |
+| `/llms.txt` | The list of the Markdown copies of `/latest/`, for agents. Each version has its own `llms.txt` too. |
+| `<page>.md` | The Markdown copy of each page, next to its HTML. Its links go to the Markdown copies of the other pages, and the HTML names it with `<link rel="alternate" type="text/markdown">`. |
 
 Each tag is a semantic version that starts with `v`. The latest version is the newest tag that is not a prerelease. If all tags are prereleases, it is the newest tag. A tag with no `docs/nav.md` is left out, with a message.
 
