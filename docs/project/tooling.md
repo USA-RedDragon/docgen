@@ -109,7 +109,7 @@ The playground is a page that runs the Go toolchain and docgen in the browser, o
 | Path | Content |
 | --- | --- |
 | `playground/web/` | The page: `index.html`, the scripts, the kernel that runs the processes, `pending.html`, and the npm packages of the editor bundle. |
-| `playground/overlay/` | The new files of the `go build -overlay` that gives `js/wasm` processes and pipes. Their names end in `.go.txt`, so they are not a package of the root module. |
+| `playground/overlay/` | The new files of the `go build -overlay` that gives `js/wasm` processes and pipes, in the directories of GOROOT/src: `syscall/proc_js.go` starts, waits for and kills a process through the page, and `os/exec/lp_js.go` finds a program by path. A `go.mod` makes it a module of its own, so `./...` of the root module leaves it out. |
 | `playground/build/mkoverlay.py` | Writes the overlay from the GOROOT of the build: the new files, and the changed copies of some GOROOT files. Each change is an exact replacement, so a Go version with other source stops the build. It also writes `wasm_exec.js`. |
 | `playground/bb/` | A Go module with a shell (`mvdan.cc/sh`) and common commands (u-root) in one binary. `bb/ucmd` is the output of `bb/vendor-uroot.py`, with the license of u-root. |
 | `playground/testdata/` | The sample repository `dg` that the page starts with, and the module `loop`, a test that does not stop. The directory name keeps `docgen check` of this repository away from them. |
