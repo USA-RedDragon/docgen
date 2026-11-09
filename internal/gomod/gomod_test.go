@@ -126,3 +126,30 @@ func TestUp(t *testing.T) {
 		t.Errorf("Up at dir = %q, %v", got, ok)
 	}
 }
+
+func TestNotFoundNamesNestedModules(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"go.mod":             "module example.com/m\n\ngo 1.24.0\n",
+		"generate.go":        "package m\n",
+		"v2/go.mod":          "module example.com/m/v2\n\ngo 1.24.0\n",
+		"v2/trunk/trunk.go":  "package trunk\n",
+		"tools/go.mod":       "module example.com/tools\n\ngo 1.24.0\n",
+		"tools/lint/lint.go": "package lint\n",
+	})
+	g, err := Open(root, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ pkg, want string }{
+		{"trunk", "no package trunk in module example.com/m; the module in v2 has it, so give the directory v2 with module: in .docgen.yaml or -module"},
+		{"nope", "no package nope in module example.com/m; other modules are in tools, v2, and module: in .docgen.yaml or -module gives the directory of another module"},
+	} {
+		for range 2 {
+			if _, err := g.PkgPath(tc.pkg); err == nil || err.Error() != tc.want {
+				t.Errorf("pkg=%s: error %v, want %q", tc.pkg, err, tc.want)
+			}
+		}
+	}
+}

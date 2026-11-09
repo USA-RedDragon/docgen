@@ -24,6 +24,9 @@ type Module struct {
 	Path string
 	Hint string
 	dirs []string
+	// mods holds the directories of the modules below Dir, relative to Dir.
+	mods   []string
+	walked bool
 }
 
 // Open returns the Module for the repository at root and the directory modDir.
@@ -88,11 +91,7 @@ func (m *Module) ShortPath(ip string) string {
 // symbolic link is an error wrapping ErrOutside.
 func (m *Module) PkgPath(p string) (string, error) {
 	if m.Path == "" {
-		hint := m.Hint
-		if hint == "" {
-			hint = "-module"
-		}
-		return "", fmt.Errorf("no go.mod in %s; give the directory of the module with %s", m.Dir, hint)
+		return "", fmt.Errorf("no go.mod in %s; give the directory of the module with %s", m.Dir, m.hint())
 	}
 	ip := m.ImportPath(p)
 	if dir := filepath.Join(m.Dir, filepath.FromSlash(m.ShortPath(ip))); HasGo(dir) && m.Contains(dir) {
@@ -110,11 +109,34 @@ func (m *Module) PkgPath(p string) (string, error) {
 	}
 	switch len(found) {
 	case 0:
-		return "", fmt.Errorf("no package %s in module %s", p, m.Path)
+		return "", m.notFound(p)
 	case 1:
 		return m.bounded(p, m.ImportPath(found[0]), filepath.Join(m.Dir, filepath.FromSlash(found[0])))
 	}
 	return "", fmt.Errorf("pkg=%s matches several packages: %s", p, strings.Join(found, ", "))
+}
+
+// hint returns what sets the directory of the module.
+func (m *Module) hint() string {
+	if m.Hint != "" {
+		return m.Hint
+	}
+	return "module: in .docgen.yaml or -module"
+}
+
+// notFound returns the error of a pkg= value p with no package in the module.
+// It names a module below Dir that holds p, or else the modules below Dir.
+func (m *Module) notFound(p string) error {
+	err := fmt.Errorf("no package %s in module %s", p, m.Path)
+	if len(m.mods) == 0 {
+		return err
+	}
+	for _, mod := range m.mods {
+		if HasGo(filepath.Join(m.Dir, filepath.FromSlash(mod), filepath.FromSlash(cleanPath(p)))) {
+			return fmt.Errorf("%w; the module in %s has it, so give the directory %s with %s", err, mod, mod, m.hint())
+		}
+	}
+	return fmt.Errorf("%w; other modules are in %s, and %s gives the directory of another module", err, strings.Join(m.mods, ", "), m.hint())
 }
 
 // bounded returns ip, and an error wrapping ErrOutside when the directory dir of
@@ -129,9 +151,10 @@ func (m *Module) bounded(p, ip, dir string) (string, error) {
 // packageDirs returns the directories with Go files of the module, relative to
 // Dir. It reads the tree once.
 func (m *Module) packageDirs() ([]string, error) {
-	if m.dirs != nil {
+	if m.walked {
 		return m.dirs, nil
 	}
+	m.walked = true
 	err := filepath.WalkDir(m.Dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -139,7 +162,12 @@ func (m *Module) packageDirs() ([]string, error) {
 		if !d.IsDir() {
 			return nil
 		}
-		if path != m.Dir && (SkipDir(d.Name()) || isModule(path)) {
+		if path != m.Dir && SkipDir(d.Name()) {
+			return filepath.SkipDir
+		}
+		if path != m.Dir && isModule(path) {
+			rel, _ := filepath.Rel(m.Dir, path)
+			m.mods = append(m.mods, filepath.ToSlash(rel))
 			return filepath.SkipDir
 		}
 		if HasGo(path) {

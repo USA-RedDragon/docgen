@@ -25,6 +25,8 @@ The path is relative to the repository root. With it:
 
 docgen reads one module per run. The import path in each link comes from the `go.mod` of that module.
 
+Without `module`, docgen reads the module at the root. When a `pkg=` names no package of that module, the error names the module below the root that has the package, such as `the module in v2 has it`.
+
 For a module in `v2`, `pkg=machine` reads `v2/machine`:
 
 <!-- site:editor -->
