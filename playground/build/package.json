@@ -1,0 +1,9 @@
+{
+  "name": "docgen-playground-build",
+  "private": true,
+  "description": "wasm-opt of binaryen, for the toolchain build of the docgen playground.",
+  "license": "MIT",
+  "dependencies": {
+    "binaryen": "132.0.0"
+  }
+}

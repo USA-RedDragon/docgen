@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>docgen playground</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --vs-bg: light-dark(#fff, #1e1e1e); --vs-fg: light-dark(#3b3b3b, #d4d4d4); --vs-side: light-dark(#f3f3f3, #252526); --vs-side-fg: light-dark(#616161, #bbb);
+  --vs-tabs: light-dark(#ececec, #2d2d2d); --vs-tab-fg: light-dark(#6f6f6f, #a6a6a6); --vs-hover: light-dark(#e8e8e8, #2a2d2e); --vs-pick: light-dark(#e4e6f1, #37373d);
+  --vs-edge: light-dark(#d4d4d4, #3c3c3c); --vs-accent: #007acc; --vs-status: light-dark(#0064a8, #007acc); --vs-line: light-dark(#237893, #858585);
+  --vs-keyword: light-dark(#0000ff, #569cd6); --vs-control: light-dark(#af00db, #c586c0); --vs-string: light-dark(#a31515, #ce9178); --vs-number: light-dark(#098658, #b5cea8);
+  --vs-comment: light-dark(#008000, #6a9955); --vs-type: light-dark(#267f99, #4ec9b0); --vs-function: light-dark(#795e26, #dcdcaa); --vs-variable: light-dark(#001080, #9cdcfe);
+  --vs-added: light-dark(#007100, #73c991); --vs-check: light-dark(#e6e6e6, #d0d0d0); --vs-sel: light-dark(#add6ff, #264f78);
+  --term-bg: light-dark(#f8f8f8, #181818); --term-err: light-dark(#8a4b00, #d7ba7d); --term-bad: light-dark(#b42318, #f48771); --term-ok: light-dark(#007100, #73c991); --term-cmd: light-dark(#0064a8, #4fc1ff);
+  --ex-sel: light-dark(#cce4f7, #04395e); --ex-drop: light-dark(#d6ebff, #383b3d); --ex-guide: light-dark(#c4c4c4, #585858); --ex-menu: light-dark(#fff, #252526); --ex-err-bg: light-dark(#f2dede, #5a1d1d);
+  --git-mod: light-dark(#895503, #e2c08d); --git-new: light-dark(#007100, #73c991);
+  --ic-folder: light-dark(#c09553, #dcb67a); --ic-go: light-dark(#007d9c, #00add8); --ic-md: light-dark(#2f78a8, #519aba); --ic-yaml: light-dark(#8a4fb5, #a074c4); --ic-json: light-dark(#9a8200, #cbcb41);
+  --ic-toml: light-dark(#b0521c, #e37933); --ic-svg: light-dark(#b06e00, #ffb13b); --ic-plain: light-dark(#6c6c6c, #a0a0a0);
+  --btn: light-dark(#0064a8, #0e639c); --btn-hover: light-dark(#00508a, #1177bb); --btn-fg: #fff;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--vs-bg); color: var(--vs-fg); font-family: var(--font-body); font-size: 13px; line-height: 1.4; overflow: hidden; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 1px solid var(--vs-accent); outline-offset: -1px; }
+* { scrollbar-width: thin; scrollbar-color: var(--vs-line) transparent; }
+.app { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100dvh; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 10px; background: var(--vs-tabs); border-bottom: 1px solid var(--vs-edge); }
+.brand { font-family: var(--font-mono); font-weight: 600; font-size: 14px; margin-right: 6px; white-space: nowrap; }
+.btn { padding: 4px 12px; background: var(--btn); color: var(--btn-fg); border: 1px solid transparent; cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--btn-hover); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.ghost { background: none; color: var(--vs-fg); border-color: var(--vs-edge); }
+.btn.ghost:hover:not(:disabled) { background: var(--vs-hover); }
+.btn.stop { background: #c72e0f; }
+.btn.stop:hover:not(:disabled) { background: #a3260c; }
+.cmd { display: flex; flex: 1 1 260px; min-width: 0; gap: 6px; }
+.cmd input { flex: 1; min-width: 0; padding: 4px 8px; background: var(--vs-bg); border: 1px solid var(--vs-edge); font-family: var(--font-mono); }
+.spacer { flex: 1 1 0; }
+.brk { display: none; }
+.work { display: grid; grid-template-rows: minmax(0, 1fr) minmax(120px, 36%); min-height: 0; }
+.vs { position: relative; display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 0; border-bottom: 1px solid var(--vs-edge); }
+.vs-side { display: flex; flex-direction: column; min-height: 0; background: var(--vs-side); color: var(--vs-side-fg); border-right: 1px solid var(--vs-edge); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.vs-title { margin: 0; padding: 8px 12px; font-size: 11px; letter-spacing: 0.04em; }
+.ex-head { display: flex; align-items: center; gap: 2px; padding: 0 4px 0 12px; height: 24px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.ex-head > span { flex: 1; }
+.ex-tb { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; background: none; border: 0; border-radius: 4px; color: inherit; cursor: pointer; }
+.ex-tb:hover { background: var(--vs-hover); }
+.ex-tb svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+.ex-tree { flex: 1; min-height: 0; overflow: auto; padding-bottom: 24px; outline: none; }
+.ex-tree.ex-drop-root { background: var(--ex-drop); }
+.ex-row { position: relative; display: flex; align-items: center; height: 22px; padding-left: 8px; padding-right: 8px; white-space: nowrap; cursor: pointer; color: var(--vs-fg); }
+.ex-row:hover { background: var(--vs-hover); }
+.ex-row.sel { background: var(--vs-pick); }
+.ex-tree:focus .ex-row.sel { background: var(--ex-sel); }
+.ex-tree:focus .ex-row.foc { outline: 1px solid var(--vs-accent); outline-offset: -1px; }
+.ex-row.ex-drop { background: var(--ex-drop); }
+.ex-row.ex-cut { opacity: 0.5; }
+.ex-ind { flex: none; align-self: stretch; width: calc(var(--d) * 12px); background: repeating-linear-gradient(90deg, transparent 0 7px, var(--ex-guide) 7px 8px, transparent 8px 12px); }
+.ex-tw { flex: none; display: grid; place-items: center; width: 16px; height: 16px; }
+.ex-tw svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.3; transition: transform 0.1s; }
+.ex-row[aria-expanded="true"] .ex-tw svg { transform: rotate(90deg); }
+.ex-icon { flex: none; width: 16px; height: 16px; margin-right: 6px; }
+.ex-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ex-badge { flex: none; margin-left: auto; padding-left: 6px; font-size: 11px; font-weight: 600; }
+.ex-row.ex-M { color: var(--git-mod); }
+.ex-row.ex-U { color: var(--git-new); }
+.ex-row.ex-dirty { color: var(--git-mod); }
+.ex-row.ex-dirty .ex-badge { font-size: 9px; }
+.ex-edit { position: relative; flex: 1; min-width: 0; }
+.ex-input { width: 100%; height: 20px; padding: 0 3px; background: var(--vs-bg); color: var(--vs-fg); border: 1px solid var(--vs-accent); outline: none; user-select: text; -webkit-user-select: text; }
+.ex-input.bad { border-color: var(--term-bad); }
+.ex-msg { position: absolute; left: 0; right: -8px; top: 21px; z-index: 3; padding: 4px 6px; background: var(--ex-err-bg); color: var(--vs-fg); border: 1px solid var(--term-bad); white-space: normal; font-size: 12px; line-height: 1.35; }
+.ex-msg[hidden] { display: none; }
+.ex-menu { position: fixed; z-index: 30; min-width: 230px; max-width: calc(100vw - 8px); padding: 4px 0; background: var(--ex-menu); color: var(--vs-fg); border: 1px solid var(--vs-edge); border-radius: 5px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.3); user-select: none; -webkit-user-select: none; outline: none; }
+.ex-menu[hidden] { display: none; }
+.ex-menu button { display: flex; justify-content: space-between; gap: 24px; width: 100%; padding: 4px 16px 4px 20px; background: none; border: 0; text-align: left; cursor: pointer; white-space: nowrap; }
+.ex-menu button:disabled { opacity: 0.45; cursor: default; }
+.ex-menu button:not(:disabled):hover, .ex-menu button:not(:disabled):focus { background: var(--ex-sel); outline: none; }
+.ex-menu kbd { font: inherit; opacity: 0.7; }
+.ex-menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--vs-edge); }
+.dlg { max-width: min(460px, calc(100vw - 32px)); padding: 16px 18px; background: var(--vs-side); color: var(--vs-fg); border: 1px solid var(--vs-edge); box-shadow: 0 4px 16px rgb(0 0 0 / 0.35); }
+.dlg::backdrop { background: rgb(0 0 0 / 0.3); }
+.dlg h2 { margin: 0 0 8px; font-size: 14px; }
+.dlg p { margin: 0 0 8px; }
+.dlg ul { margin: 0 0 8px; padding-left: 20px; max-height: 30vh; overflow: auto; font-family: var(--font-mono); font-size: 12px; }
+.dlg ul:empty { display: none; }
+.dlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.btn.danger { background: #c72e0f; }
+.btn.danger:hover { background: #a3260c; }
+.toast { position: fixed; right: 16px; bottom: 32px; z-index: 40; max-width: min(420px, calc(100vw - 32px)); padding: 8px 12px; background: var(--vs-side); color: var(--vs-fg); border: 1px solid var(--vs-edge); border-left: 3px solid var(--vs-accent); box-shadow: 0 2px 8px rgb(0 0 0 / 0.3); }
+.toast[hidden] { display: none; }
+.vs-tab .ex-icon { margin: 0 -8px 0 10px; }
+.vs-acts { display: flex; flex: none; align-items: center; gap: 2px; padding: 0 6px; }
+.vs-acts .ex-tb { color: var(--vs-tab-fg); }
+.vs-acts [hidden] { display: none; }
+.vs-mbar { display: none; }
+.vs-pane { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.vs-pane.split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.vs-one { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.vs-one > [hidden] { display: none; }
+.vs-sidepv { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--vs-edge); }
+.vs-sidepv[hidden] { display: none; }
+.vs-sidehead { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 12px; background: var(--vs-tabs); color: var(--vs-tab-fg); user-select: none; -webkit-user-select: none; }
+.vs-sidehead span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vs-sidepv .vs-preview { flex: 1; min-height: 0; }
+.vs-scrim { display: none; }
+.vs-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.vs-pick { flex: 1; min-width: 0; padding: 8px 6px; background: var(--vs-side); border: 0; }
+.vs-head { display: flex; flex: none; background: var(--vs-tabs); user-select: none; -webkit-user-select: none; }
+.vs-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; }
+.vs-tab { display: flex; flex: none; align-items: center; border-right: 1px solid var(--vs-edge); border-top: 1px solid transparent; color: var(--vs-tab-fg); }
+.vs-tab[aria-selected="true"] { background: var(--vs-bg); color: var(--vs-fg); border-top-color: var(--vs-accent); }
+.vs-tab > button { padding: 8px 4px 8px 14px; background: none; border: 0; white-space: nowrap; cursor: pointer; }
+.vs-tab > .vs-x { width: 26px; padding: 8px 0; text-align: center; opacity: 0.7; }
+.vs-tab > .vs-x:hover { opacity: 1; background: var(--vs-hover); }
+.vs-tab.dirty > button:first-child::after { content: " \25CF"; }
+.vs-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: 26px; padding: 2px 12px; color: var(--vs-tab-fg); }
+.vs-crumbs { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.vs-pane { flex: 1; min-height: 0; overflow: hidden; }
+.vs-code { height: 100%; }
+.vs-preview { height: 100%; padding: 4px 24px 24px; overflow: auto; font-size: 15px; line-height: 1.6; }
+.vs-preview img { max-width: 100%; height: auto; background: #fff; }
+.vs-preview table { display: block; overflow-x: auto; border-collapse: collapse; margin: 12px 0; }
+.vs-preview th, .vs-preview td { border: 1px solid var(--vs-edge); padding: 4px 10px; text-align: left; }
+.vs-preview code { font-family: var(--font-mono); font-size: 0.9em; background: var(--vs-side); padding: 1px 4px; }
+.vs-preview pre { background: var(--vs-side); padding: 10px 12px; overflow-x: auto; }
+.vs-preview pre code { background: none; padding: 0; }
+.vs-preview a { color: var(--vs-accent); }
+.vs-preview.vs-media { display: grid; place-items: center; }
+.vs-empty { padding: 24px; color: var(--vs-tab-fg); }
+.term { display: flex; flex-direction: column; min-height: 0; background: var(--term-bg); }
+.term-head { display: flex; align-items: center; gap: 8px; padding: 2px 6px 2px 12px; border-bottom: 1px solid var(--vs-edge); font-size: 11px; letter-spacing: 0.04em; color: var(--vs-tab-fg); }
+.term-head .btn { padding: 1px 8px; font-size: 12px; letter-spacing: 0; }
+.term-out { flex: 1; min-height: 0; margin: 0; padding: 6px 12px; overflow: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.term-out .err { color: var(--term-err); }
+.term-out .cmdl { color: var(--term-cmd); font-weight: 600; }
+.term-out .ok { color: var(--term-ok); }
+.term-out .bad { color: var(--term-bad); font-weight: 600; }
+.status { display: flex; gap: 16px; justify-content: space-between; padding: 2px 10px; background: var(--vs-status); color: #fff; font-size: 12px; white-space: nowrap; }
+.status span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status.busy { background: #a85b00; }
+.status .ver { margin-left: auto; color: inherit; overflow: hidden; text-overflow: ellipsis; }
+.status .ver:not([href]) { text-decoration: none; }
+.brand { color: inherit; text-decoration: none; }
+.brand:hover { text-decoration: underline; }
+.loader { position: fixed; inset: 0; display: grid; place-items: center; background: var(--vs-bg); z-index: 10; }
+.loader[hidden] { display: none; }
+.loader-box { width: min(520px, calc(100vw - 32px)); }
+.loader h1 { font-family: var(--font-mono); font-size: 20px; margin: 0 0 12px; }
+.loader progress { width: 100%; height: 10px; }
+.loader ul { list-style: none; padding: 0; margin: 12px 0 0; font-family: var(--font-mono); font-size: 12px; max-height: 50vh; overflow: auto; }
+.loader li { display: flex; justify-content: space-between; gap: 12px; }
+.loader .lerr { color: var(--term-err); white-space: pre-wrap; }
+@media (max-width: 640px) {
+  .vs { grid-template-columns: minmax(0, 1fr); }
+  .vs-side, .vs-crumbs { display: none; }
+  .vs-mbar { display: flex; flex: none; align-items: center; gap: 2px; padding: 0 4px; background: var(--vs-side); border-bottom: 1px solid var(--vs-edge); }
+  .vs-mbar .ex-tb { width: 36px; height: 36px; }
+  .vs-mbar .ex-tb svg { width: 18px; height: 18px; }
+  .vs.ex-open .vs-side { display: flex; position: absolute; z-index: 6; inset: 0 auto 0 0; width: min(300px, 86%); box-shadow: 2px 0 12px rgb(0 0 0 / 0.35); }
+  .vs.ex-open .vs-scrim { display: block; position: absolute; z-index: 5; inset: 0; background: rgb(0 0 0 / 0.4); }
+  .ex-row { height: 32px; }
+  .vs-pane.split { grid-template-columns: minmax(0, 1fr); }
+  .vs-sidepv, .vs-acts .wide { display: none; }
+  .vs-bar { display: none; }
+  .work { grid-template-rows: minmax(0, 1fr) minmax(120px, 40%); }
+  .brand { flex: 1 0 auto; }
+  #theme, .brk { order: 1; }
+  .brk { display: block; flex-basis: 100%; height: 0; }
+  #check, #update, #stop { order: 2; }
+  .cmd { order: 3; }
+  .top .btn { padding: 4px 9px; }
+  .cmd { flex-basis: 100%; }
+  .vs-preview { padding: 4px 12px 16px; font-size: 14px; }
+  .status .wide { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <a class="brand" href="../" title="The docgen docs">docgen playground</a>
+    <button class="btn" id="check" type="button" disabled>docgen check</button>
+    <button class="btn" id="update" type="button" disabled>docgen update</button>
+    <button class="btn stop" id="stop" type="button" disabled>Stop</button>
+    <form class="cmd" id="cmdform">
+      <input id="cmd" type="text" spellcheck="false" autocomplete="off" aria-label="Shell command" placeholder="sh -c command, such as: go test ./..." value="go test ./...">
+      <button class="btn ghost" id="run" type="submit" disabled>Run</button>
+    </form>
+    <button class="btn ghost" id="theme" type="button" aria-label="Theme">Theme: auto</button>
+    <span class="brk" aria-hidden="true"></span>
+  </header>
+  <div class="work">
+    <div class="vs" id="vs">
+      <div class="vs-side" id="side">
+        <p class="vs-title">EXPLORER</p>
+        <div class="ex-head" id="exhead"><span>WORK</span>
+          <button class="ex-tb" id="exnewfile" type="button" title="New File" aria-label="New File"><svg><use href="#t-newfile"/></svg></button>
+          <button class="ex-tb" id="exnewdir" type="button" title="New Folder" aria-label="New Folder"><svg><use href="#t-newdir"/></svg></button>
+          <button class="ex-tb" id="exrefresh" type="button" title="Refresh Explorer" aria-label="Refresh Explorer"><svg><use href="#t-refresh"/></svg></button>
+          <button class="ex-tb" id="excollapse" type="button" title="Collapse Folders in Explorer" aria-label="Collapse Folders in Explorer"><svg><use href="#t-collapse"/></svg></button>
+        </div>
+        <div class="ex-tree" id="tree" role="tree" aria-label="Files" aria-multiselectable="true" tabindex="0"></div>
+      </div>
+      <div class="vs-scrim" id="scrim"></div>
+      <div class="vs-main">
+        <div class="vs-mbar">
+          <button class="ex-tb" id="files" type="button" aria-label="Show files" aria-expanded="false" aria-controls="side"><svg><use href="#t-files"/></svg></button>
+          <select class="vs-pick" id="pick" aria-label="File"></select>
+          <button class="ex-tb" id="more" type="button" aria-label="File actions" aria-haspopup="menu"><svg><use href="#t-more"/></svg></button>
+        </div>
+        <div class="vs-head"><div class="vs-tabs" id="tabs" role="tablist" aria-label="Open files"></div>
+          <div class="vs-acts" id="acts">
+            <button class="ex-tb" id="openpv" type="button" title="Open Preview" aria-label="Open Preview" hidden><svg><use href="#t-preview"/></svg></button>
+            <button class="ex-tb wide" id="openside" type="button" title="Open Preview to the Side" aria-label="Open Preview to the Side" hidden><svg><use href="#t-side"/></svg></button>
+            <button class="ex-tb" id="showsrc" type="button" title="Show Source" aria-label="Show Source" hidden><svg><use href="#t-source"/></svg></button>
+          </div>
+        </div>
+        <div class="vs-bar"><span class="vs-crumbs" id="crumbs"></span><span id="lang"></span></div>
+        <div class="vs-pane" id="pane">
+          <div class="vs-one" role="tabpanel">
+            <div class="vs-code" id="code"></div>
+            <div class="vs-preview" id="preview" tabindex="0" hidden></div>
+            <div class="vs-empty" id="empty" hidden>No open file. Pick a file in the explorer.</div>
+          </div>
+          <div class="vs-sidepv" id="sidebox" hidden>
+            <div class="vs-sidehead"><span id="sidetitle"></span>
+              <button class="ex-tb" id="sidesrc" type="button" title="Show Source" aria-label="Show Source"><svg><use href="#t-source"/></svg></button>
+              <button class="ex-tb" id="sideclose" type="button" title="Close Preview" aria-label="Close Preview"><svg><use href="#t-close"/></svg></button>
+            </div>
+            <div class="vs-preview" id="sidepv" tabindex="0"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <section class="term" aria-label="Output">
+      <div class="term-head"><span>OUTPUT</span><span class="spacer"></span><button class="btn ghost" id="clear" type="button">Clear</button></div>
+      <pre class="term-out" id="out" aria-live="polite"></pre>
+    </section>
+  </div>
+  <footer class="status" id="status"><span id="step">Loading</span><span id="elapsed"></span><span class="wide" id="info"></span><a class="ver" id="ver"></a></footer>
+</div>
+<dialog class="dlg" id="dlg" aria-labelledby="dlgt"><form method="dialog"><h2 id="dlgt"></h2><p id="dlgm"></p><ul id="dlgl"></ul>
+  <div class="dlg-btns"><button class="btn ghost" value="cancel" id="dlgno">Cancel</button><button class="btn" value="ok" id="dlgok">OK</button></div></form></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="ex-menu" id="menu" role="menu" tabindex="-1" hidden></div>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true"><defs>
+<symbol id="i-fc" viewBox="0 0 16 16"><path style="fill: var(--ic-folder)" d="M1 3.5C1 2.7 1.7 2 2.5 2h3.6l1.5 1.5h5.9c.8 0 1.5.7 1.5 1.5v7.5c0 .8-.7 1.5-1.5 1.5h-11C1.7 14 1 13.3 1 12.5z"/></symbol>
+<symbol id="i-fo" viewBox="0 0 16 16"><path style="fill: var(--ic-folder)" opacity=".65" d="M1 3.5C1 2.7 1.7 2 2.5 2h3.6l1.5 1.5h5.9c.8 0 1.5.7 1.5 1.5V6H4L1 12.5z"/><path style="fill: var(--ic-folder)" d="M3.7 6.5H15.5L13 14H1z"/></symbol>
+<symbol id="i-go" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-go)" stroke-width="1.7" stroke-linecap="round"><path d="M7.2 5.6A2.9 2.9 0 1 0 7.4 9.8V8.3H5.4"/><ellipse cx="11.9" cy="8" rx="2.4" ry="2.9"/></g></symbol>
+<symbol id="i-mod" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-go)" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.8 13.6 4.9v6.2L8 14.2 2.4 11.1V4.9zM2.4 4.9 8 8l5.6-3.1M8 8v6.2"/></g></symbol>
+<symbol id="i-md" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-md)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3.5" width="14" height="9" rx="1.5"/><path d="M3.5 10.2V5.8L5.4 8l1.9-2.2v4.4M11.2 5.8v4.2M9.5 8.5l1.7 1.7 1.7-1.7"/></g></symbol>
+<symbol id="i-yaml" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-yaml)" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 3.5h6M5.5 8h8M5.5 12.5h8M2.5 8h.1M2.5 12.5h.1"/></g></symbol>
+<symbol id="i-json" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-json)" stroke-width="1.4" stroke-linecap="round"><path d="M6 2.5c-1.5 0-2 .6-2 2v1.6c0 .9-.5 1.5-1.5 1.9 1 .4 1.5 1 1.5 1.9v1.6c0 1.4.5 2 2 2M10 2.5c1.5 0 2 .6 2 2v1.6c0 .9.5 1.5 1.5 1.9-1 .4-1.5 1-1.5 1.9v1.6c0 1.4-.5 2-2 2"/></g></symbol>
+<symbol id="i-toml" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-toml)" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 3.5h9M8 3.5v9.5"/></g><g style="fill: none; stroke: var(--ic-toml)" stroke-width="1.1"><path d="M3 7v6.5h1.5M13 7v6.5h-1.5"/></g></symbol>
+<symbol id="i-svg" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-svg)" stroke-width="1.3" stroke-linejoin="round"><path d="M3 12.5 8 3.5l5 9"/><rect x="1.8" y="11.3" width="2.4" height="2.4"/><rect x="11.8" y="11.3" width="2.4" height="2.4"/><rect x="6.8" y="2.3" width="2.4" height="2.4"/></g></symbol>
+<symbol id="i-plain" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-plain)" stroke-width="1.2" stroke-linejoin="round"><path d="M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5"/></g></symbol>
+<symbol id="i-pv" viewBox="0 0 16 16"><g style="fill: none; stroke: var(--ic-md)" stroke-width="1.2" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M8 2.5v11M10 6h3M10 8.5h3M10 11h2"/></g></symbol>
+<symbol id="t-chev" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></symbol>
+<symbol id="t-newfile" viewBox="0 0 16 16"><path d="M9 14.5H3.5v-13h5.5l3 3V8M9 1.5v3h3M12 10v5M9.5 12.5h5"/></symbol>
+<symbol id="t-newdir" viewBox="0 0 16 16"><path d="M8 13H1.5V2.5h4.3l1.5 1.5h7.2v4M12 9.5v5M9.5 12h5"/></symbol>
+<symbol id="t-refresh" viewBox="0 0 16 16"><path d="M13.2 8.5a5.2 5.2 0 1 1-1.7-4.3M12 1.5v3.2H8.8"/></symbol>
+<symbol id="t-collapse" viewBox="0 0 16 16"><path d="M5 3h8v8M2.5 5.5h8v8h-8zM4.5 9.5h4"/></symbol>
+<symbol id="t-files" viewBox="0 0 16 16"><path d="M5 1.5h5l3 3v8H5zM10 1.5v3h3M3 4v10.5h7.5"/></symbol>
+<symbol id="t-more" viewBox="0 0 16 16"><path d="M3.5 8h.1M8 8h.1M12.5 8h.1" stroke-width="2.2"/></symbol>
+<symbol id="t-preview" viewBox="0 0 16 16"><path d="M1.5 2.5h13v11h-13zM8 2.5v11M10 6h3M10 8.5h3M10 11h2"/></symbol>
+<symbol id="t-side" viewBox="0 0 16 16"><path d="M1.5 2.5h13v11h-13zM8 2.5v11M3.5 6h2.5M3.5 8.5h2.5M10 6h2.5M10 8.5h2.5"/></symbol>
+<symbol id="t-source" viewBox="0 0 16 16"><path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5"/></symbol>
+<symbol id="t-close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+</defs></svg>
+<div class="loader" id="loader">
+  <div class="loader-box">
+    <h1>docgen playground</h1>
+    <p id="ltext">Getting the Go toolchain and docgen.</p>
+    <progress id="lbar" max="1" value="0"></progress>
+    <ul id="lfiles"></ul>
+  </div>
+</div>
+<script type="module" src="playground.mjs"></script>
+</body>
+</html>
