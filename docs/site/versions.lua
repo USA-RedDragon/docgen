@@ -130,6 +130,7 @@ local function site(out, tags)
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <title>Latest version</title>
 <link rel="canonical" href="latest/">
 <meta http-equiv="refresh" content="0; url=latest/">

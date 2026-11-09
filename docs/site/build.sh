@@ -205,6 +205,8 @@ build_versions() {
 	# shellcheck disable=SC2086
 	DOCS_MAIN_SHA=$(git -C "$root" rev-parse --short HEAD 2>/dev/null || :) pandoc lua "$DOCS_SITE/versions.lua" site "$out" $kept
 	pandoc lua "$DOCS_SITE/llms.lua" "$out" latest/
+	# Cloudflare Pages reads _redirects, so / goes to /latest/ with no page.
+	printf '/ /latest/ 302\n' >"$out/_redirects"
 	: >"$out/.nojekyll"
 }
 
