@@ -37,7 +37,7 @@ internal/gen/modfile.go	21	20
 internal/gen/nested.go	95	88
 internal/gen/output.go	63	60
 internal/gen/plan.go	66	65
-internal/gen/pool.go	30	29
+internal/gen/pool.go	30	30
 internal/gen/print.go	21	20
 internal/gen/program.go	43	40
 internal/gen/reference.go	21	21
