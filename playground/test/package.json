@@ -1,0 +1,10 @@
+{
+  "name": "docgen-playground-test",
+  "private": true,
+  "description": "The browser test of the docgen playground page, with Playwright Test.",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
+  }
+}

@@ -1,3 +1,4 @@
 /docgen
 artifacts/
 /dist/
+/playground/test/node_modules/
