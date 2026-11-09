@@ -27,7 +27,7 @@ type Config struct {
 	Jobs   int               `name:"jobs" default:"0" description:"-p of each go command; 0 leaves it to go"`
 	Tags   string            `name:"tags" description:"comma-separated build tags of each go command and package load"`
 	Depth  int               `name:"depth" flag:"-" default:"1" description:"levels of nested docgen:docgen markers; 0 allows none"`
-	Print  string            `name:"print" flag:"-" default:"go" description:"how a marker with no print= prints a value: go, or raw, which runs no code"`
+	Print  string            `name:"print" flag:"-" default:"go" description:"how a marker with no print= prints a value: go, raw or config; raw runs no code"`
 	Vars   map[string]string `name:"vars" flag:"-" env:"-" description:"values of the docgen:var and docgen:text markers, by name"`
 }
 
@@ -61,10 +61,10 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// checkPrint returns an error for a print setting that is not go or raw.
+// checkPrint returns an error for a print setting that is not go, raw or config.
 func checkPrint(value string) error {
-	if value != goprint.PrintGo && value != goprint.PrintRaw {
-		return fmt.Errorf("print is %q; it must be go or raw", value)
+	if value != goprint.PrintGo && value != goprint.PrintRaw && value != goprint.PrintConfig {
+		return fmt.Errorf("print is %q; it must be go, raw or config", value)
 	}
 	return nil
 }

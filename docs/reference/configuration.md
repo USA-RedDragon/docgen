@@ -5,20 +5,21 @@ The settings of `docgen`, with the key in `.docgen.yaml`, the environment variab
 ## Settings
 
 <!-- docgen:configulator pkg=internal/cli type=Config env=DOCGEN_ -->
-| Key      | Type          | Default | Environment     | Flag       | Description                                                                |
-|----------|---------------|---------|-----------------|------------|----------------------------------------------------------------------------|
-| `docs`   | string        | `.`     | `DOCGEN_DOCS`   | —          | directory to scan for Markdown pages, relative to the repository root      |
-| `module` | string        | `.`     | `DOCGEN_MODULE` | `--module` | directory of the Go module, relative to the repository root                |
-| `jobs`   | integer       | `0`     | `DOCGEN_JOBS`   | `--jobs`   | -p of each go command; 0 leaves it to go                                   |
-| `tags`   | string        |         | `DOCGEN_TAGS`   | `--tags`   | comma-separated build tags of each go command and package load             |
-| `depth`  | integer       | `1`     | `DOCGEN_DEPTH`  | —          | levels of nested docgen:docgen markers; 0 allows none                      |
-| `print`  | string        | `go`    | `DOCGEN_PRINT`  | —          | how a marker with no print= prints a value: go, or raw, which runs no code |
-| `vars`   | map of string |         | —               | —          | values of the docgen:var and docgen:text markers, by name                  |
+| Key      | Type          | Default | Environment     | Flag       | Description                                                                     |
+|----------|---------------|---------|-----------------|------------|---------------------------------------------------------------------------------|
+| `docs`   | string        | `.`     | `DOCGEN_DOCS`   | —          | directory to scan for Markdown pages, relative to the repository root           |
+| `module` | string        | `.`     | `DOCGEN_MODULE` | `--module` | directory of the Go module, relative to the repository root                     |
+| `jobs`   | integer       | `0`     | `DOCGEN_JOBS`   | `--jobs`   | -p of each go command; 0 leaves it to go                                        |
+| `tags`   | string        |         | `DOCGEN_TAGS`   | `--tags`   | comma-separated build tags of each go command and package load                  |
+| `depth`  | integer       | `1`     | `DOCGEN_DEPTH`  | —          | levels of nested docgen:docgen markers; 0 allows none                           |
+| `print`  | string        | `go`    | `DOCGEN_PRINT`  | —          | how a marker with no print= prints a value: go, raw or config; raw runs no code |
+| `vars`   | map of string |         | —               | —          | values of the docgen:var and docgen:text markers, by name                       |
 <!-- /docgen:configulator -->
 
 - `vars` holds the values of the [`docgen:var`](markers.md#docgenvar) and [`docgen:text`](markers.md#docgentext) markers. It is a setting of the file only. A key has letters, digits, `_` and `-`.
 - `jobs` is the `-p` of each go command, an integer up to <!-- docgen:const pkg=internal/cli name=maxJobs -->`1024`<!-- /docgen:const -->. 0 adds no `-p`. At most <!-- docgen:const pkg=internal/gen name=maxCommands -->`8`<!-- /docgen:const --> go commands run at once for any value. Use it to limit a small CI runner.
 - `tags` holds letters, digits, `_` and `.`, separated by commas. A `-tags` in `GOFLAGS` also applies.
+- `print` is the `print=` of each marker with no `print=`: `go`, `raw` or `config`. With `raw`, these markers run no code. For each value, see [`docgen:const`](markers.md#docgenconst).
 - `depth` is at most <!-- docgen:const pkg=internal/cli name=maxDepth -->`8`<!-- /docgen:const -->.
 - An unknown key is an error.
 

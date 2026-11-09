@@ -69,7 +69,7 @@ type Options struct {
 	// Depth is the number of levels of docgen:docgen markers, and 0 means none.
 	Depth int
 	// Print is the print= value of a marker with none: goprint.PrintGo, "" for
-	// the same, or goprint.PrintRaw.
+	// the same, goprint.PrintRaw or goprint.PrintConfig.
 	Print string
 	// Vars holds the values of the docgen:var and docgen:text markers.
 	Vars map[string]string

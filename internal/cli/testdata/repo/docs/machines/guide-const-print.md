@@ -1,5 +1,6 @@
 - Default: <!-- docgen:const pkg=machine name=Listen --><!-- /docgen:const -->
 - `go`: <!-- docgen:const pkg=machine name=Listen print=go --><!-- /docgen:const -->
 - `raw`: <!-- docgen:const pkg=machine name=Listen print=raw --><!-- /docgen:const -->
+- `config`: <!-- docgen:const pkg=machine name=Listen print=config --><!-- /docgen:const -->
 - `name`: <!-- docgen:const pkg=machine name=Listen print=name --><!-- /docgen:const -->
 - `%06d`: <!-- docgen:const pkg=machine name=Listen print=%06d --><!-- /docgen:const -->

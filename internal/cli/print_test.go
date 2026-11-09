@@ -197,7 +197,7 @@ func TestConfigPrintVerbOfAnInt(t *testing.T) {
 func TestConfigPrintErrors(t *testing.T) {
 	t.Parallel()
 	for arg, want := range map[string]string{
-		"print=nope": "print=nope is not go, raw, name or a fmt verb",
+		"print=nope": "print=nope is not go, raw, config, name or a fmt verb",
 		"print=%d":   "print=%d is not valid for the value",
 	} {
 		t.Run(arg, func(t *testing.T) {
@@ -257,9 +257,9 @@ func TestPrintSetting(t *testing.T) {
 
 func TestPrintSettingValues(t *testing.T) {
 	t.Parallel()
-	for _, value := range []string{"name", "\"%d\"", "RAW", "\"\""} {
+	for _, value := range []string{"name", "\"%d\"", "RAW", "Config", "\"\""} {
 		root := pageRepo(t, map[string]string{".docgen.yaml": "print: " + value + "\n"})
-		if rc, log := docgen(t, root, "check"); rc != 1 || !strings.Contains(log, "it must be go or raw") {
+		if rc, log := docgen(t, root, "check"); rc != 1 || !strings.Contains(log, "it must be go, raw or config") {
 			t.Errorf("%s: rc %d, log:\n%s", value, rc, log)
 		}
 	}
@@ -329,4 +329,190 @@ func TestPrintInANestedRun(t *testing.T) {
 			wantIn(t, page(t, root, "p.md"), "-->"+c.want+"<!--")
 		})
 	}
+}
+
+// configTextSource is a package with defaults of a type with a MarshalText
+// method, of an enum with a String method and of durations.
+const configTextSource = `package p
+
+import (
+	"errors"
+	"time"
+)
+
+// Slot has a String method.
+type Slot int
+
+func (s Slot) String() string { return "TS" + string(rune('0'+s)) }
+
+// The slots.
+const (
+	SlotOne Slot = iota
+	SlotTwo
+)
+
+// Scene has a String method and a MarshalText method.
+type Scene uint8
+
+func (Scene) String() string { return "scene" }
+
+// MarshalText returns the name of the scene.
+func (s Scene) MarshalText() ([]byte, error) { return []byte("evening-" + string(rune('0'+s))), nil }
+
+// Evening is a scene.
+const Evening Scene = 3
+
+// Mode has a MarshalText method on the pointer.
+type Mode string
+
+// MarshalText returns the mode in upper case.
+func (m *Mode) MarshalText() ([]byte, error) { return []byte("MODE-" + string(*m)), nil }
+
+// Ticks is a defined type of time.Duration.
+type Ticks time.Duration
+
+// Bad has a MarshalText method that returns an error.
+type Bad int
+
+// MarshalText returns an error.
+func (Bad) MarshalText() ([]byte, error) { return nil, errors.New("no text") }
+
+// Boom has a MarshalText method that panics.
+type Boom int
+
+// MarshalText panics.
+func (Boom) MarshalText() ([]byte, error) { panic("boom") }
+
+// Config holds settings.
+type Config struct {
+	Lane  Slot
+	View  Scene
+	Kind  Mode
+	Wait  time.Duration
+	Hold  time.Duration
+	Tick  Ticks
+	Name  string
+	Size  int
+}
+
+// New applies the defaults.
+func New(c Config) Config {
+	if c.Lane == 0 {
+		c.Lane = SlotTwo
+	}
+	if c.View == 0 {
+		c.View = Evening
+	}
+	if c.Kind == "" {
+		c.Kind = "fast"
+	}
+	if c.Wait == 0 {
+		c.Wait = 5 * time.Second
+	}
+	if c.Hold == 0 {
+		c.Hold = 1500000000
+	}
+	if c.Tick == 0 {
+		c.Tick = Ticks(2 * time.Second)
+	}
+	if c.Name == "" {
+		c.Name = "x"
+	}
+	if c.Size == 0 {
+		c.Size = 0x10
+	}
+	return c
+}
+
+// B is a Bad.
+const B Bad = 1
+
+// X is a Boom.
+const X Boom = 1
+`
+
+func TestConfigPrintConfig(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		marker, yaml string
+		want         []string
+	}{
+		"config": {" print=config", "", []string{
+			"| `Lane` | `Slot` | `SlotTwo` (1) |",
+			"| `View` | `Scene` | `Evening` (evening-3) |",
+			"| `Kind` | `Mode` | `\"fast\"` (MODE-fast) |",
+			"| `Wait` | `time.Duration` | `5 * time.Second` (5s) |",
+			"| `Hold` | `time.Duration` | `1500000000` (1.5s) |",
+			"| `Tick` | `Ticks` | `Ticks(2 * time.Second)` (2000000000) |",
+			"| `Name` | `string` | `\"x\"` |",
+			"| `Size` | `int` | `0x10` |",
+		}},
+		"setting": {"", "print: config\n", []string{"| `SlotTwo` (1) |", "| `Evening` (evening-3) |", "| `5 * time.Second` (5s) |"}},
+		"go":      {" print=go", "print: config\n", []string{"| `SlotTwo` (TS1) |", "| `Evening` (scene) |", "| `5 * time.Second` (5s) |"}},
+		"raw":     {" print=raw", "", []string{"| `SlotTwo` (1) |", "| `Evening` (3) |", "| `\"fast\"` |", "| `5 * time.Second` (5000000000) |"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := pageRepo(t, map[string]string{
+				"p/p.go":       configTextSource,
+				".docgen.yaml": c.yaml,
+				"docs/p.md":    "<!-- docgen:config pkg=p type=Config" + c.marker + " -->\n<!-- /docgen:config -->\n",
+			})
+			wantIn(t, updateTwice(t, root, "docs/p.md"), c.want...)
+		})
+	}
+}
+
+func TestConstPrintConfig(t *testing.T) {
+	t.Parallel()
+	root := pageRepo(t, map[string]string{
+		"p/p.go":    configTextSource,
+		"docs/p.md": constPage("name=SlotTwo print=config", "name=Evening print=config", "name=Evening print=go"),
+	})
+	wantIn(t, updateTwice(t, root, "docs/p.md"), "-->`1`<!--", "-->`evening-3`<!--", "-->`scene`<!--")
+}
+
+func TestPrintConfigRunsNoTestWithNoMarshalText(t *testing.T) {
+	t.Parallel()
+	root := pageRepo(t, map[string]string{
+		"p/p.go":      configSource,
+		"p/p_test.go": "package p\n\nfunc broken() { undefined() }\n",
+		"docs/p.md":   "<!-- docgen:config pkg=p type=Config print=config -->\n<!-- /docgen:config -->\n",
+	})
+	rc, log := docgen(t, root, "update")
+	if rc != 0 {
+		t.Fatalf("rc %d, log:\n%s", rc, log)
+	}
+	wantNotIn(t, log, "printing")
+	wantIn(t, readPage(t, root, "docs/p.md"), "| `DefaultPort` (4001) |", "| `DefaultWait` (1.5s) |")
+}
+
+func TestPrintConfigErrors(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]string{
+		"B": "the value has no text: %!config(ERROR=no text)",
+		"X": "the value has no text: %!config(PANIC=MarshalText method: boom)",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := pageRepo(t, map[string]string{"p/p.go": configTextSource, "docs/p.md": constPage("name=" + name + " print=config")})
+			if rc, log := docgen(t, root, "update"); rc != 1 || !strings.Contains(log, want) {
+				t.Errorf("rc %d, log:\n%s", rc, log)
+			}
+		})
+	}
+}
+
+func TestFixturePrintConfig(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	copyFixture(t, root)
+	if rc, log := docgen(t, root, "update", "-module", "v2"); rc != 0 {
+		t.Fatalf("rc %d, log:\n%s", rc, log)
+	}
+	wantIn(t, readPage(t, root, "docs/dimmer/config-config.md"),
+		"| `Mode` | `Mode` | `ModeFade` (1) | Mode is how the level changes. |",
+		"| `Scene` | `Scene` | `SceneEvening` (evening) | Scene is the scene at start. |",
+		"| `Hold` | `time.Duration` | `5 * time.Second` (5s) | Hold is how long a scene stays. |",
+	)
 }

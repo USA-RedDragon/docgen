@@ -58,6 +58,8 @@ func NewLamp(cfg Config) (*Lamp, error) {
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+To show each default as a user writes it in a config file, use `print=config`. A `time.Duration` is then `5s`, a type with a MarshalText method is the text of that method, and an enum with a String method is its number, such as `1`.
+
 Tip: apply each default in an `if` that compares the field with its zero value, such as `if cfg.Tries == 0 { l.tries = 1 }`. A default that the code computes in another way is not in the table.
 
 For all the rules and options, see [`docgen:config`](../reference/markers.md#docgenconfig).

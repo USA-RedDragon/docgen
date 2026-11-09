@@ -38,7 +38,15 @@ const (
 	PrintRaw = "raw"
 	// PrintName prints the name of the constant with the value.
 	PrintName = "name"
+	// PrintConfig prints a value as a config file holds it: the text of the
+	// MarshalText method of a type with one, the text of fmt for time.Duration,
+	// and else the underlying value, as PrintRaw prints it.
+	PrintConfig = "config"
 )
+
+// configFail is the start of the text of a run of the code for PrintConfig
+// when MarshalText returns an error or panics.
+const configFail = "%!config("
 
 var verbRe = regexp.MustCompile(`^%[-+# 0]*[0-9]*(\.[0-9]*)?[a-zA-Z]$`)
 
@@ -46,19 +54,27 @@ var verbRe = regexp.MustCompile(`^%[-+# 0]*[0-9]*(\.[0-9]*)?[a-zA-Z]$`)
 // verb.
 func CheckPrint(value string) error {
 	switch value {
-	case "", PrintGo, PrintRaw, PrintName:
+	case "", PrintGo, PrintRaw, PrintConfig, PrintName:
 		return nil
 	}
 	if !verbRe.MatchString(value) {
-		return fmt.Errorf("print=%s is not go, raw, name or a fmt verb", value)
+		return fmt.Errorf("print=%s is not go, raw, config, name or a fmt verb", value)
 	}
 	return nil
 }
 
 // CheckOutput returns an error when out, the text of a value with the fmt verb
 // verb, is the text of fmt for a verb that is not valid for the type or for a
-// panic. "" means fmt.Sprint, which has only the text of a panic.
+// panic. "" means fmt.Sprint, which has only the text of a panic. For
+// PrintConfig, out is the text of MarshalText, or the text of its error or
+// panic.
 func CheckOutput(verb, out string) error {
+	if verb == PrintConfig {
+		if strings.HasPrefix(out, configFail) {
+			return fmt.Errorf("the value has no text: %s", out)
+		}
+		return nil
+	}
 	if verb == "" {
 		if strings.HasPrefix(out, "%!v(PANIC=") {
 			return fmt.Errorf("the value has no text: %s", out)
@@ -74,8 +90,12 @@ func CheckOutput(verb, out string) error {
 // NeedsRun reports whether the text of a constant of type t with the print= value
 // in value comes only from a run of the code. A method of the type can print
 // anything, and %T of a defined type prints its name. Print handles a
-// time.Duration, and PrintRaw and PrintName read no method.
+// time.Duration, and PrintRaw and PrintName read no method. PrintConfig reads
+// only a MarshalText method.
 func NeedsRun(t gotypes.Type, value string) bool {
+	if value == PrintConfig {
+		return types.IsTextMarshaler(t)
+	}
 	if value == PrintRaw || value == PrintName || types.IsDuration(t) {
 		return false
 	}
@@ -87,7 +107,8 @@ func NeedsRun(t gotypes.Type, value string) bool {
 
 // Print returns the text of the constant value v of type t with the print= value
 // value, which is not PrintName: fmt.Sprint for "" and PrintGo, the same for the
-// underlying type for PrintRaw, or else the fmt verb. An untyped constant has its
+// underlying type for PrintRaw, PrintGo for a time.Duration and else PrintRaw
+// for PrintConfig, or else the fmt verb. An untyped constant has its
 // default type. NeedsRun must be false. An integer too large for its type prints
 // its exact value, and so does a float that float64 does not hold, with no verb. A
 // fmt verb on such a float, or one that a Go integer does not have on such an
@@ -100,6 +121,11 @@ func Print(t gotypes.Type, v constant.Value, value string) (string, error) {
 		verb = ""
 	case PrintRaw:
 		t, verb = types.Raw(t), ""
+	case PrintConfig:
+		verb = ""
+		if !types.IsDuration(t) {
+			t = types.Raw(t)
+		}
 	}
 	if outOfRange(t, v) {
 		if verb == "" {

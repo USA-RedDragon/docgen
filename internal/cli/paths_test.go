@@ -785,8 +785,8 @@ func TestConstErrors(t *testing.T) {
 		"name=Same1 print=name": "several constants of type example.com/p/p.Plain have the value 9: Same1, Same2",
 		"name=Lost print=%z":    "print=%z is not valid for the value: %!z(int=8)",
 		"name=On print=%z":      "print=%z is not valid for the value: %!z(p.State=1)",
-		"name=On print=nope":    "print=nope is not go, raw, name or a fmt verb",
-		`name=On print="%d %d"`: "is not go, raw, name or a fmt verb",
+		"name=On print=nope":    "print=nope is not go, raw, config, name or a fmt verb",
+		`name=On print="%d %d"`: "is not go, raw, config, name or a fmt verb",
 		"name=Text print=name":  "no constant of type string has the value",
 	} {
 		t.Run(args, func(t *testing.T) {

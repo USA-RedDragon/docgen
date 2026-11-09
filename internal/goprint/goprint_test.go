@@ -57,6 +57,13 @@ func TestPrint(t *testing.T) {
 		{types.Typ[types.UntypedRune], constant.MakeInt64('a'), "%c", "a"},
 		{types.Typ[types.UntypedString], constant.MakeString("s"), "", "s"},
 		{types.Typ[types.UntypedBool], constant.MakeBool(false), "", "false"},
+		{duration, constant.MakeInt64(5_000_000_000), PrintConfig, "5s"},
+		{other, constant.MakeInt64(5_000_000_000), PrintConfig, "5000000000"},
+		{types.NewAlias(types.NewTypeName(token.NoPos, nil, "A", nil), duration), constant.MakeInt64(1_500_000_000), PrintConfig, "1.5s"},
+		{namedType("x", "S", types.Typ[types.String]), constant.MakeString("a"), PrintConfig, "a"},
+		{namedType("x", "F", types.Typ[types.Float64]), constant.MakeFloat64(0.5), PrintConfig, "0.5"},
+		{types.Typ[types.UntypedInt], big, PrintConfig, "1267650600228229401496703205376"},
+		{types.Typ[types.UntypedBool], constant.MakeBool(true), PrintConfig, "true"},
 	} {
 		got, err := Print(c.typ, c.val, c.print)
 		if err != nil || got != c.want {
@@ -76,13 +83,28 @@ func TestPrintBadVerb(t *testing.T) {
 func TestCheckPrint(t *testing.T) {
 	t.Parallel()
 	for value, ok := range map[string]bool{
-		"": true, "go": true, "raw": true, "name": true, "%d": true, "%#x": true, "%q": true, "%6.2f": true, "%-5s": true, "%+v": true, "%.3e": true,
+		"": true, "go": true, "raw": true, "config": true, "name": true, "%d": true, "%#x": true, "%q": true, "%6.2f": true, "%-5s": true, "%+v": true, "%.3e": true,
 		"Go": false, "d": false, "%": false, "%%": false, "%d items": false, "%*d": false, "x%d": false, "%d%d": false,
 	} {
 		if err := CheckPrint(value); (err == nil) != ok {
 			t.Errorf("CheckPrint(%q) = %v", value, err)
 		}
 	}
+}
+
+// textMarshaler returns a defined type with the method MarshalText, on the
+// pointer when ptr is true.
+func textMarshaler(ptr bool) *types.Named {
+	n := namedType("x", "M", types.Typ[types.Int])
+	var recv types.Type = n
+	if ptr {
+		recv = types.NewPointer(n)
+	}
+	errType := types.Universe.Lookup("error").Type()
+	res := types.NewTuple(types.NewVar(token.NoPos, nil, "", types.NewSlice(types.Typ[types.Byte])), types.NewVar(token.NoPos, nil, "", errType))
+	sig := types.NewSignatureType(types.NewVar(token.NoPos, nil, "", recv), nil, nil, nil, res, false)
+	n.AddMethod(types.NewFunc(token.NoPos, n.Obj().Pkg(), "MarshalText", sig))
+	return n
 }
 
 func TestNeedsRun(t *testing.T) {
@@ -115,6 +137,12 @@ func TestNeedsRun(t *testing.T) {
 		{withMethod("Format"), "%d", true},
 		{withMethod("GoString"), "", true},
 		{withMethod("Other"), "", false},
+		{withMethod("String"), PrintConfig, false},
+		{namedType("time", "Duration", types.Typ[types.Int64]), PrintConfig, false},
+		{plain, PrintConfig, false},
+		{textMarshaler(false), PrintConfig, true},
+		{textMarshaler(true), PrintConfig, true},
+		{textMarshaler(false), PrintRaw, false},
 	} {
 		if got := NeedsRun(c.typ, c.print); got != c.want {
 			t.Errorf("NeedsRun(%v, %q) = %v", c.typ, c.print, got)
@@ -198,6 +226,10 @@ func TestCheckOutput(t *testing.T) {
 		{"", "plain", false},
 		{"%d", "%!d(p.T=1)", true},
 		{"%d", "1", false},
+		{PrintConfig, "%!config(ERROR=bad slot)", true},
+		{PrintConfig, "%!config(PANIC=MarshalText method: boom)", true},
+		{PrintConfig, "%!d(text)", false},
+		{PrintConfig, "slot-1", false},
 	} {
 		if err := CheckOutput(c.verb, c.out); (err != nil) != c.bad {
 			t.Errorf("CheckOutput(%q, %q) = %v", c.verb, c.out, err)

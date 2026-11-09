@@ -504,7 +504,7 @@ func TestConfigMarkerErrors(t *testing.T) {
 		"pkg=p type=E":            "E has no exported field",
 		"pkg=p type=Nope":         "Nope is not a type of example.com/w/p",
 		"pkg=nope type=S":         "no package nope in module example.com/w",
-		"pkg=p type=S print=nope": "print=nope is not go, raw, name or a fmt verb",
+		"pkg=p type=S print=nope": "print=nope is not go, raw, config, name or a fmt verb",
 		"pkg=p type=S print=%d":   `the default "n": print=%d is not valid for the value: %!d(string=n)`,
 		`pkg=p type=S print=""`:   "docgen:config: print= is empty",
 	} {

@@ -52,8 +52,8 @@
 //     in a page of the repository works and a marker in a page of its `root` is an
 //     error. The value is at most 8, and 0 makes each such marker an error. Only
 //     the outermost value counts.
-//   - `print` applies to a marker with no `print=`: `go`, the default, or `raw`. With
-//     `raw`, a marker with no `print=` runs no code.
+//   - `print` applies to a marker with no `print=`: `go`, the default, `raw` or
+//     `config`. With `raw`, a marker with no `print=` runs no code.
 //   - `vars` holds the values of the `docgen:var` and `docgen:text` markers. Only
 //     the file sets it. A key has letters, digits, `_` and `-`.
 //
@@ -141,7 +141,7 @@
 // A table of the fields of a struct type, with the columns Field, Type, Default
 // and Description.
 //
-//	docgen:config pkg=<path> type=<Config> [print=<go|raw|name|verb>]
+//	docgen:config pkg=<path> type=<Config> [print=<go|raw|config|name|verb>]
 //
 // `type=` is a struct type of the package, exported or not. It can also be an
 // alias or a defined type of a struct type, or of an instance of a generic
@@ -239,6 +239,11 @@
 //     (port-80).
 //   - `raw`: the underlying value, with no method: `DefaultWait` (250000000). A
 //     literal has no value.
+//   - `config`: the value as a config file holds it, as for `docgen:const`:
+//     `SceneEvening` (evening) for a type with a MarshalText method,
+//     `5 * time.Second` (5s) for a `time.Duration`, and `ModeFade` (1) for an
+//     enum with a String method. A literal has no value, unless its type is
+//     `time.Duration` or has a MarshalText method.
 //   - `name`: the name of the one constant of the type with the value, as for
 //     `docgen:const`: `LevelLow + 1` (LevelHigh), or `60 * time.Second`
 //     (time.Minute). A literal has no value, and neither does a value with no
@@ -248,16 +253,18 @@
 //
 // A default that is not a constant, such as `hold` or `new(int)`, has no value
 // with any `print=`. A value with the same text as its default, such as `-1`,
-// has no parentheses. A value of a type with one of these methods comes from
-// one `go test` run of the package, as for `docgen:const`.
+// has no parentheses. A value of a type with one of these methods, or with
+// `config` of a type with a MarshalText method, comes from one `go test` run of
+// the package, as for `docgen:const`.
 //
 // These are errors:
 //
 //   - `pkg=` with no package, or `type=` that is not a type of the package.
 //   - A type that is not a struct, a generic type, or a struct with no row.
-//   - An empty `print=`, or a value that is not `go`, `raw`, `name` or one fmt
-//     verb.
+//   - An empty `print=`, or a value that is not `go`, `raw`, `config`, `name` or
+//     one fmt verb.
 //   - A verb that a default cannot use, such as `%d` for a string.
+//   - With `config`, a MarshalText method that returns an error or panics.
 //   - `print=name` when two constants of the type have the value.
 //
 // # docgen:configulator
@@ -272,7 +279,7 @@
 // The value of a constant, or of a package-level var with a constant initial
 // value, exported or not. It goes inline in a sentence.
 //
-//	docgen:const pkg=<path> name=<Name> [print=<go|raw|name|verb>] [code=false]
+//	docgen:const pkg=<path> name=<Name> [print=<go|raw|config|name|verb>] [code=false]
 //
 // `print=` sets how the value prints:
 //
@@ -283,6 +290,14 @@
 //   - `print=raw` is the underlying value with no method, and runs no code: `4001`
 //     for a port with a String method, `1` for an enum, and `1500000000` for a
 //     `time.Duration` of 1.5s.
+//   - `print=config` is the value as a config file holds it. For a type with a
+//     MarshalText method of encoding.TextMarshaler, also on the pointer, it is
+//     the text of that method. For `time.Duration`, it is the text of fmt, such
+//     as `1.5s`. Any other value is as for `print=raw`: `1` for an enum with a
+//     String method, and `1500000000` for a defined type of `time.Duration`,
+//     such as `type Ticks time.Duration`, since goccy/go-yaml and configulator
+//     parse text such as `5s` only for `time.Duration`. A MarshalText method
+//     that returns an error or panics is an error.
 //   - `print=name` is the name of the one constant of the type with the value,
 //     from the package of the marker and then the package of the type. A
 //     constant of the package of the type is exported and has the package name,
@@ -292,8 +307,8 @@
 // An empty value prints as `""`, and line endings in a value print as spaces. A
 // verb that the value cannot use is an error. An integer too large for its default
 // type prints its exact value. A type with a
-// print method runs in one `go test` for each package, so the tests of that
-// package must compile.
+// print method, or with `print=config` a type with a MarshalText method, runs
+// in one `go test` for each package, so the tests of that package must compile.
 //
 // With `code=false`, the value has no backticks: 250ms in place of `250ms`. Any
 // other value of `code=` is an error.
@@ -364,11 +379,12 @@
 // The value of a variable of the `vars` setting, as a code span. It goes inline in
 // a sentence.
 //
-//	docgen:var name=<key> [print=<go|raw|verb>] [code=false]
+//	docgen:var name=<key> [print=<go|raw|config|verb>] [code=false]
 //
 // A key that is not in `vars` is an error. The value is a string:
 //
-//   - `print=go`, the default, and `print=raw` are the value as it is.
+//   - `print=go`, the default, `print=raw` and `print=config` are the value as
+//     it is.
 //   - `print=%q`, or any other fmt verb, is the string with that verb:
 //     `"v1.2.3"`. A verb that a string cannot use, such as `%d`, is an error.
 //   - `print=name` is an error, since a value of `vars` is not a constant.

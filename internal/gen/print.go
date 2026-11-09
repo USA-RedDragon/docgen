@@ -22,8 +22,8 @@ type valueArgs struct {
 	plain   bool
 }
 
-// bindPrint reads print=. A value that is not go, raw, name or one fmt verb is an
-// error, and so is name when names is false.
+// bindPrint reads print=. A value that is not go, raw, config, name or one fmt
+// verb is an error, and so is name when names is false.
 func (v *valueArgs) bindPrint(a *marker.Args, names bool) {
 	v.printAs, _ = a.Optional(argPrint)
 	a.NonEmpty(argPrint)
@@ -59,8 +59,8 @@ func (v valueArgs) constText(vs *valueSet, pi *load.Package, expr string, t goty
 	return vs.text(pi, valueRef{expr, v.printAs}, t, val)
 }
 
-// stringText returns the text of the string s. go and raw are s, and a fmt
-// verb applies to s.
+// stringText returns the text of the string s. go, raw and config are s, and a
+// fmt verb applies to s.
 func (v valueArgs) stringText(s string) (string, error) {
 	return goprint.Print(gotypes.Typ[gotypes.String], constant.MakeString(s), v.printAs)
 }

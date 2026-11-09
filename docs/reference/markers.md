@@ -612,7 +612,7 @@ go test ./...
 <!-- docgen:doc pkg=. section="docgen:config" -->
 A table of the fields of a struct type, with the columns Field, Type, Default and Description.
 
-	docgen:config pkg=<path> type=<Config> [print=<go|raw|name|verb>]
+	docgen:config pkg=<path> type=<Config> [print=<go|raw|config|name|verb>]
 
 `type=` is a struct type of the package, exported or not. It can also be an alias or a defined type of a struct type, or of an instance of a generic struct type, such as `type Small = Gen[int]`.
 
@@ -678,17 +678,19 @@ These do not count:
 
   - `go`: the value as `fmt.Sprint` prints it, with the String, Error, Format and GoString methods of its type: `DefaultWait` (250ms). A literal, such as `3`, has no value, unless its type has one of these methods: `80` (port-80).
   - `raw`: the underlying value, with no method: `DefaultWait` (250000000). A literal has no value.
+  - `config`: the value as a config file holds it, as for `docgen:const`: `SceneEvening` (evening) for a type with a MarshalText method, `5 * time.Second` (5s) for a `time.Duration`, and `ModeFade` (1) for an enum with a String method. A literal has no value, unless its type is `time.Duration` or has a MarshalText method.
   - `name`: the name of the one constant of the type with the value, as for `docgen:const`: `LevelLow + 1` (LevelHigh), or `60 * time.Second` (time.Minute). A literal has no value, and neither does a value with no such constant.
   - A fmt verb, such as `%x`: the value with that verb, also of a literal: `DefaultColor` (ffaa00).
 
-A default that is not a constant, such as `hold` or `new(int)`, has no value with any `print=`. A value with the same text as its default, such as `-1`, has no parentheses. A value of a type with one of these methods comes from one `go test` run of the package, as for `docgen:const`.
+A default that is not a constant, such as `hold` or `new(int)`, has no value with any `print=`. A value with the same text as its default, such as `-1`, has no parentheses. A value of a type with one of these methods, or with `config` of a type with a MarshalText method, comes from one `go test` run of the package, as for `docgen:const`.
 
 These are errors:
 
   - `pkg=` with no package, or `type=` that is not a type of the package.
   - A type that is not a struct, a generic type, or a struct with no row.
-  - An empty `print=`, or a value that is not `go`, `raw`, `name` or one fmt verb.
+  - An empty `print=`, or a value that is not `go`, `raw`, `config`, `name` or one fmt verb.
   - A verb that a default cannot use, such as `%d` for a string.
+  - With `config`, a MarshalText method that returns an error or panics.
   - `print=name` when two constants of the type have the value.
 <!-- /docgen:doc -->
 
@@ -808,6 +810,71 @@ func NewLamp(cfg Config) (*Lamp, error) {
 ```
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
+
+#### Values as a config file holds them, with `print=config`
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Mode -->
+```go
+type Mode int
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Scene -->
+```go
+type Scene uint8
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=Program -->
+```go
+type Program struct {
+	// Mode is how the level changes.
+	Mode Mode
+	// Scene is the scene at start.
+	Scene Scene
+	// Hold is how long a scene stays.
+	Hold time.Duration
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/repo/v2/dimmer/dimmer.go symbol=NewProgram -->
+```go
+func NewProgram(p Program) Program {
+	if p.Mode == ModeStep {
+		p.Mode = ModeFade
+	}
+	if p.Scene == 0 {
+		p.Scene = SceneEvening
+	}
+	if p.Hold == 0 {
+		p.Hold = 5 * time.Second
+	}
+	return p
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/dimmer/config-config.md -->
+#### Before
+
+```
+<!-- docgen:config pkg=dimmer type=Program print=config -->
+<!-- /docgen:config -->
+```
+
+#### After
+
+```
+<!-- docgen:config pkg=dimmer type=Program print=config -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Mode` | `Mode` | `ModeFade` (1) | Mode is how the level changes. |
+| `Scene` | `Scene` | `SceneEvening` (evening) | Scene is the scene at start. |
+| `Hold` | `time.Duration` | `5 * time.Second` (5s) | Hold is how long a scene stays. |
+<!-- /docgen:config -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+With `print=go`, the same defaults are `ModeFade` (mode-fade), `SceneEvening` (2) and `5 * time.Second` (5s).
 
 #### Constant names, with `print=name`
 
@@ -1163,16 +1230,17 @@ type Server struct {
 <!-- docgen:doc pkg=. section="docgen:const" -->
 The value of a constant, or of a package-level var with a constant initial value, exported or not. It goes inline in a sentence.
 
-	docgen:const pkg=<path> name=<Name> [print=<go|raw|name|verb>] [code=false]
+	docgen:const pkg=<path> name=<Name> [print=<go|raw|config|name|verb>] [code=false]
 
 `print=` sets how the value prints:
 
   - `print=go` is the default. The value prints as `fmt.Sprint` prints it, with the String, Error, Format and GoString methods of its type, so `250 * time.Millisecond` is `250ms`, strings have no quotes and `1e6` is `1e+06`.
   - `print=raw` is the underlying value with no method, and runs no code: `4001` for a port with a String method, `1` for an enum, and `1500000000` for a `time.Duration` of 1.5s.
+  - `print=config` is the value as a config file holds it. For a type with a MarshalText method of encoding.TextMarshaler, also on the pointer, it is the text of that method. For `time.Duration`, it is the text of fmt, such as `1.5s`. Any other value is as for `print=raw`: `1` for an enum with a String method, and `1500000000` for a defined type of `time.Duration`, such as `type Ticks time.Duration`, since goccy/go-yaml and configulator parse text such as `5s` only for `time.Duration`. A MarshalText method that returns an error or panics is an error.
   - `print=name` is the name of the one constant of the type with the value, from the package of the marker and then the package of the type. A constant of the package of the type is exported and has the package name, as in Go source: `time.Minute` for `60 * time.Second`.
   - `print=%d`, or any other fmt verb, is the value with that verb.
 
-An empty value prints as `""`, and line endings in a value print as spaces. A verb that the value cannot use is an error. An integer too large for its default type prints its exact value. A type with a print method runs in one `go test` for each package, so the tests of that package must compile.
+An empty value prints as `""`, and line endings in a value print as spaces. A verb that the value cannot use is an error. An integer too large for its default type prints its exact value. A type with a print method, or with `print=config` a type with a MarshalText method, runs in one `go test` for each package, so the tests of that package must compile.
 
 With `code=false`, the value has no backticks: 250ms in place of `250ms`. Any other value of `code=` is an error.
 <!-- /docgen:doc -->
@@ -1229,6 +1297,7 @@ var Listen = PortWeb
 - Default: <!-- docgen:const pkg=machine name=Listen --><!-- /docgen:const -->
 - `go`: <!-- docgen:const pkg=machine name=Listen print=go --><!-- /docgen:const -->
 - `raw`: <!-- docgen:const pkg=machine name=Listen print=raw --><!-- /docgen:const -->
+- `config`: <!-- docgen:const pkg=machine name=Listen print=config --><!-- /docgen:const -->
 - `name`: <!-- docgen:const pkg=machine name=Listen print=name --><!-- /docgen:const -->
 - `%06d`: <!-- docgen:const pkg=machine name=Listen print=%06d --><!-- /docgen:const -->
 ```
@@ -1239,6 +1308,7 @@ var Listen = PortWeb
 - Default: <!-- docgen:const pkg=machine name=Listen -->`port 8080`<!-- /docgen:const -->
 - `go`: <!-- docgen:const pkg=machine name=Listen print=go -->`port 8080`<!-- /docgen:const -->
 - `raw`: <!-- docgen:const pkg=machine name=Listen print=raw -->`8080`<!-- /docgen:const -->
+- `config`: <!-- docgen:const pkg=machine name=Listen print=config -->`8080`<!-- /docgen:const -->
 - `name`: <!-- docgen:const pkg=machine name=Listen print=name -->`PortWeb`<!-- /docgen:const -->
 - `%06d`: <!-- docgen:const pkg=machine name=Listen print=%06d -->`008080`<!-- /docgen:const -->
 ```
@@ -1853,11 +1923,11 @@ Usage of lamp config:
 <!-- docgen:doc pkg=. section="docgen:var" -->
 The value of a variable of the `vars` setting, as a code span. It goes inline in a sentence.
 
-	docgen:var name=<key> [print=<go|raw|verb>] [code=false]
+	docgen:var name=<key> [print=<go|raw|config|verb>] [code=false]
 
 A key that is not in `vars` is an error. The value is a string:
 
-  - `print=go`, the default, and `print=raw` are the value as it is.
+  - `print=go`, the default, `print=raw` and `print=config` are the value as it is.
   - `print=%q`, or any other fmt verb, is the string with that verb: `"v1.2.3"`. A verb that a string cannot use, such as `%d`, is an error.
   - `print=name` is an error, since a value of `vars` is not a constant.
   - With `code=false`, the value has no backticks, as for `docgen:const`.

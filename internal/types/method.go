@@ -48,3 +48,16 @@ func HasPrintMethod(t gotypes.Type) bool {
 	}
 	return false
 }
+
+// IsTextMarshaler reports whether a value of type t, or a pointer to one, has
+// the method MarshalText of encoding.TextMarshaler.
+func IsTextMarshaler(t gotypes.Type) bool {
+	sel := gotypes.NewMethodSet(gotypes.NewPointer(t)).Lookup(nil, "MarshalText")
+	if sel == nil {
+		return false
+	}
+	sig, ok := sel.Type().(*gotypes.Signature)
+	return ok && sig.Params().Len() == 0 && sig.Results().Len() == 2 &&
+		gotypes.Identical(sig.Results().At(0).Type(), gotypes.NewSlice(gotypes.Typ[gotypes.Byte])) &&
+		gotypes.Identical(sig.Results().At(1).Type(), gotypes.Universe.Lookup("error").Type())
+}

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -144,18 +145,49 @@ func (pv *packageValues) sortedRefs() []valueRef {
 	return refs
 }
 
+// textFunc is the source of the function of the test file that returns the text
+// of MarshalText for print=config. An error or a panic gives a text that
+// goprint.CheckOutput reports.
+const textFunc = `
+func __dgtext(__dgm __dgencoding.TextMarshaler) (__dgs string) {
+	defer func() {
+		if __dgr := recover(); __dgr != nil {
+			__dgs = __dgfmt.Sprintf("%%!config(PANIC=MarshalText method: %v)", __dgr)
+		}
+	}()
+	__dgx, __dge := __dgm.MarshalText()
+	if __dge != nil {
+		return "%!config(ERROR=" + __dge.Error() + ")"
+	}
+	return string(__dgx)
+}
+`
+
 // source returns the test file that writes the text of each of refs to out, one
 // quoted line each.
 func (pv *packageValues) source(refs []valueRef, out string) []byte {
+	text := slices.ContainsFunc(refs, func(r valueRef) bool { return r.printAs == goprint.PrintConfig })
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s\n\nimport (\n\t__dgfmt \"fmt\"\n\t__dgos \"os\"\n\t__dgtesting \"testing\"\n", pv.pi.Pkg.Name)
+	if text {
+		b.WriteString("\t__dgencoding \"encoding\"\n")
+	}
 	for _, path := range sortedKeys(pv.imports) {
 		fmt.Fprintf(&b, "\t%s %q\n", pv.imports[path], path)
 	}
-	fmt.Fprintf(&b, ")\n\nfunc %s(__dgt *__dgtesting.T) {\n\tvar __dgb []byte\n", valueTest)
+	b.WriteString(")\n")
+	if text {
+		b.WriteString(textFunc)
+	}
+	fmt.Fprintf(&b, "\nfunc %s(__dgt *__dgtesting.T) {\n\tvar __dgb []byte\n", valueTest)
 	for _, r := range refs {
-		call := "__dgfmt.Sprint(" + r.expr + ")"
-		if r.printAs != "" {
+		var call string
+		switch r.printAs {
+		case "":
+			call = "__dgfmt.Sprint(" + r.expr + ")"
+		case goprint.PrintConfig:
+			call = "__dgtext(func() __dgencoding.TextMarshaler { __dgv := " + r.expr + "; return &__dgv }())"
+		default:
 			call = "__dgfmt.Sprintf(" + strconv.Quote(r.printAs) + ", " + r.expr + ")"
 		}
 		fmt.Fprintf(&b, "\t__dgb = __dgfmt.Appendf(__dgb, \"%%q\\n\", %s)\n", call)

@@ -99,3 +99,60 @@ type Range struct {
 	// Max is the highest level.
 	Max Level // This comment is not in the table.
 }
+
+// Mode is how a Dimmer changes its level.
+type Mode int
+
+// The Mode values.
+const (
+	// ModeStep changes the level at once.
+	ModeStep Mode = iota
+	// ModeFade changes the level over time.
+	ModeFade
+)
+
+// String returns the name of m for a log line.
+func (m Mode) String() string {
+	if m == ModeFade {
+		return "mode-fade"
+	}
+	return "mode-step"
+}
+
+// Scene is a set of levels with a name.
+type Scene uint8
+
+// SceneEvening is the scene of the evening.
+const SceneEvening Scene = 2
+
+// MarshalText returns the name of s, as a config file holds it.
+func (s Scene) MarshalText() ([]byte, error) {
+	if s == SceneEvening {
+		return []byte("evening"), nil
+	}
+	return []byte("day"), nil
+}
+
+// Program sets how a Dimmer runs.
+type Program struct {
+	// Mode is how the level changes.
+	Mode Mode
+	// Scene is the scene at start.
+	Scene Scene
+	// Hold is how long a scene stays.
+	Hold time.Duration
+}
+
+// NewProgram returns p with its defaults.
+func NewProgram(p Program) Program {
+	if p.Mode == ModeStep {
+		p.Mode = ModeFade
+	}
+	if p.Scene == 0 {
+		p.Scene = SceneEvening
+	}
+	if p.Hold == 0 {
+		p.Hold = 5 * time.Second
+	}
+	return p
+}

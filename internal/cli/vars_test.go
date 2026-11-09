@@ -190,6 +190,7 @@ func TestVarPrint(t *testing.T) {
 		"":                     "`v1.2.3`",
 		" print=go":            "`v1.2.3`",
 		" print=raw":           "`v1.2.3`",
+		" print=config":        "`v1.2.3`",
 		" print=%q":            "`\"v1.2.3\"`",
 		" print=%x":            "`76312e322e33`",
 		" print=%q code=false": `"v1.2.3"`,
@@ -210,9 +211,9 @@ func TestValueArgErrors(t *testing.T) {
 	t.Parallel()
 	for marker, want := range map[string]string{
 		"<!-- docgen:var name=version print=name --><!-- /docgen:var -->":         "docgen:var print=name is not valid for a value with no constant",
-		"<!-- docgen:var name=version print=nope --><!-- /docgen:var -->":         "docgen:var print=nope is not go, raw, name or a fmt verb",
-		"<!-- docgen:const pkg=p name=N print=nope --><!-- /docgen:const -->":     "docgen:const print=nope is not go, raw, name or a fmt verb",
-		"<!-- docgen:config pkg=p type=C print=nope -->\n<!-- /docgen:config -->": "docgen:config print=nope is not go, raw, name or a fmt verb",
+		"<!-- docgen:var name=version print=nope --><!-- /docgen:var -->":         "docgen:var print=nope is not go, raw, config, name or a fmt verb",
+		"<!-- docgen:const pkg=p name=N print=nope --><!-- /docgen:const -->":     "docgen:const print=nope is not go, raw, config, name or a fmt verb",
+		"<!-- docgen:config pkg=p type=C print=nope -->\n<!-- /docgen:config -->": "docgen:config print=nope is not go, raw, config, name or a fmt verb",
 		`<!-- docgen:var name=version print="" --><!-- /docgen:var -->`:           "docgen:var: print= is empty",
 		"<!-- docgen:var name=version print=%d --><!-- /docgen:var -->":           "print=%d is not valid for the value: %!d(string=v1.2.3)",
 		"<!-- docgen:var name=version code=true --><!-- /docgen:var -->":          "docgen:var code= can only be false",

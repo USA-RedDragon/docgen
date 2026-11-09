@@ -66,6 +66,21 @@ func (GoStringer) GoString() string { return "" }
 type None struct{}
 
 func (None) Print() {}
+
+// Text has a MarshalText method.
+type Text int
+
+func (Text) MarshalText() ([]byte, error) { return nil, nil }
+
+// PointerText has a MarshalText method on the pointer only.
+type PointerText int
+
+func (*PointerText) MarshalText() ([]uint8, error) { return nil, nil }
+
+// WrongText has a MarshalText method of another signature.
+type WrongText int
+
+func (WrongText) MarshalText() string { return "" }
 `
 
 func signature(m Method) string {
@@ -118,5 +133,23 @@ func TestHasPrintMethod(t *testing.T) {
 	}
 	if HasPrintMethod(gotypes.NewPointer(gotypes.NewNamed(gotypes.NewTypeName(token.NoPos, nil, "T", nil), gotypes.Typ[gotypes.Int], nil))) {
 		t.Error("HasPrintMethod(*T) = true with no method")
+	}
+}
+
+func TestIsTextMarshaler(t *testing.T) {
+	t.Parallel()
+	pi := loadSource(t, map[string]string{"p.go": methodSource})
+	for name, want := range map[string]bool{
+		"Text":        true,
+		"PointerText": true,
+		"WrongText":   false,
+		"Stringer":    false,
+	} {
+		if got := IsTextMarshaler(lookup(t, pi, name).Go); got != want {
+			t.Errorf("IsTextMarshaler(%s) = %v, want %v", name, got, want)
+		}
+	}
+	if IsTextMarshaler(gotypes.Typ[gotypes.Int]) {
+		t.Error("IsTextMarshaler(int) = true")
 	}
 }
