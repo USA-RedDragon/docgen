@@ -19,7 +19,16 @@ const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || "");
 /** previewable reports whether the file path has a preview: Markdown and SVG. */
 export const previewable = path => /\.(md|markdown|svg)$/i.test(path);
 
-const ICON_OF_EXTENSION = { go: "go", md: "md", markdown: "md", yaml: "yaml", yml: "yaml", json: "json", toml: "toml", svg: "svg" };
+const ICON_OF_EXTENSION = {
+  go: "go",
+  md: "md",
+  markdown: "md",
+  yaml: "yaml",
+  yml: "yaml",
+  json: "json",
+  toml: "toml",
+  svg: "svg",
+};
 
 /** iconOf returns the id of the icon symbol of a file or folder name. */
 export function iconOf(name, dir, open) {
@@ -224,7 +233,10 @@ export function createExplorer(page) {
     return false;
   }
 
-  /** nameError returns the error text of the new name raw in the folder dir, or "". self is the current name of a rename. */
+  /**
+   * nameError returns the error text of the new name raw in the folder dir, or "". self is the current
+   * name of a rename.
+   */
   function nameError(raw, dir, self) {
     const name = raw.trim();
     if (!name) return "A file or folder name must be provided.";
@@ -658,8 +670,7 @@ export function createExplorer(page) {
     // The selection goes to the next row that stays, else to the previous one.
     const stays = row => !paths.some(path => isUnder(row.path, path));
     const next =
-      rows.slice(indexOf(paths.at(-1)) + 1).find(stays) ||
-      rows.slice(0, indexOf(paths[0])).reverse().find(stays);
+      rows.slice(indexOf(paths.at(-1)) + 1).find(stays) || rows.slice(0, indexOf(paths[0])).reverse().find(stays);
     for (const path of paths) entryOf(parentOf(path)).children.delete(baseName(path));
     for (const dir of [...expanded]) if (paths.some(path => isUnder(dir, path))) expanded.delete(dir);
     saveOpenFolders();

@@ -157,7 +157,12 @@ async function loadAssets() {
   let ready = 0;
   const rows = new Map();
   for (const file of manifest.files) {
-    const row = element("li", {}, element("span", { textContent: file.name }), element("span", { textContent: formatMiB(file.size) }));
+    const row = element(
+      "li",
+      {},
+      element("span", { textContent: file.name }),
+      element("span", { textContent: formatMiB(file.size) }),
+    );
     $("lfiles").append(row);
     rows.set(file.name, row);
   }
@@ -165,14 +170,20 @@ async function loadAssets() {
     // A small part per ready file, so the bar moves when all bytes came from the cache.
     $("lbar").value = (received + ready * 1e-9) / total;
     const fileCount = manifest.files.length;
-    $("ltext").textContent = `${formatMiB(received)} of ${formatMiB(total)} fetched, ${ready} of ${fileCount} files ready`;
+    $("ltext").textContent =
+      `${formatMiB(received)} of ${formatMiB(total)} fetched, ${ready} of ${fileCount} files ready`;
   };
   const fileReady = (file, how) => {
     ready++;
     rows.get(file.name).lastChild.textContent = `${formatMiB(file.size)} ${how}`;
     showProgress();
   };
-  const assets = { tools: {}, bundles: {}, perFile: {}, sha: Object.fromEntries(manifest.files.map(file => [file.name, file.sha256])) };
+  const assets = {
+    tools: {},
+    bundles: {},
+    perFile: {},
+    sha: Object.fromEntries(manifest.files.map(file => [file.name, file.sha256])),
+  };
   await Promise.all(
     manifest.files.map(async file => {
       const fileStartedAt = performance.now();
@@ -234,7 +245,11 @@ function makeSession(tools) {
     makeWorker: () => {
       const worker = idleWorkers.length ? idleWorkers.shift() : newWorker();
       while (idleWorkers.length < WORKER_POOL_SIZE) idleWorkers.push(newWorker());
-      const handle = { post: message => worker.postMessage(message), terminate: () => worker.terminate(), onmessage: null };
+      const handle = {
+        post: message => worker.postMessage(message),
+        terminate: () => worker.terminate(),
+        onmessage: null,
+      };
       worker.onmessage = event => handle.onmessage && handle.onmessage(event.data);
       worker.onerror = event => pg.errors.push("worker error " + event.message);
       return handle;
@@ -364,7 +379,10 @@ const tabTitle = tab => previewLabel(tab.kind) + baseName(tab.path);
 const pickValue = tab => (tab.kind === "preview" ? PREVIEW_PREFIX + tab.path : tab.path);
 const wrapping = () => (narrow.matches ? cm.EditorView.lineWrapping : []);
 
-/** fileExtensions returns the settings of an editor that depend on the path of its file, so that a rename keeps the undo history. */
+/**
+ * fileExtensions returns the settings of an editor that depend on the path of its file, so that a rename
+ * keeps the undo history.
+ */
 function fileExtensions(path) {
   const language = languageOf(path);
   return [
@@ -394,7 +412,13 @@ function makeState(path) {
       cm.highlightActiveLine(),
       cm.highlightSelectionMatches(),
       cm.EditorState.tabSize.of(4),
-      cm.keymap.of([...cm.closeBracketsKeymap, ...cm.defaultKeymap, ...cm.searchKeymap, ...cm.historyKeymap, cm.indentWithTab]),
+      cm.keymap.of([
+        ...cm.closeBracketsKeymap,
+        ...cm.defaultKeymap,
+        ...cm.searchKeymap,
+        ...cm.historyKeymap,
+        cm.indentWithTab,
+      ]),
       fileSettings.of(fileExtensions(path)),
       lineWrapping.of(wrapping()),
       editorLook,
@@ -478,7 +502,10 @@ function closeTab(tab) {
   markTree();
 }
 
-/** updateActions shows Open Preview and Open Preview to the Side on a Markdown or SVG source, and Show Source on a preview. */
+/**
+ * updateActions shows Open Preview and Open Preview to the Side on a Markdown or SVG source, and Show
+ * Source on a preview.
+ */
 function updateActions() {
   const source = !!current && current.kind === "file" && previewable(current.path);
   $("openpv").hidden = !source;
@@ -546,14 +573,20 @@ const markdown = new cm.MarkdownIt({ html: true, linkify: false, typographer: fa
 // scheme other than http, https and mailto. It removes an element of DROP with its content, and
 // replaces another element that is not in KEEP with its content.
 const KEEP = new Set(
-  ("a abbr b blockquote br caption code col colgroup dd del details div dl dt em figcaption figure h1 h2 h3 h4 h5 h6 " +
-    "hr i img ins kbd li mark ol p pre q s samp small span strong sub summary sup table tbody td tfoot th thead tr tt u ul var").split(" "),
+  (
+    "a abbr b blockquote br caption code col colgroup dd del details div dl dt em figcaption figure h1 h2 h3 h4 h5 h6 " +
+    "hr i img ins kbd li mark ol p pre q s samp small span strong sub summary sup table tbody td tfoot th thead tr tt u ul var"
+  ).split(" "),
 );
 const DROP = new Set(
-  ("script style iframe frame frameset object embed applet svg math template noscript form input button select textarea " +
-    "base meta link title head").split(" "),
+  (
+    "script style iframe frame frameset object embed applet svg math template noscript form input button select textarea " +
+    "base meta link title head"
+  ).split(" "),
 );
-const ATTRIBUTES = new Set("href src alt title width height align colspan rowspan start type open class lang dir".split(" "));
+const ATTRIBUTES = new Set(
+  "href src alt title width height align colspan rowspan start type open class lang dir".split(" "),
+);
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 
 function isSafeUrl(value) {
@@ -575,7 +608,8 @@ function sanitize(root) {
     }
     for (const attribute of [...node.attributes]) {
       const isUrl = attribute.name === "href" || attribute.name === "src";
-      if (!ATTRIBUTES.has(attribute.name) || (isUrl && !isSafeUrl(attribute.value))) node.removeAttribute(attribute.name);
+      if (!ATTRIBUTES.has(attribute.name) || (isUrl && !isSafeUrl(attribute.value)))
+        node.removeAttribute(attribute.name);
     }
   }
 }
@@ -597,10 +631,15 @@ function renderPreview(path, box = $("preview")) {
   }
   if (/\.svg$/i.test(path)) {
     box.classList.add("vs-media");
-    const image = element("img", { src: blobUrl(box, session.fsys.readFile(path), "image/svg+xml"), alt: relative(path) });
+    const image = element("img", {
+      src: blobUrl(box, session.fsys.readFile(path), "image/svg+xml"),
+      alt: relative(path),
+    });
     image.dataset.path = relative(path);
     image.addEventListener("error", () => {
-      image.replaceWith(element("p", { className: "vs-empty", textContent: "This SVG does not render. Check its source." }));
+      image.replaceWith(
+        element("p", { className: "vs-empty", textContent: "This SVG does not render. Check its source." }),
+      );
     });
     box.replaceChildren(image);
     return;
@@ -1018,7 +1057,8 @@ function term(text, className = "") {
   if (!text) return;
   const atBottom = output.scrollTop + output.clientHeight >= output.scrollHeight - 4;
   const last = output.lastChild;
-  const joins = last && last.nodeType === Node.ELEMENT_NODE && last.className === className && !className.startsWith("cmdl");
+  const joins =
+    last && last.nodeType === Node.ELEMENT_NODE && last.className === className && !className.startsWith("cmdl");
   if (joins) last.textContent += text;
   else output.append(element("span", { className, textContent: text }));
   while (output.childNodes.length > OUTPUT_MAX_NODES) output.firstChild.remove();
@@ -1074,7 +1114,9 @@ async function run(label, argv0, argv, cwd = REPO) {
   const limit = result.reason === "limit" ? ", process limit" : "";
   term(`[${status}${limit} in ${(result.ms / 1000).toFixed(2)} s]\n`, result.code === 0 ? "ok" : "bad");
   const after = snapshot();
-  const written = [...after].filter(([path, data]) => !before.has(path) || !sameBytes(before.get(path), data)).map(([path]) => relative(path));
+  const written = [...after]
+    .filter(([path, data]) => !before.has(path) || !sameBytes(before.get(path), data))
+    .map(([path]) => relative(path));
   const reloaded = reloadFiles();
   renderTree();
   if (current) show(current);
@@ -1120,11 +1162,13 @@ narrow.addEventListener("change", () => {
   setDrawer(false);
   explorer.closeMenu();
   saveState();
-  for (const [path, state] of states) states.set(path, state.update({ effects: lineWrapping.reconfigure(wrapping()) }).state);
+  for (const [path, state] of states)
+    states.set(path, state.update({ effects: lineWrapping.reconfigure(wrapping()) }).state);
   if (current) show(current);
 });
 
-// A file dropped outside the explorer and the editor does nothing, so that the browser does not leave the page to show it.
+// A file dropped outside the explorer and the editor does nothing, so that the browser does not leave
+// the page to show it.
 for (const type of ["dragover", "drop"]) {
   addEventListener(type, event => {
     if (event.defaultPrevented || !event.dataTransfer) return;
@@ -1264,11 +1308,14 @@ try {
   pg.load.total = Math.round(performance.now());
   $("step").textContent = "Ready";
   $("elapsed").textContent = `loaded in ${(pg.load.total / 1000).toFixed(1)} s`;
-  const source = assets.hits === assets.files ? "tools from the browser cache" : `${assets.files - assets.hits} files fetched`;
+  const source =
+    assets.hits === assets.files ? "tools from the browser cache" : `${assets.files - assets.hits} files fetched`;
   $("info").textContent = source + (workspace ? ", workspace restored" : "");
   pg.ready = true;
   if (!store) note("This browser has no storage for the page. Your changes last until you reload.");
 } catch (error) {
   pg.errors.push("load: " + String((error && error.stack) || error));
-  $("lfiles").append(element("li", { className: "lerr", textContent: "Load failed: " + String((error && error.message) || error) }));
+  $("lfiles").append(
+    element("li", { className: "lerr", textContent: "Load failed: " + String((error && error.message) || error) }),
+  );
 }

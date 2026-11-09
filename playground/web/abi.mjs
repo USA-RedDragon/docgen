@@ -66,8 +66,22 @@ export function errnoError(code, message) {
  * image of the Worker, and write and pipe have their own arguments.
  */
 export const FORWARDED_FS_CALLS = Object.freeze([
-  "mkdir", "unlink", "rmdir", "rename", "fsync", "ftruncate", "truncate", "chmod", "fchmod",
-  "chown", "fchown", "lchown", "utimes", "readlink", "link", "symlink",
+  "mkdir",
+  "unlink",
+  "rmdir",
+  "rename",
+  "fsync",
+  "ftruncate",
+  "truncate",
+  "chmod",
+  "fchmod",
+  "chown",
+  "fchown",
+  "lchown",
+  "utimes",
+  "readlink",
+  "link",
+  "symlink",
 ]);
 
 /**

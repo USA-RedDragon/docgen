@@ -8,8 +8,33 @@ const TOOL_DIR = "/goroot/pkg/tool/js_wasm";
 const TOOLS = ["compile", "link", "asm", "vet"];
 /** The commands of the bb multi-call binary in /bin. */
 const BB_COMMANDS = [
-  "sh", "cat", "head", "tail", "grep", "sed", "wc", "ls", "echo", "printf", "tr", "cut", "sort", "uniq",
-  "true", "false", "test", "[", "pwd", "basename", "dirname", "mkdir", "rm", "cp", "mv", "touch", "date",
+  "sh",
+  "cat",
+  "head",
+  "tail",
+  "grep",
+  "sed",
+  "wc",
+  "ls",
+  "echo",
+  "printf",
+  "tr",
+  "cut",
+  "sort",
+  "uniq",
+  "true",
+  "false",
+  "test",
+  "[",
+  "pwd",
+  "basename",
+  "dirname",
+  "mkdir",
+  "rm",
+  "cp",
+  "mv",
+  "touch",
+  "date",
 ];
 /** The content of each program file in the memfs. The kernel runs the tool of its path instead. */
 const PLACEHOLDER = new TextEncoder().encode("\0asm placeholder; the kernel maps this path to a module\n");

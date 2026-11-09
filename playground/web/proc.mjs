@@ -2,7 +2,15 @@
 // program go to the kernel on the main thread as synchronous calls (see callKernel). The module runs
 // as a browser module Worker and as a Node worker_threads Worker.
 import {
-  S_IFMT, S_IFDIR, OPEN_FLAGS, WRITE_FLAGS, ERRNO, errnoError, FORWARDED_FS_CALLS, CALL_BUFFER, MESSAGE,
+  S_IFMT,
+  S_IFDIR,
+  OPEN_FLAGS,
+  WRITE_FLAGS,
+  ERRNO,
+  errnoError,
+  FORWARDED_FS_CALLS,
+  CALL_BUFFER,
+  MESSAGE,
 } from "./abi.mjs";
 import { normalizePath } from "./paths.mjs";
 
@@ -218,7 +226,10 @@ const processApi = {
   },
 };
 
-/** The globals of the Go program: fs, process and path of Node, and the calls of playground/overlay/proc_js.go.txt. */
+/**
+ * The globals of the Go program: fs, process and path of Node, and the calls of
+ * playground/overlay/syscall/proc_js.go.
+ */
 const goGlobals = {
   fs,
   process: processApi,

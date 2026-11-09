@@ -1,5 +1,15 @@
 export { Compartment, EditorState } from "@codemirror/state";
-export { EditorView, lineNumbers, keymap, drawSelection, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, dropCursor, rectangularSelection } from "@codemirror/view";
+export {
+  EditorView,
+  lineNumbers,
+  keymap,
+  drawSelection,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  highlightSpecialChars,
+  dropCursor,
+  rectangularSelection,
+} from "@codemirror/view";
 export { HighlightStyle, syntaxHighlighting, indentOnInput, bracketMatching, indentUnit } from "@codemirror/language";
 export { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 export { searchKeymap, highlightSelectionMatches } from "@codemirror/search";

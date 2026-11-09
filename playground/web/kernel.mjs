@@ -5,8 +5,20 @@
 // read with no data or a wait for a child, gets a pending reply and completes later with a COMPLETE
 // message. The kernel terminates the Worker of a process when the process exits or is killed.
 import {
-  S_IFREG, S_IFDIR, S_IFIFO, S_IFCHR, OPEN_FLAGS, O_ACCMODE, WRITE_FLAGS, ERRNO, errnoError, CALL_BUFFER,
-  MESSAGE, SIG, SIGNAL_NAMES, KILLED,
+  S_IFREG,
+  S_IFDIR,
+  S_IFIFO,
+  S_IFCHR,
+  OPEN_FLAGS,
+  O_ACCMODE,
+  WRITE_FLAGS,
+  ERRNO,
+  errnoError,
+  CALL_BUFFER,
+  MESSAGE,
+  SIG,
+  SIGNAL_NAMES,
+  KILLED,
 } from "./abi.mjs";
 import { normalizePath } from "./paths.mjs";
 
@@ -16,7 +28,18 @@ const RESPONSE_FILE_TOOLS = new Set(["compile", "link", "asm", "cgo", "cover", "
 /** The size of the arguments and environment above which such a tool gets a response file. */
 const RESPONSE_FILE_MIN_SIZE = 6000;
 /** The calls that can change the file at their first path argument, and for rename and link the second. */
-const PATH_WRITE_CALLS = new Set(["open", "mkdir", "unlink", "rmdir", "rename", "truncate", "chmod", "utimes", "link", "symlink"]);
+const PATH_WRITE_CALLS = new Set([
+  "open",
+  "mkdir",
+  "unlink",
+  "rmdir",
+  "rename",
+  "truncate",
+  "chmod",
+  "utimes",
+  "link",
+  "symlink",
+]);
 const PENDING = Symbol("pending");
 /** The ppid of a process with no parent, a command of the page. */
 const NO_PARENT = 1;
@@ -26,7 +49,7 @@ const FIRST_FREE_DESCRIPTOR = 3;
 const STDOUT = 1;
 const STDERR = 2;
 
-const DURATION_UNITS_MS = { ns: 1e-6, us: 1e-3, "µs": 1e-3, ms: 1, s: 1000, m: 60000, h: 3600000 };
+const DURATION_UNITS_MS = { ns: 1e-6, us: 1e-3, µs: 1e-3, ms: 1, s: 1000, m: 60000, h: 3600000 };
 
 /** parseDuration parses a Go duration such as "2s", "1m30s" or "500ms" to milliseconds. It returns NaN for bad text. */
 function parseDuration(text) {
@@ -132,7 +155,10 @@ export class MemFS {
     return entry.data.subarray(0, entry.size);
   }
 
-  /** walk calls visit(path, entry) for the entry at path and for each entry under it, a directory before its children. */
+  /**
+   * walk calls visit(path, entry) for the entry at path and for each entry under it, a directory before
+   * its children.
+   */
   walk(path, visit, entry = this.lookup(path)) {
     visit(path, entry);
     if (!entry.dir) return;
@@ -346,11 +372,17 @@ export class Kernel {
       const stats = this.stat(entry);
       if (entry.dir) {
         const names = [...entry.children.keys()];
-        index.push([path, { offset: 0, size: stats.size, mtimeMs: stats.mtimeMs, ino: stats.ino, mode: stats.mode, names }]);
+        index.push([
+          path,
+          { offset: 0, size: stats.size, mtimeMs: stats.mtimeMs, ino: stats.ino, mode: stats.mode, names },
+        ]);
         return;
       }
       bytes.set(entry.data.subarray(0, entry.size), offset);
-      index.push([path, { offset, size: entry.size, mtimeMs: entry.mtime, ino: entry.ino, mode: stats.mode, names: null }]);
+      index.push([
+        path,
+        { offset, size: entry.size, mtimeMs: entry.mtime, ino: entry.ino, mode: stats.mode, names: null },
+      ]);
       offset += entry.size;
     });
     this.goroot = { buffer, index };
@@ -577,7 +609,10 @@ export class Kernel {
     return this.addDescriptor(process, newDescriptor(DESCRIPTOR.FILE, { entry, position: 0, append }));
   }
 
-  /** kill kills process pid with a js/wasm signal number: it terminates the Worker at once. The wait status is KILLED + signal. */
+  /**
+   * kill kills process pid with a js/wasm signal number: it terminates the Worker at once. The wait
+   * status is KILLED + signal.
+   */
   kill(pid, signal = SIG.KILL) {
     const process = this.processes.get(pid);
     if (!process || process.exited) return false;
@@ -595,7 +630,10 @@ export class Kernel {
     return killed + (this.kill(pid, signal) ? 1 : 0);
   }
 
-  /** scanTests records the === RUN and --- PASS/FAIL/SKIP lines that the test binary process writes to standard output. */
+  /**
+   * scanTests records the === RUN and --- PASS/FAIL/SKIP lines that the test binary process writes to
+   * standard output.
+   */
   scanTests(process, bytes) {
     const text = process.testOutputTail + new TextDecoder().decode(bytes);
     const lines = text.split("\n");
@@ -620,8 +658,15 @@ export class Kernel {
     let text = `panic: test timed out after ${timeout}`;
     if (process.runningTests.size) {
       const now = performance.now();
-      const running = [...process.runningTests].map(([name, startedAt]) => `${name} (${Math.round((now - startedAt) / 1000)}s)`);
-      text += "\n\trunning tests:" + running.sort().map(test => "\n\t\t" + test).join("");
+      const running = [...process.runningTests].map(
+        ([name, startedAt]) => `${name} (${Math.round((now - startedAt) / 1000)}s)`,
+      );
+      text +=
+        "\n\trunning tests:" +
+        running
+          .sort()
+          .map(test => "\n\t\t" + test)
+          .join("");
     }
     text += `\n\n[kernel: pid ${process.pid} terminated at the -test.timeout deadline; no goroutine dump is available]\n`;
     this.writeStderr(process, text);
@@ -632,7 +677,10 @@ export class Kernel {
   overLimit(process) {
     if (process.exited) return;
     const limit = this.limitMs / 1000;
-    this.writeStderr(process, `kernel: pid ${process.pid} (${process.tool}) killed: it ran past the process limit of ${limit}s\n`);
+    this.writeStderr(
+      process,
+      `kernel: pid ${process.pid} (${process.tool}) killed: it ran past the process limit of ${limit}s\n`,
+    );
     this.finish(process, KILLED + SIG.KILL, null, "limit");
   }
 
