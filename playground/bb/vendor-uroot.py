@@ -18,7 +18,7 @@ import shutil
 import sys
 from pathlib import Path
 
-DATE_JS_GO = """
+DATE_JS_GO = """\
 //go:build js
 
 package udate
