@@ -58,7 +58,7 @@ patch("src/syscall/fs_js.go", [
     ("func Pipe(fd []int) error {\n\treturn ENOSYS\n}\n", ""),
 ])
 
-add("src/syscall/proc_js.go", open(os.path.join(SRC, "proc_js.go")).read())
+add("src/syscall/proc_js.go", open(os.path.join(SRC, "proc_js.go.txt")).read())
 
 patch("src/os/pipe_wasm.go", [
     ("\t// Neither GOOS=js nor GOOS=wasip1 have pipes.\n\treturn nil, nil, NewSyscallError(\"pipe\", syscall.ENOSYS)\n",
@@ -72,7 +72,7 @@ patch("src/os/exec/lp_wasm.go", [
      "\tif runtime.GOOS == \"js\" {\n\t\treturn jsLookPath(file)\n\t}\n"
      "\t// Wasm can not execute processes, so act as if there are no executables at all.\n"),
 ])
-add("src/os/exec/lp_js.go", open(os.path.join(SRC, "lp_js.go")).read())
+add("src/os/exec/lp_js.go", open(os.path.join(SRC, "lp_js.go.txt")).read())
 
 json.dump({"Replace": out}, open(os.path.join(OUT, "overlay.json"), "w"), indent=1)
 
