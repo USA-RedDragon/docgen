@@ -74,7 +74,7 @@ The Cloudflare Worker `docgen` serves the site as static assets at <https://docg
 
 [cloudflare.sh](../site/cloudflare.sh) installs pandoc with [install-pandoc.sh](../site/install-pandoc.sh), the same script that the Docs workflow uses, and fetches the full history and the tags. The build image has an older Go, and Go downloads the toolchain of `go.mod`. On `main` the build makes all versions. On another branch it runs `go run . update` and builds the current tree, so a stale page still gets a preview URL. Cloudflare builds no pull request from a fork. The Docs workflow builds the site of each pull request as a check.
 
-Workers Builds builds on a push to a branch, not on a tag. To put a new tag in `/latest/`, push the tag before or together with the commit on `main`, or retry the latest production build in the Cloudflare dashboard.
+Workers Builds builds on a push to a branch, not on a tag. On a `v*` tag, the Docs workflow sends a POST to the deploy hook in the repository secret `CLOUDFLARE_DEPLOY_HOOK`, which builds `main` again, so `/latest/` shows the new tag. Create the hook under the Worker, Settings, Builds, Deploy Hooks, for the branch `main`. Without the secret, the job ends with a warning.
 
 GitHub Pages serves only [redirect.html](../site/redirect.html), which sends each path under `https://usa-reddragon.github.io/docgen/` to the same path on the new domain. The Docs workflow deploys it after a push to `main`, and only when `https://docgen.mcswain.dev/versions.json` serves the docs, so GitHub Pages keeps the old site until the domain works.
 
