@@ -4,18 +4,13 @@
 // SharedArrayBuffer that the kernel fills with the reply. A call that must block (a pipe read with no data,
 // a wait for a child) gets a "pending" reply and completes later with a message.
 // The Worker of a process is terminated when the process exits or is killed.
-const S_IFREG = 0o100000, S_IFDIR = 0o040000, S_IFIFO = 0o010000, S_IFCHR = 0o020000;
-export const C = { O_RDONLY: 0, O_WRONLY: 1, O_RDWR: 2, O_CREAT: 64, O_EXCL: 128, O_TRUNC: 512, O_APPEND: 1024, O_DIRECTORY: 65536 };
-export const SAB = { JSON_OFF: 16, JSON_CAP: 1 << 20, DATA_OFF: (1 << 20) + 16, DATA_CAP: 4 << 20 };
-const err = (code, msg) => { const e = new Error(msg || code); e.code = code; return e; };
+import {
+  S_IFREG, S_IFDIR, S_IFIFO, S_IFCHR, OPEN_FLAGS as C, O_ACCMODE, WRITE_FLAGS, errnoError as err, CALL_BUFFER,
+  MESSAGE, SIG, SIGNAL_NAMES as SIGNAME, KILLED,
+} from "./abi.mjs";
 const enc = new TextEncoder();
 const RSP_TOOLS = new Set(["compile", "link", "asm", "cgo", "cover", "pack"]);
 const PENDING = Symbol("pending");
-/** The js/wasm signal numbers of package syscall, and the Unix names and numbers that the page shows. */
-export const SIG = { INT: 2, KILL: 3, TRAP: 4, QUIT: 5, TERM: 6 };
-export const SIGNAME = { 2: ["SIGINT", 2], 3: ["SIGKILL", 9], 4: ["SIGTRAP", 5], 5: ["SIGQUIT", 3], 6: ["SIGTERM", 15] };
-/** A process killed by signal s has the wait status 256 + s; the overlay of syscall.WaitStatus decodes it. */
-export const KILLED = 256;
 
 /** parseDuration parses a Go duration such as "2s", "1m30s" or "500ms" to milliseconds. It returns NaN for bad text. */
 export function parseDuration(t) {
@@ -157,7 +152,7 @@ export class Kernel {
     }
   }
 
-  /** Returns the shared read-only image of /goroot: {sab, index: [[path, [off, size, mtime, ino, mode, names|0]]]}. */
+  /** Returns the shared read-only image of /goroot: {buffer, index: [[path, {offset, size, mtimeMs, ino, mode, names}]]}; names is null for a file. */
   roImage() {
     if (this.ro !== undefined) return this.ro;
     const root = this.fs.lookup("/goroot");
@@ -169,11 +164,11 @@ export class Kernel {
     let off = 0;
     const add = (e, p) => {
       const st = this.stat(e);
-      if (e.dir) { index.push([p, [0, st.size, st.mtimeMs, st.ino, st.mode, [...e.children.keys()]]]); for (const [n, c] of e.children) add(c, p + "/" + n); }
-      else { u8.set(e.data.subarray(0, e.size), off); index.push([p, [off, e.size, e.mtime, e.ino, st.mode, 0]]); off += e.size; }
+      if (e.dir) { index.push([p, { offset: 0, size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, mode: st.mode, names: [...e.children.keys()] }]); for (const [n, c] of e.children) add(c, p + "/" + n); }
+      else { u8.set(e.data.subarray(0, e.size), off); index.push([p, { offset: off, size: e.size, mtimeMs: e.mtime, ino: e.ino, mode: st.mode, names: null }]); off += e.size; }
     };
     add(root, "/goroot");
-    return (this.ro = { sab, index });
+    return (this.ro = { buffer: sab, index });
   }
 
   /** Runs one RPC of process p. Returns {res, data} or PENDING (then done(res, data) is called later). */
@@ -182,7 +177,7 @@ export class Kernel {
     const getfd = fd => { const d = p.fds.get(fd); if (!d) throw err("EBADF"); return d; };
     if (this.ro && WRITE_OPS.has(name)) {
       const ro = q => typeof q === "string" && (R(q) === "/goroot" || R(q).startsWith("/goroot/"));
-      if (name === "open" ? ro(a[0]) && (a[1] & (3 | C.O_CREAT | C.O_TRUNC | C.O_APPEND)) : ro(a[0]) || ((name === "rename" || name === "link") && ro(a[1]))) throw err("EROFS");
+      if (name === "open" ? ro(a[0]) && (a[1] & WRITE_FLAGS) : ro(a[0]) || ((name === "rename" || name === "link") && ro(a[1]))) throw err("EROFS");
     }
     const ent = q => { const e = M.lookup(R(q)); if (!e) throw err("ENOENT"); return e; };
     switch (name) {
@@ -204,7 +199,7 @@ export class Kernel {
         if (d.type !== "file") throw err("EBADF");
         if (d.e.dir) throw err("EISDIR");
         const pos = position != null ? position : d.pos;
-        const n = Math.max(0, Math.min(length, d.e.size - pos, SAB.DATA_CAP));
+        const n = Math.max(0, Math.min(length, d.e.size - pos, CALL_BUFFER.DATA_CAPACITY));
         if (position == null) d.pos += n;
         return { res: n, data: d.e.data.subarray(pos, pos + n) };
       }
@@ -219,7 +214,7 @@ export class Kernel {
           if (!dir || !dir.dir) throw err("ENOENT");
           e = M.mkent(false); dir.children.set(nm, e);
         }
-        if (e.dir && (flags & 3)) throw err("EISDIR");
+        if (e.dir && (flags & O_ACCMODE)) throw err("EISDIR");
         if ((flags & C.O_DIRECTORY) && !e.dir) throw err("ENOTDIR");
         if (flags & C.O_TRUNC) { e.size = 0; e.mtime = Date.now(); }
         return { res: this.addFd(p, { type: "file", e, pos: 0, append: !!(flags & C.O_APPEND), refs: 0 }) };
@@ -396,39 +391,39 @@ export class Kernel {
         return this.finish(p, 2);
       }
       if (p.exited) return;
-      const sab = new SharedArrayBuffer(SAB.DATA_OFF + SAB.DATA_CAP);
+      const sab = new SharedArrayBuffer(CALL_BUFFER.SIZE);
       const i32 = new Int32Array(sab, 0, 4), u8 = new Uint8Array(sab);
       const w = this.makeWorker();
       p.worker = w;
       const reply = (obj, data) => {
         const j = enc.encode(JSON.stringify(obj));
-        if (j.length > SAB.JSON_CAP) throw new Error("kernel: reply too large");
-        u8.set(j, SAB.JSON_OFF); i32[1] = j.length;
-        if (data) { u8.set(data, SAB.DATA_OFF); i32[2] = data.length; } else i32[2] = -1;
-        Atomics.store(i32, 0, 1); Atomics.notify(i32, 0);
+        if (j.length > CALL_BUFFER.JSON_CAPACITY) throw new Error("kernel: reply too large");
+        u8.set(j, CALL_BUFFER.JSON_OFFSET); i32[CALL_BUFFER.JSON_LENGTH] = j.length;
+        if (data) { u8.set(data, CALL_BUFFER.DATA_OFFSET); i32[CALL_BUFFER.DATA_LENGTH] = data.length; } else i32[CALL_BUFFER.DATA_LENGTH] = -1;
+        Atomics.store(i32, CALL_BUFFER.STATE, 1); Atomics.notify(i32, CALL_BUFFER.STATE);
       };
       w.onmessage = m => {
         if (p.exited) return;
         const t0 = performance.now();
-        if (m.t === "s") {
-          p.rpcs++; this.stats.rpcs++; this.stats.ops[m.op] = (this.stats.ops[m.op] || 0) + 1;
+        if (m.type === MESSAGE.CALL) {
+          p.rpcs++; this.stats.rpcs++; this.stats.ops[m.name] = (this.stats.ops[m.name] || 0) + 1;
           let r;
           try {
-            r = this.op(p, m.op, m.a, m.d, (res, data) => { if (!p.exited && p.worker) p.worker.post({ t: "r", id: m.id, res, data: data && data.slice() }); });
-          } catch (x) { reply({ e: x.code || "EIO", m: String(x.message) }); return; }
-          if (r === PENDING) reply({ p: m.id }); else reply({ r: r.res }, r.data);
+            r = this.op(p, m.name, m.args, m.data, (res, data) => { if (!p.exited && p.worker) p.worker.post({ type: MESSAGE.COMPLETE, id: m.id, result: res, data: data && data.slice() }); });
+          } catch (x) { reply({ errno: x.code || "EIO", message: String(x.message) }); return; }
+          if (r === PENDING) reply({ pendingId: m.id }); else reply({ result: r.res }, r.data);
           this.stats.rpcMs += performance.now() - t0;
-        } else if (m.t === "x") {
+        } else if (m.type === MESSAGE.EXIT) {
           const bt = this.stats.byTool[p.tool] || (this.stats.byTool[p.tool] = { n: 0, ms: 0 });
-          bt.rpcN = (bt.rpcN || 0) + m.rpcN; bt.rpcMs = (bt.rpcMs || 0) + m.rpcMs; bt.startMs = (bt.startMs || 0) + m.startMs;
-          this.finish(p, m.code, m.mem);
+          bt.rpcN = (bt.rpcN || 0) + m.rpcCount; bt.rpcMs = (bt.rpcMs || 0) + m.rpcMs; bt.startMs = (bt.startMs || 0) + m.startMs;
+          this.finish(p, m.code, m.memoryBytes);
         }
-        else if (m.t === "err") { try { this.writeDesc(p.fds.get(2), enc.encode(`kernel: ${path}: ${m.msg}\n`)); } catch {} this.finish(p, 2, m.mem); }
+        else if (m.type === MESSAGE.CRASH) { try { this.writeDesc(p.fds.get(2), enc.encode(`kernel: ${path}: ${m.text}\n`)); } catch {} this.finish(p, 2, m.memoryBytes); }
       };
       const envObj = {};
       for (const kv of env) { const i = kv.indexOf("="); if (i > 0) envObj[kv.slice(0, i)] = kv.slice(i + 1); }
       if (this.toolEnv && this.toolEnv[p.tool]) Object.assign(envObj, this.toolEnv[p.tool]);
-      w.post({ t: "start", ro: this.roImage(), t0: performance.timeOrigin + performance.now(), mod, sab, pid: p.pid, ppid: p.ppid, cwd, argv: [argv[0] || path, ...args], env: envObj });
+      w.post({ type: MESSAGE.START, goroot: this.roImage(), sentAt: performance.timeOrigin + performance.now(), module: mod, buffer: sab, pid: p.pid, ppid: p.ppid, cwd, argv: [argv[0] || path, ...args], env: envObj });
     })();
     return p;
   }

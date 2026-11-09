@@ -1,6 +1,7 @@
 // Shared by the Node harness and the browser page: loads bundles into the memfs and runs the real cmd/go,
 // docgen and the bb shell and commands.
-import { Kernel, MemFS, KILLED, SIGNAME } from "./kernel.mjs";
+import { Kernel, MemFS } from "./kernel.mjs";
+import { KILLED, SIGNAL_NAMES as SIGNAME } from "./abi.mjs";
 export const TOOLDIR = "/goroot/pkg/tool/js_wasm";
 export const TOOLS = ["compile", "link", "asm", "vet"];
 /** The names of the bb multi-call binary in /bin. */

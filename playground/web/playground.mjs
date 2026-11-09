@@ -127,7 +127,7 @@ async function loadAssets() {
 // Kernel session with a small pool of booted Workers.
 const POOL = 2;
 const idle = [];
-const newWorker = () => new Worker("proc.js");
+const newWorker = () => new Worker("proc.mjs", { type: "module" });
 let S;
 function makeSession(tools) {
   for (let i = 0; i < POOL; i++) idle.push(newWorker());

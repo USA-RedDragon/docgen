@@ -17,7 +17,7 @@ const sep = argv.indexOf("--");
 const [bindir, wasmExec, out, ...bundles] = argv.slice(0, sep);
 const steps = argv.slice(sep + 1);
 const makeWorker = () => {
-  const w = new Worker(path.join(web, "proc.js"), { workerData: { wasmExec: path.resolve(wasmExec) } });
+  const w = new Worker(path.join(web, "proc.mjs"), { workerData: { wasmExec: path.resolve(wasmExec) } });
   const o = { post: m => w.postMessage(m), terminate: () => w.terminate(), onmessage: null };
   w.on("message", m => o.onmessage && o.onmessage(m));
   w.on("error", e => console.error("worker error", e));
