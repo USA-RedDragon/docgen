@@ -45,30 +45,6 @@ jobs:
         if: github.event_name == 'push'
         run: docs/site/build.sh --versions
 
-  # Cloudflare Pages builds on a push to a branch, not on a tag. The deploy hook
-  # builds main again, so /latest/ shows the new tag. The hook URL is the only
-  # credential, and it can start a build of main and nothing else.
-  rebuild:
-    if: github.event_name == 'push' && github.ref_type == 'tag'
-    needs: docs
-    runs-on: ubuntu-26.04
-
-    steps:
-      - name: Start a Cloudflare build of main
-        env:
-          HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
-        run: |
-          if [ -z "$HOOK" ]; then
-            echo "::warning::No CLOUDFLARE_DEPLOY_HOOK secret, so /latest/ shows the new tag after the next build of main."
-            exit 0
-          fi
-          case $HOOK in
-          https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/*) ;;
-          *) echo "::error::CLOUDFLARE_DEPLOY_HOOK must be a Cloudflare Pages deploy hook URL on api.cloudflare.com."; exit 1 ;;
-          esac
-          curl -fsS -m 30 -X POST -o /dev/null "$HOOK"
-          echo "::notice::Started a Cloudflare build of main."
-
   # GitHub Pages serves only a redirect, so links to the old address
   # https://usa-reddragon.github.io/docgen/ keep working.
   redirect:
