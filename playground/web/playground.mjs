@@ -335,6 +335,27 @@ function livePreview() {
 const blobUrls = new Map();
 const freeBlobs = box => { for (const u of blobUrls.get(box) || []) URL.revokeObjectURL(u); blobUrls.set(box, []); };
 const md = new cm.MarkdownIt({ html: true, linkify: false, typographer: false });
+
+// sanitize keeps only the elements and attributes of an allow list in the parsed Markdown, so that
+// no HTML in a page can run script: no script elements, no event attributes, and no URL with a
+// scheme other than http, https and mailto. It removes an element of DROP with its content, and
+// replaces another element that is not in KEEP with its content.
+const KEEP = new Set(("a abbr b blockquote br caption code col colgroup dd del details div dl dt em figcaption figure h1 h2 h3 h4 h5 h6 " +
+  "hr i img ins kbd li mark ol p pre q s samp small span strong sub summary sup table tbody td tfoot th thead tr tt u ul var").split(" "));
+const DROP = new Set("script style iframe frame frameset object embed applet svg math template noscript form input button select textarea base meta link title head".split(" "));
+const ATTRS = new Set("href src alt title width height align colspan rowspan start type open class lang dir".split(" "));
+const safeURL = v => { const s = v.trim().replace(/[\u0000-\u0020]/g, ""); const m = s.match(/^([a-z][a-z0-9+.-]*):/i); return !m || /^(https?|mailto)$/i.test(m[1]); };
+function sanitize(root) {
+  for (const el of [...root.querySelectorAll("*")]) {
+    const name = el.localName;
+    if (DROP.has(name) || el.namespaceURI !== "http://www.w3.org/1999/xhtml") { el.remove(); continue; }
+    if (!KEEP.has(name)) { el.replaceWith(...el.childNodes); continue; }
+    for (const a of [...el.attributes]) {
+      if (!ATTRS.has(a.name) || ((a.name === "href" || a.name === "src") && !safeURL(a.value))) el.removeAttribute(a.name);
+    }
+  }
+}
+
 function renderPreview(path, box = $("preview")) {
   pg.renders++;
   const top = box.scrollTop;
@@ -354,6 +375,7 @@ function renderPreview(path, box = $("preview")) {
   const html = md.render(readText(path));
   const tpl = document.createElement("template");
   tpl.innerHTML = html;
+  sanitize(tpl.content);
   const dir = path.slice(0, path.lastIndexOf("/"));
   for (const img of tpl.content.querySelectorAll("img")) {
     const src = img.getAttribute("src") || "";
@@ -367,7 +389,6 @@ function renderPreview(path, box = $("preview")) {
   for (const a of tpl.content.querySelectorAll("a[href]")) {
     if (/^https?:/.test(a.getAttribute("href"))) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
   }
-  for (const s of tpl.content.querySelectorAll("script, iframe, object, embed")) s.remove();
   box.replaceChildren(tpl.content);
   box.scrollTop = top;
 }

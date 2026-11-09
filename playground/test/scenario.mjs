@@ -155,6 +155,21 @@ try {
   R.kernelStats = await ff.js("const s = window.__pg.session.kernel.stats; return {spawns: s.spawns, maxLive: s.maxLive, maxMem: s.maxMem}");
   check("update reloaded the page tab", up.changed.includes("dg/docs/lamp.md") && up.reloaded.includes("dg/docs/lamp.md"), { changed: up.changed, reloaded: up.reloaded });
 
+  // HTML in a Markdown page runs no script in the preview, and its images still show.
+  await ff.js(`const s = window.__pg.session.fsys;
+    s.writeFile("/work/dg/docs/xss.md", new TextEncoder().encode('# Unsafe\\n\\n<img src=x onerror="window.__xss = 1"> <a href="javascript:window.__xss = 2" id="out">link</a>\\n<svg><script>window.__xss = 3</script></svg><script>window.__xss = 4</script>\\n<p onclick="window.__xss = 5">text</p> <iframe srcdoc="<script>parent.__xss = 6</script>"></iframe>\\n\\n![Transitions](states/machine-lamp.svg)\\n'));`);
+  await ff.js("window.__pg.open('docs/xss.md', 'preview')");
+  await ff.until("window.__pg.previewImages().length && window.__pg.previewImages().every(i => i.complete)", 10000);
+  await new Promise(r => setTimeout(r, 500));
+  const xss = await ff.js(`const b = document.getElementById("preview");
+    return { ran: window.__xss || null, onAttrs: [...b.querySelectorAll("*")].filter(e => [...e.attributes].some(a => a.name.startsWith("on"))).length,
+      js: [...b.querySelectorAll("[href], [src]")].filter(e => /^javascript:/i.test(e.getAttribute("href") || e.getAttribute("src") || "")).length,
+      bad: b.querySelectorAll("script, svg, iframe, [id]").length, imgs: window.__pg.previewImages(), text: b.textContent.includes("link") && b.textContent.includes("text") };`);
+  check("md preview: page HTML runs no script, and the diagram still shows", !xss.ran && !xss.onAttrs && !xss.js && !xss.bad && xss.text && xss.imgs.some(i => i.path === "dg/docs/states/machine-lamp.svg" && i.w > 0), xss);
+  await ff.js(`const [d, n] = window.__pg.session.fsys.split("/work/dg/docs/xss.md"); d.children.delete(n);`);
+  await ff.js("window.__pg.open('docs/lamp.md')");
+  await ff.js("document.getElementById('exrefresh').click()");
+
   // 390 px: headless Firefox has a minimum window width of 500 px, so the page runs in a 390 x 844 iframe.
   await ff.size(1280, 1000);
   await ff.go(frameUrl);
