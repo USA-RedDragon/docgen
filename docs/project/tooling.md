@@ -85,9 +85,9 @@ GitHub Pages serves only [redirect.html](../site/redirect.html), which sends eac
 | `/v0.1.0/` | One directory for each tag. |
 | `/versions.json` | The versions, newest first, and the latest version. |
 | `/_redirects` | The rule that makes Cloudflare Pages send `/` to `/latest/` with no page. |
-| `/_headers` | The cross-origin isolation headers of `/playground/` and `/main/playground/`, and the cache time of their assets. A branch build has it too. |
+| `/_headers` | The cross-origin isolation headers of `/playground/`, `/main/playground/` and `/latest/playground/`, and the cache time of their assets. A branch build has it too. |
 | `/playground/` | The [playground](#playground) of the latest release. |
-| `/main/playground/` | The playground of the main branch, with the toolchain of the latest release. |
+| `/main/playground/` | The playground of the main branch, built by `playground-main.yaml` on each push to `main`. |
 | `/llms.txt` | The list of the Markdown copies of `/latest/`, for agents. Each version has its own `llms.txt` too. |
 | `<page>.md` | The Markdown copy of each page, next to its HTML. Its links go to the Markdown copies of the other pages, and the HTML names it with `<link rel="alternate" type="text/markdown">`. |
 
@@ -152,7 +152,7 @@ A pull request that changes `playground/`, the Go source of docgen, `go.mod`, `g
 - Stops on a member that is not a regular file or a directory under `playground/`, or whose path has `..`, before it extracts the archive.
 - Checks `manifest.json` with `checkmanifest.mjs`: each URL must be `assets/` and a plain file name of a regular file.
 
-On `main`, `site.sh release` puts that playground at `/playground/`. Then `site.sh preview` builds `/main/playground/` with `build.sh preview`, from the same archive. On another branch, `site.sh preview` builds `/playground/` the same way, so a branch preview shows the playground of that branch. A change of the toolchain, such as of the overlay, `bb` or the sample, shows only after the next release, and the pull request check tests it.
+On `main`, `site.sh release` puts that playground at `/playground/`. Each push to `main` runs [playground-main.yaml](../../.github/workflows/playground-main.yaml): it runs `build.sh all` with the cached `wasm-opt` outputs, moves the tag `playground-main` to the commit, replaces the archive `docgen_playground-main_playground.tar` and its checksum file on the prerelease `playground-main`, and starts a Cloudflare build of `main` with the deploy hook. `site.sh main` puts that archive at `/main/playground/`, so `/main/playground/` runs the toolchain and docgen of `main`. With no `v*` tag, `site.sh release` also takes that archive, and `cloudflare.sh` copies it to `/latest/playground/`, because `/latest/` is then a copy of `main`. On another branch, `site.sh preview` builds `/playground/` with `build.sh preview` from the archive of `playground-main`, or else of the newest release, so a branch preview shows docgen of that branch. A change of the toolchain on a branch, such as of the overlay, `bb` or the sample, shows after the merge, and the pull request check tests it.
 
 The archive and its checksum file come from the same release, so the checksum finds a damaged download, not a changed release. The Cloudflare build does not check the attestation, because `gh attestation verify` needs a GitHub token, and the build has none. To check an archive by hand:
 
@@ -160,7 +160,7 @@ The archive and its checksum file come from the same release, so the checksum fi
 gh attestation verify docgen_0.2.0_playground.tar --repo USA-RedDragon/docgen
 ```
 
-When no tag has a valid archive, or the preview build fails or takes more than 15 minutes, `site.sh` puts `pending.html` at the path, prints a warning, and the docs build goes on. `pending.html` states that the playground is not available in this build. `PLAYGROUND_RELEASE_URL` replaces the release download URL, for tests only.
+When no archive is valid, or the preview build fails or takes more than 15 minutes, `site.sh` puts `pending.html` at the path, prints a warning, and the docs build goes on. `pending.html` states that the playground is not available in this build. `PLAYGROUND_RELEASE_URL` replaces the release download URL, for tests only.
 
 The playground needs `SharedArrayBuffer`, so its pages need cross-origin isolation. `docs/site/build.sh` writes `_headers` with `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy` and `Cross-Origin-Resource-Policy` for `/playground*` and `/main/playground*` only, so the docs pages keep their fonts from Google Fonts. The assets of the playground have their hash in their names, so `_headers` gives them a cache time of one year.
 

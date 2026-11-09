@@ -22,15 +22,20 @@ else
 	git fetch --quiet --tags "$remote"
 fi
 
-# /playground/ is the playground of the newest release that has one. On main,
-# /main/playground/ and, on another branch, /playground/ is the playground of
-# this checkout with the toolchain of that release. site.sh does not stop the
-# build: on an error it puts a page there that states that the playground is
-# not available.
+# /playground/ is the playground of the newest release that has one, and
+# /main/playground/ is the playground of main that playground-main.yaml builds
+# on each push. On another branch, /playground/ is docgen of this checkout with
+# the toolchain of main. site.sh does not stop the build: on an error it puts a
+# page there that states that the playground is not available.
 if [ "${CF_PAGES_BRANCH:-}" = main ]; then
 	docs/site/build.sh --versions
 	playground/site.sh release artifacts/docs-site/playground
-	playground/site.sh preview artifacts/docs-site/main/playground
+	playground/site.sh main artifacts/docs-site/main/playground
+	# With no release, /latest/ is a copy of main, and its pages link
+	# /latest/playground/.
+	if grep -q '"latest":"main"' artifacts/docs-site/versions.json; then
+		cp -R artifacts/docs-site/main/playground artifacts/docs-site/latest/playground
+	fi
 else
 	go run . update
 	docs/site/build.sh

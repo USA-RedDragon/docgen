@@ -1,0 +1,139 @@
+# The playground of main, served at /main/playground/ of the docs site. Each
+# push to main builds it, puts it on the rolling prerelease playground-main,
+# and starts a Cloudflare build of main, which downloads it.
+name: Playground of main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playground-main
+  cancel-in-progress: true
+
+jobs:
+  # The build runs npm packages and Go modules, so it has a read-only token
+  # and hands the archive to the next job as a workflow artifact.
+  build:
+    name: Playground build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # The wasm-opt outputs, by the SHA-256 of their inputs. Without a change
+      # of a tool, the build takes no wasm-opt time.
+      - name: Restore the wasm-opt outputs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/playground-work/opt-cache
+          key: playground-opt-${{ hashFiles('go.mod', 'playground/bb/**', 'playground/overlay/**', 'playground/build/mkoverlay.py', 'playground/build/package-lock.json') }}
+          restore-keys: playground-opt-
+
+      - name: Build the playground
+        env:
+          PLAYGROUND_VERSION: main
+          PLAYGROUND_COMMIT: ${{ github.sha }}
+          PLAYGROUND_WORK: ${{ runner.temp }}/playground-work
+        run: playground/build/build.sh all "$RUNNER_TEMP/dist/playground"
+
+      - name: Make the archive and its checksum file
+        run: |
+          name=docgen_playground-main_playground
+          cd "$RUNNER_TEMP/dist"
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf "$name.tar" playground
+          sha256sum "$name.tar" >"${name}_checksums.txt"
+          cat "${name}_checksums.txt"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playground
+          path: |
+            ${{ runner.temp }}/dist/*.tar
+            ${{ runner.temp }}/dist/*_checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  # Moves the tag playground-main to this commit and replaces the files of its
+  # prerelease. It runs no code of the repository.
+  publish:
+    name: Playground publish
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: playground
+          path: ${{ runner.temp }}/dist
+
+      - name: Check the archive
+        run: |
+          cd "$RUNNER_TEMP/dist"
+          sha256sum -c docgen_playground-main_playground_checksums.txt
+
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/dist/docgen_playground-main_playground.tar
+
+      - name: Put the archive on the prerelease playground-main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          if gh api "repos/$REPO/git/refs/tags/playground-main" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$REPO/git/refs/tags/playground-main" -f sha="$SHA" -F force=true >/dev/null
+          else
+            gh api -X POST "repos/$REPO/git/refs" -f ref=refs/tags/playground-main -f sha="$SHA" >/dev/null
+          fi
+          if ! gh release view playground-main --repo "$REPO" >/dev/null 2>&1; then
+            gh release create playground-main --repo "$REPO" --prerelease --latest=false \
+              --title "Playground of main" \
+              --notes "The playground of the newest commit of main, for /main/playground/ of the docs site. Each push to main replaces it."
+          fi
+          gh release upload playground-main --repo "$REPO" --clobber \
+            "$RUNNER_TEMP/dist/docgen_playground-main_playground.tar" \
+            "$RUNNER_TEMP/dist/docgen_playground-main_playground_checksums.txt"
+
+  # The Cloudflare build of main ran when the push arrived, before the archive
+  # existed, so start one more. The hook URL can start a build of main and
+  # nothing else.
+  rebuild:
+    name: Rebuild the docs site
+    needs: publish
+    runs-on: ubuntu-26.04
+    permissions: {}
+    steps:
+      - name: Start a Cloudflare build of main
+        env:
+          HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::No CLOUDFLARE_DEPLOY_HOOK secret, so /main/playground/ updates with the next build of main."
+            exit 0
+          fi
+          case $HOOK in
+          https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/*) ;;
+          *) echo "::error::CLOUDFLARE_DEPLOY_HOOK must be a Cloudflare Pages deploy hook URL on api.cloudflare.com."; exit 1 ;;
+          esac
+          curl -fsS -m 30 -X POST -o /dev/null "$HOOK"
+          echo "::notice::Started a Cloudflare build of main."

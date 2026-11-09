@@ -3,8 +3,13 @@
 #
 #   site.sh release OUT  The playground of a release, from the playground
 #                        archive of that GitHub release.
+#   site.sh main OUT     The playground of main, from the archive of the
+#                        prerelease playground-main, which the workflow
+#                        playground-main.yaml replaces on each push to main.
+#                        Without it, as preview.
 #   site.sh preview OUT  The playground of this checkout: docgen.wasm and the
-#                        page of this checkout, with the toolchain of a release.
+#                        page of this checkout, with the toolchain of
+#                        playground-main, or else of a release.
 #
 # The release is the newest v* tag that is not a prerelease and that has a
 # valid playground archive. When all tags are prereleases, prereleases count
@@ -24,11 +29,11 @@ set -eu
 mode=${1:-}
 out=${2:-}
 case $mode in
-release | preview) ;;
+release | main | preview) ;;
 *) mode= ;;
 esac
 if [ -z "$mode" ] || [ -z "$out" ] || [ $# -ne 2 ]; then
-	echo "usage: site.sh release OUT | site.sh preview OUT" >&2
+	echo "usage: site.sh release OUT | site.sh main OUT | site.sh preview OUT" >&2
 	exit 2
 fi
 
@@ -108,15 +113,30 @@ fetch_release() {
 	fi
 }
 
+if [ "$mode" = main ] && fetch_release playground-main; then
+	echo "site.sh: the playground of main comes from the prerelease playground-main" >&2
+	rm -rf "$out"
+	mkdir -p "$(dirname "$out")"
+	cp -R "$work/release/playground" "$out"
+	exit 0
+fi
+
+# A preview takes the toolchain of main first, so it works before the first
+# release. With no v* tag, the release mode also takes the playground of main,
+# as /latest/ of the docs is then main.
 tag=
-for t in $(candidates | head -n "$tries"); do
+sources=$(candidates | head -n "$tries")
+if [ "$mode" != release ] || [ -z "$sources" ]; then
+	sources="playground-main $sources"
+fi
+for t in $sources; do
 	if fetch_release "$t"; then
 		tag=$t
 		break
 	fi
 done
 if [ -z "$tag" ]; then
-	pending "no release of the $tries newest tags has a valid playground archive"
+	pending "no valid playground archive in $sources"
 fi
 echo "site.sh: the playground toolchain comes from release $tag, $relgo" >&2
 
