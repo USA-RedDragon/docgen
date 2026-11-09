@@ -8,7 +8,9 @@ const [port, pageUrl, outDir] = process.argv.slice(2);
 const frameUrl = new URL("/__test/frame.html?src=" + new URL(pageUrl).pathname, pageUrl).href;
 fs.mkdirSync(outDir, { recursive: true });
 const R = { steps: [], checks: [], loads: [], errors: [] };
-const ff = await connect(port);
+let ff;
+// An error outside the try below, such as in a callback, ends the run with exit 1.
+for (const ev of ["uncaughtException", "unhandledRejection"]) process.on(ev, e => { console.log("FATAL", ev, e && e.stack || e); process.exit(1); });
 const shot = async name => { await new Promise(r => setTimeout(r, 300)); await ff.shot(`${outDir}/shot-${name}.png`); R.checks.push({ shot: name }); };
 const check = (name, ok, detail) => { R.checks.push({ name, ok: !!ok, detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail !== undefined ? ": " + JSON.stringify(detail).slice(0, 300) : ""}`); };
 const load = async (query = "", label = "") => {
@@ -47,6 +49,7 @@ const termTail = async (n = 1500) => (await ff.js("return window.__pg.term()")).
 const noOverflow = () => ff.js("return {sw: document.documentElement.scrollWidth, iw: innerWidth, sh: document.documentElement.scrollHeight, ih: innerHeight}");
 
 try {
+  ff = await connect(port);
   await ff.size(1280, 800);
   // First load with an empty Cache API, then a reload from the cache.
   await load("?clearcache", "first (empty cache)");
@@ -220,9 +223,9 @@ try {
   try { R.errors.push(...await ff.js("return window.__pg && window.__pg.errors || []")); await ff.shot(`${outDir}/shot-fatal.png`); } catch {}
 }
 // A known console line, to show that the console output of the page reaches firefox.log.
-try { await ff.js("console.error('console-capture-probe')"); } catch {}
+try { if (ff) await ff.js("console.error('console-capture-probe')"); } catch {}
 fs.writeFileSync(`${outDir}/scenario.json`, JSON.stringify(R, null, 1));
-await ff.close();
+if (ff) await ff.close();
 const failed = R.checks.filter(c => c.name && !c.ok).length;
 console.log(`checks: ${R.checks.filter(c => c.name && c.ok).length} pass, ${failed} fail${R.fatal ? ", fatal error" : ""}`);
 process.exit(failed || R.fatal ? 1 : 0);

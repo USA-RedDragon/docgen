@@ -66,8 +66,13 @@ fpid=$("$here/firefox.sh" "$out/profile" "$mport" "$out/firefox.log")
 if [ -n "${DOCS:-}" ]; then
 	node "$here/docs-check.mjs" "$mport" "$base${DOCS%% *}" "${DOCS#* }" || fail=1
 fi
-node "$here/scenario.mjs" "$mport" "$base$page" "$out" | tee "$out/scenario.log" || fail=1
-if grep -q '^FAIL\|^FATAL' "$out/scenario.log"; then
+# The status of the scenario counts, and so does its summary line: a run that
+# stops before the summary fails.
+if ! node "$here/scenario.mjs" "$mport" "$base$page" "$out" >"$out/scenario.log" 2>&1; then
+	fail=1
+fi
+cat "$out/scenario.log"
+if grep -q '^FAIL\|^FATAL' "$out/scenario.log" || ! grep -q '^checks: [0-9]* pass, 0 fail$' "$out/scenario.log"; then
 	fail=1
 fi
 kill "$fpid" 2>/dev/null || :
