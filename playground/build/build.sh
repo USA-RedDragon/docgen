@@ -184,9 +184,9 @@ build_toolchain() {
 		(cd "$work" && wasm -o "$work/bin/$t.wasm" "cmd/$t") &
 		pids="$pids $!"
 	done
-	(cd "$pg/bb" && wasm -overlay "$work/ov/overlay.json" -o "$work/bin/bb.wasm" .) &
+	(cd "$pg/bb" && wasm -buildvcs=false -overlay "$work/ov/overlay.json" -o "$work/bin/bb.wasm" .) &
 	pids="$pids $!"
-	(cd "$pg/unzstd" && wasm -o "$work/bin/unzstd.wasm" .) &
+	(cd "$pg/unzstd" && wasm -buildvcs=false -o "$work/bin/unzstd.wasm" .) &
 	pids="$pids $!"
 	npm_ci build "$here" &
 	pids="$pids $!"
