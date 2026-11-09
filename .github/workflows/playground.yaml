@@ -1,10 +1,10 @@
 name: Playground
 
 # A pull request that changes the playground or docgen builds all of it, as the
-# release workflow does on a tag, and runs the browser test in headless
-# Firefox. It uploads nothing to a release. A pull request can restore only
-# the caches of its own runs and of main, so a manual run on main fills the
-# wasm-opt cache for all pull requests.
+# release workflow does on a tag, and runs the browser test with Playwright in
+# Firefox and Chromium. It uploads nothing to a release. A pull request can
+# restore only the caches of its own runs and of main, so a manual run on main
+# fills the wasm-opt cache for all pull requests.
 on:
   workflow_dispatch:
   pull_request:
@@ -66,21 +66,23 @@ jobs:
           docs/site/build.sh
           cp -R "$RUNNER_TEMP/playground" artifacts/docs-site/playground
 
-      - name: Check for Firefox
+      - name: Install Playwright and its browsers
+        working-directory: playground/test
         run: |
-          if ! command -v firefox >/dev/null; then
-            echo "::error::The runner image has no firefox."
-            exit 1
-          fi
-          firefox --version
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install --with-deps firefox chromium
 
-      - name: Test the playground in headless Firefox
+      - name: Test the playground in Firefox and Chromium
+        working-directory: playground/test
         env:
-          DOCS: /index.html playground/
-        run: playground/test/run.sh artifacts/docs-site "$RUNNER_TEMP/playground-test"
+          PLAYGROUND_SITE: ${{ github.workspace }}/artifacts/docs-site
+          PLAYGROUND_DOCS: /index.html playground/
+          PLAYGROUND_TEST_OUT: ${{ runner.temp }}/playground-test
+          PLAYGROUND_TEST_WORKERS: 2
+        run: npx playwright test
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: failure()
         with:
           name: playground-test
           path: ${{ runner.temp }}/playground-test

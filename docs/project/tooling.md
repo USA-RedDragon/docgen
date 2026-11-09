@@ -116,7 +116,7 @@ The playground is a page that runs the Go toolchain and docgen in the browser, o
 | `playground/build/build.sh` | Builds the playground. |
 | `playground/site.sh` | Puts the playground into the docs site, for `cloudflare.sh`. |
 | `playground/build/checkmanifest.mjs` | Checks the manifest of a downloaded playground. |
-| `playground/test/` | The browser test. |
+| `playground/test/` | The browser test, with Playwright Test. |
 
 `playground/build/build.sh all OUT` builds the whole playground into `OUT`, with the Go version of `go.mod`:
 
@@ -132,7 +132,7 @@ The playground is a page that runs the Go toolchain and docgen in the browser, o
 
 The playground has no compression or decompression code of its own. The build compresses each tool and bundle with the `zstd` command (`zstd -19`), and the browser decodes the files natively:
 
-- A compressed asset is in `assets/zstd/`, with a `.zst` name, such as `assets/zstd/compile-020bd05ab708136a.wasm.zst`. The `_headers` rule of that directory gives it `Content-Encoding: zstd` and `Content-Type: application/wasm`. Cloudflare Pages sends such a file as it is, and the browser decodes it. A sitetest checks these rules, and `run.sh` checks the headers of each asset.
+- A compressed asset is in `assets/zstd/`, with a `.zst` name, such as `assets/zstd/compile-020bd05ab708136a.wasm.zst`. The `_headers` rule of that directory gives it `Content-Encoding: zstd` and `Content-Type: application/wasm`. Cloudflare Pages sends such a file as it is, and the browser decodes it. A sitetest checks these rules, and the browser test checks the headers of each asset.
 - The bundles (`root`, `gocache`, `sample`) also get `application/wasm`. The page reads their bytes and does not use the type. A test deploy showed that Cloudflare sends a file of that type with Brotli to a browser with no zstd. [Cloudflare compression](https://developers.cloudflare.com/speed/optimization/content/compression/) lists the types that it compresses; `application/wasm` is on that list, and `application/octet-stream` is not.
 - The release build stops when there is no `zstd` command. GitHub's Ubuntu runners have it. The Cloudflare build image documents no `zstd` command, so a preview build without it puts `docgen.wasm` raw in `assets/`, with no `Content-Encoding`, and Cloudflare compresses it on the fly. The zone of `docgen.mcswain.dev` has a compression rule: Cloudflare sends Zstandard to a browser that accepts it, else Brotli, else gzip.
 - `manifest.json` gives the encoding of each asset (`zstd` or `identity`), its URL, the size of the decoded file and its SHA-256. The page checks the size and the SHA-256 of the decoded bytes with `crypto.subtle`, and keeps them in the Cache API. The progress of the first load counts the bytes of the decoded files.
@@ -174,11 +174,24 @@ When the u-root version in `playground/bb/go.mod` changes, run `vendor-uroot.py`
 
 #### Test
 
-`playground/test/run.sh SITE OUT` serves the site in `SITE` on 127.0.0.1 with the rules of its `_headers`, checks the headers of the playground and, with `DOCS` set, that a docs page has no cross-origin isolation header, loads its fonts and links the playground. It then runs `scenario.mjs` in headless Firefox: the first load and a load from the browser cache, `docgen update` after an edit, `docgen check` on a clean and on a stale page, the output of the `exec=` markers, shell commands, a `go test` with a timeout, Stop during a build, the explorer, HTML in a Markdown preview that must run no script, and the page at 390 px. The results and screenshots go to `OUT`. A failed check, an error of the scenario, or a missing summary line makes `run.sh` exit 1.
+The browser test in `playground/test/` uses [Playwright Test](https://playwright.dev/docs/intro), with the version that `playground/test/package.json` pins. `playwright.config.mjs` starts `serve.mjs`, a server on 127.0.0.1 that serves a built docs site with the rules of its `_headers`, as Cloudflare Pages does, so the browser decodes the zstd assets. The specs in `specs/` check:
+
+- The headers of the playground and its assets, and with `PLAYGROUND_DOCS` set, that a docs page has no cross-origin isolation header, loads its fonts and links the playground.
+- The first load and a load from the Cache API, and typing into the editor.
+- `docgen update` after an edit, `docgen check` on a clean and on a stale page, and the output of the `exec=` markers.
+- Shell commands, a `go test` with a timeout, Stop during a build, and the process limit.
+- The previews, and HTML in a Markdown preview that must run no script.
+- The explorer: selection, keyboard, drag and drop, rename, the context menu, upload, download, the saved workspace and Reset Sample.
+- The page at 390 px, and the themes.
+
+Each test opens the page in a new browser context, so it starts with no cache and no saved workspace. The projects `firefox` and `chromium` run the specs at 1280 px, and `firefox-390` and `chromium-390` run `phone.spec.mjs` at 390 px. A failed test keeps its trace and a screenshot. The HTML report and the results go to `PLAYGROUND_TEST_OUT`, by default `artifacts/playground-test`. `PLAYGROUND_PAGE` gives the path of the page, by default `/playground/`, so the same specs test `/main/playground/`.
 
 ```sh
 playground/build/build.sh all artifacts/playground
 docs/site/build.sh
 cp -R artifacts/playground artifacts/docs-site/playground
-DOCS="/index.html playground/" playground/test/run.sh artifacts/docs-site artifacts/playground-test
+cd playground/test
+npm ci --ignore-scripts
+npx playwright install firefox chromium
+PLAYGROUND_SITE=../../artifacts/docs-site PLAYGROUND_DOCS="/index.html playground/" npx playwright test
 ```
