@@ -63,12 +63,6 @@ export class MemFS {
     return e;
   }
   readFile(p) { const e = this.lookup(p); if (!e || e.dir) throw err("ENOENT"); return e.data.subarray(0, e.size); }
-  stats() {
-    let files = 0, bytes = 0;
-    const walk = e => { for (const c of e.children.values()) { if (c.dir) walk(c); else { files++; bytes += c.size; } } };
-    walk(this.root);
-    return { files, bytes };
-  }
 }
 
 function ensure(e, n) {
@@ -105,13 +99,13 @@ class Pipe {
 export class Kernel {
   /**
    * limitMs is the hard limit of the run time of any process, in milliseconds; 0 is no limit.
-   * testTimeouts makes a process with a -test.timeout=D argument exit as a timed-out test at D.
+   * A process with a -test.timeout=D argument exits as a timed-out test at D.
    */
-  constructor({ fs = new MemFS(), loadModule, makeWorker, log = () => {}, limitMs = 0, testTimeouts = true }) {
-    this.fs = fs; this.loadModule = loadModule; this.makeWorker = makeWorker; this.log = log;
-    this.limitMs = limitMs; this.testTimeouts = testTimeouts;
+  constructor({ fs = new MemFS(), loadModule, makeWorker, limitMs = 0 }) {
+    this.fs = fs; this.loadModule = loadModule; this.makeWorker = makeWorker;
+    this.limitMs = limitMs;
     this.procs = new Map(); this.nextPid = 100;
-    this.stats = { spawns: 0, rpcs: 0, rpcMs: 0, maxMem: {}, byTool: {}, live: 0, maxLive: 0, ops: {} };
+    this.stats = { spawns: 0, maxMem: {}, live: 0, maxLive: 0 };
   }
 
   newProc(parent, cwd, descs) {
@@ -156,7 +150,7 @@ export class Kernel {
   roImage() {
     if (this.ro !== undefined) return this.ro;
     const root = this.fs.lookup("/goroot");
-    if (!root || this.noRO) return (this.ro = null);
+    if (!root) return (this.ro = null);
     const index = []; let size = 0;
     const walk = (e, p) => { if (!e.dir) size += e.size; else for (const [n, c] of e.children) walk(c, p + "/" + n); };
     walk(root, "/goroot");
@@ -291,8 +285,7 @@ export class Kernel {
     const c = this.procs.get(pid);
     if (!c || c.exited) return false;
     if (!SIGNAME[sig]) sig = SIG.KILL;
-    this.log(`[pid ${pid}] killed by signal ${SIGNAME[sig][0]}`);
-    this.finish(c, KILLED + sig, null, sig);
+    this.finish(c, KILLED + sig, null);
     return true;
   }
 
@@ -327,29 +320,24 @@ export class Kernel {
     }
     msg += `\n\n[kernel: pid ${p.pid} terminated at the -test.timeout deadline; no goroutine dump is available]\n`;
     try { this.writeDesc(p.fds.get(2), enc.encode(msg)); } catch {}
-    this.log(`[pid ${p.pid}] ${p.tool} test timeout ${text}`);
-    this.finish(p, 2, null, 0, "timeout");
+    this.finish(p, 2, null, "timeout");
   }
 
   /** overLimit kills p when it runs longer than limitMs. */
   overLimit(p) {
     if (p.exited) return;
     try { this.writeDesc(p.fds.get(2), enc.encode(`kernel: pid ${p.pid} (${p.tool}) killed: it ran past the process limit of ${this.limitMs / 1000}s\n`)); } catch {}
-    this.finish(p, KILLED + SIG.KILL, null, SIG.KILL, "limit");
+    this.finish(p, KILLED + SIG.KILL, null, "limit");
   }
 
-  finish(p, code, mem, signal = 0, reason = "") {
+  finish(p, code, mem, reason = "") {
     if (p.exited) return;
-    p.exited = true; p.code = code; p.signal = signal; p.reason = reason;
+    p.exited = true; p.code = code; p.reason = reason;
     for (const t of p.timers || []) clearTimeout(t);
     if (p.worker) { p.worker.terminate(); p.worker = null; }
     this.stats.live--;
-    const ms = performance.now() - p.t0;
-    const bt = this.stats.byTool[p.tool] || (this.stats.byTool[p.tool] = { n: 0, ms: 0 });
-    bt.n++; bt.ms += ms;
     if (mem) this.stats.maxMem[p.tool] = Math.max(this.stats.maxMem[p.tool] || 0, mem);
     this.closeAll(p);
-    this.log(`[pid ${p.pid}] ${p.tool} exit ${code} ${ms.toFixed(0)}ms mem ${mem ? (mem / 2 ** 20).toFixed(0) + "MiB" : "?"} rpcs ${p.rpcs}`);
     // An exited process stays in the table as a zombie until a wait reaps it, as on Unix, so a wait
     // that comes after the exit still gets the status.
     const reaped = p.waiters.length > 0 || p.ppid === 1;
@@ -357,7 +345,6 @@ export class Kernel {
     p.waiters = [];
     p.resolve(code);
     if (reaped) this.procs.delete(p.pid);
-    if (this.onExit) this.onExit(p, mem);
   }
 
   /** Starts a process in a new Worker. argv0 is a path in the memfs. p.done resolves with the exit code. */
@@ -366,8 +353,8 @@ export class Kernel {
     const e = this.fs.lookup(path);
     if (!e || e.dir) throw err("ENOENT");
     const p = this.newProc(parent, cwd, descs);
-    p.tool = path.split("/").pop(); p.t0 = performance.now(); p.rpcs = 0; p.argv = argv; p.timers = [];
-    if (this.testTimeouts) {
+    p.tool = path.split("/").pop(); p.timers = [];
+    {
       const ta = argv.findIndex(x => /^--?test\.timeout(=|$)/.test(x));
       const text = ta < 0 ? "" : argv[ta].includes("=") ? argv[ta].slice(argv[ta].indexOf("=") + 1) : argv[ta + 1] || "";
       const ms = text ? parseDuration(text) : 0;
@@ -404,18 +391,13 @@ export class Kernel {
       };
       w.onmessage = m => {
         if (p.exited) return;
-        const t0 = performance.now();
         if (m.type === MESSAGE.CALL) {
-          p.rpcs++; this.stats.rpcs++; this.stats.ops[m.name] = (this.stats.ops[m.name] || 0) + 1;
           let r;
           try {
             r = this.op(p, m.name, m.args, m.data, (res, data) => { if (!p.exited && p.worker) p.worker.post({ type: MESSAGE.COMPLETE, id: m.id, result: res, data: data && data.slice() }); });
           } catch (x) { reply({ errno: x.code || "EIO", message: String(x.message) }); return; }
           if (r === PENDING) reply({ pendingId: m.id }); else reply({ result: r.res }, r.data);
-          this.stats.rpcMs += performance.now() - t0;
         } else if (m.type === MESSAGE.EXIT) {
-          const bt = this.stats.byTool[p.tool] || (this.stats.byTool[p.tool] = { n: 0, ms: 0 });
-          bt.rpcN = (bt.rpcN || 0) + m.rpcCount; bt.rpcMs = (bt.rpcMs || 0) + m.rpcMs; bt.startMs = (bt.startMs || 0) + m.startMs;
           this.finish(p, m.code, m.memoryBytes);
         }
         else if (m.type === MESSAGE.CRASH) { try { this.writeDesc(p.fds.get(2), enc.encode(`kernel: ${path}: ${m.text}\n`)); } catch {} this.finish(p, 2, m.memoryBytes); }
@@ -423,7 +405,7 @@ export class Kernel {
       const envObj = {};
       for (const kv of env) { const i = kv.indexOf("="); if (i > 0) envObj[kv.slice(0, i)] = kv.slice(i + 1); }
       if (this.toolEnv && this.toolEnv[p.tool]) Object.assign(envObj, this.toolEnv[p.tool]);
-      w.post({ type: MESSAGE.START, goroot: this.roImage(), sentAt: performance.timeOrigin + performance.now(), module: mod, buffer: sab, pid: p.pid, ppid: p.ppid, cwd, argv: [argv[0] || path, ...args], env: envObj });
+      w.post({ type: MESSAGE.START, goroot: this.roImage(), module: mod, buffer: sab, pid: p.pid, ppid: p.ppid, cwd, argv: [argv[0] || path, ...args], env: envObj });
     })();
     return p;
   }

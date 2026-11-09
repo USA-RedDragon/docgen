@@ -16,8 +16,6 @@ let callBytes = null;
 let nextCallId = 1;
 /** The callbacks of the calls that complete later, by call id. */
 const pendingCalls = new Map();
-let rpcCount = 0;
-let rpcMs = 0;
 
 let pid = 0;
 let ppid = 0;
@@ -37,8 +35,6 @@ const localDescriptors = new Map();
  * throws an Error with the errno code of a failed call.
  */
 function callKernel(name, args, data) {
-  const startedAt = performance.now();
-  rpcCount++;
   Atomics.store(callState, CALL_BUFFER.STATE, 0);
   postToKernel({ type: MESSAGE.CALL, id: nextCallId++, name, args, data });
   // The syscalls of Go are synchronous, so the Worker blocks until the kernel writes the reply and
@@ -54,7 +50,6 @@ function callKernel(name, args, data) {
   if (dataLength >= 0) {
     reply.data = callBytes.subarray(CALL_BUFFER.DATA_OFFSET, CALL_BUFFER.DATA_OFFSET + dataLength);
   }
-  rpcMs += performance.now() - startedAt;
   return reply;
 }
 
@@ -276,7 +271,6 @@ async function start(message) {
   }
   let exitCode = 0;
   let instance = null;
-  let runAt = 0;
   try {
     await wasmExecLoaded;
     const go = new Go();
@@ -287,15 +281,11 @@ async function start(message) {
       exitCode = code;
     };
     instance = await WebAssembly.instantiate(message.module, go.importObject);
-    runAt = performance.timeOrigin + performance.now();
     await go.run(instance);
     postToKernel({
       type: MESSAGE.EXIT,
       code: exitCode,
       memoryBytes: instance.exports.mem.buffer.byteLength,
-      rpcCount,
-      rpcMs,
-      startMs: runAt - (message.sentAt || 0),
     });
   } catch (error) {
     postToKernel({

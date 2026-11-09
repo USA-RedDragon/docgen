@@ -2,10 +2,10 @@
 // docgen and the bb shell and commands.
 import { Kernel, MemFS } from "./kernel.mjs";
 import { KILLED, SIGNAL_NAMES as SIGNAME } from "./abi.mjs";
-export const TOOLDIR = "/goroot/pkg/tool/js_wasm";
-export const TOOLS = ["compile", "link", "asm", "vet"];
+const TOOLDIR = "/goroot/pkg/tool/js_wasm";
+const TOOLS = ["compile", "link", "asm", "vet"];
 /** The names of the bb multi-call binary in /bin. */
-export const BB = ["sh", "cat", "head", "tail", "grep", "sed", "wc", "ls", "echo", "printf", "tr", "cut", "sort", "uniq",
+const BB = ["sh", "cat", "head", "tail", "grep", "sed", "wc", "ls", "echo", "printf", "tr", "cut", "sort", "uniq",
   "true", "false", "test", "[", "pwd", "basename", "dirname", "mkdir", "rm", "cp", "mv", "touch", "date"];
 const dec = new TextDecoder();
 
@@ -29,10 +29,10 @@ export function describe(code) {
 }
 
 /** loadTool(name) returns a Promise of a WebAssembly.Module for go, compile, link, asm, vet, docgen or bb. */
-export function createSession({ loadTool, makeWorker, log = () => {}, binaries = {}, limitMs = 0 }) {
+export function createSession({ loadTool, makeWorker, limitMs = 0 }) {
   const fsys = new MemFS();
   const tools = {};
-  const map = { "/goroot/bin/go": "go", "/usr/local/bin/docgen": "docgen", ...binaries };
+  const map = { "/goroot/bin/go": "go", "/usr/local/bin/docgen": "docgen" };
   for (const t of TOOLS) map[`${TOOLDIR}/${t}`] = t;
   for (const b of BB) map[`/bin/${b}`] = "bb";
   const loadModule = async (path, e) => {
@@ -40,7 +40,7 @@ export function createSession({ loadTool, makeWorker, log = () => {}, binaries =
     if (m) return tools[m] || (tools[m] = loadTool(m));
     return WebAssembly.compile(e.data.subarray(0, e.size));
   };
-  const kernel = new Kernel({ fs: fsys, loadModule, makeWorker, log, limitMs });
+  const kernel = new Kernel({ fs: fsys, loadModule, makeWorker, limitMs });
   const mark = new TextEncoder().encode("\0asm placeholder; the kernel maps this path to a module\n");
   for (const p of Object.keys(map)) fsys.writeFile(p, mark, 0).mode = 0o755;
   for (const d of ["/tmp", "/home", "/gopath", "/gocache"]) fsys.mkdirAll(d);
@@ -59,8 +59,7 @@ export function createSession({ loadTool, makeWorker, log = () => {}, binaries =
     const r = await start(argv0, argv, cwd, extraEnv, b => { stdout += dec.decode(b); }, b => { stderr += dec.decode(b); }).done;
     return { ...r, stdout, stderr };
   }
-  const go = (args, cwd = "/work/hello", extraEnv = {}) => exec("/goroot/bin/go", ["go", ...args], cwd, extraEnv);
-  return { fsys, kernel, go, exec, start, env };
+  return { fsys, kernel, exec, start };
 }
 
 /** Serializes the memfs subtree at prefix in the bundle format. */

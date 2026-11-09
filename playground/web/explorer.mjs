@@ -26,7 +26,7 @@ export function icon(id, cls = "ex-icon") {
   return s;
 }
 
-/** longPress calls fn(x, y, event) when a touch or pen holds still on el for 500 ms. It returns a function that returns true right after a long press. */
+/** longPress calls fn(x, y, event) when a touch or pen holds still on el for 500 ms. */
 export function longPress(el, fn) {
   let t = 0, x = 0, y = 0, at = 0;
   const stop = () => clearTimeout(t);
@@ -40,13 +40,12 @@ export function longPress(el, fn) {
   const recent = () => Date.now() - at < 800;
   el.addEventListener("contextmenu", e => { if (recent()) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   el.addEventListener("click", e => { if (recent()) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
-  return recent;
 }
 
 const crcTable = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc32 = d => { let c = 0xffffffff; for (let i = 0; i < d.length; i++) c = crcTable[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 /** zip returns a zip archive (stored, no compression) of entries [[name, bytes or null for a folder]]. */
-export function zip(entries) {
+function zip(entries) {
   const enc = new TextEncoder(), parts = [], central = [];
   const d = new Date(), time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
   const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
@@ -646,9 +645,7 @@ export function createExplorer(o) {
   o.side.querySelector("#exhead").addEventListener("drop", e => { tree.dispatchEvent(new DragEvent("drop", { dataTransfer: e.dataTransfer, bubbles: false })); e.preventDefault(); });
 
   return {
-    render, decorate: () => decorate(), reveal, openMenu, closeMenu, items, startNew, startRename, duplicate, remove, moveTo, upload, archive, collapseAll,
+    render, decorate: () => decorate(), reveal, openMenu, closeMenu, archive,
     state: () => ({ expanded: [...expanded], selected: [...selected], focus, edit: edit && { ...edit }, rows: rows.map(r => r.path), drop: dropDir }),
-    row: p => rowOf.get(p)?.el || null,
-    nameError,
   };
 }

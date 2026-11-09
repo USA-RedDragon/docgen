@@ -32,7 +32,7 @@ button, select, input { font: inherit; color: inherit; }
 * { scrollbar-width: thin; scrollbar-color: var(--vs-line) transparent; }
 .app { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: 100dvh; }
 .top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 10px; background: var(--vs-tabs); border-bottom: 1px solid var(--vs-edge); }
-.brand { font-family: var(--font-mono); font-weight: 600; font-size: 14px; margin-right: 6px; white-space: nowrap; }
+.brand { font-family: var(--font-mono); font-weight: 600; font-size: 14px; margin-right: 6px; white-space: nowrap; color: inherit; text-decoration: none; }
 .btn { padding: 4px 12px; background: var(--btn); color: var(--btn-fg); border: 1px solid transparent; cursor: pointer; white-space: nowrap; }
 .btn:hover:not(:disabled) { background: var(--btn-hover); }
 .btn:disabled { opacity: 0.45; cursor: default; }
@@ -101,7 +101,7 @@ button, select, input { font: inherit; color: inherit; }
 .vs-acts .ex-tb { color: var(--vs-tab-fg); }
 .vs-acts [hidden] { display: none; }
 .vs-mbar { display: none; }
-.vs-pane { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.vs-pane { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
 .vs-pane.split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .vs-one { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .vs-one > [hidden] { display: none; }
@@ -120,10 +120,8 @@ button, select, input { font: inherit; color: inherit; }
 .vs-tab > button { padding: 8px 4px 8px 14px; background: none; border: 0; white-space: nowrap; cursor: pointer; }
 .vs-tab > .vs-x { width: 26px; padding: 8px 0; text-align: center; opacity: 0.7; }
 .vs-tab > .vs-x:hover { opacity: 1; background: var(--vs-hover); }
-.vs-tab.dirty > button:first-child::after { content: " \25CF"; }
 .vs-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 4px 12px; min-height: 26px; padding: 2px 12px; color: var(--vs-tab-fg); }
 .vs-crumbs { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.vs-pane { flex: 1; min-height: 0; overflow: hidden; }
 .vs-code { height: 100%; }
 .vs-preview { height: 100%; padding: 4px 24px 24px; overflow: auto; font-size: 15px; line-height: 1.6; }
 .vs-preview img { max-width: 100%; height: auto; background: #fff; }
@@ -148,7 +146,6 @@ button, select, input { font: inherit; color: inherit; }
 .status.busy { background: #a85b00; }
 .status .ver { flex: 0 1 auto; min-width: 0; margin-left: auto; color: inherit; overflow: hidden; text-overflow: ellipsis; }
 .status .ver:not([href]) { text-decoration: none; }
-.brand { color: inherit; text-decoration: none; }
 .brand:hover { text-decoration: underline; }
 .loader { position: fixed; inset: 0; display: grid; place-items: center; background: var(--vs-bg); z-index: 10; }
 .loader[hidden] { display: none; }
@@ -175,9 +172,8 @@ button, select, input { font: inherit; color: inherit; }
   #theme, .brk { order: 1; }
   .brk { display: block; flex-basis: 100%; height: 0; }
   #check, #update, #stop { order: 2; }
-  .cmd { order: 3; }
   .top .btn { padding: 4px 9px; }
-  .cmd { flex-basis: 100%; }
+  .cmd { order: 3; flex-basis: 100%; }
   .vs-preview { padding: 4px 12px 16px; font-size: 14px; }
   .status .wide { display: none; }
 }
