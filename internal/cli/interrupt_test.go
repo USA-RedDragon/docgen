@@ -144,22 +144,6 @@ func goCache(t *testing.T) string {
 	return strings.TrimSpace(out)
 }
 
-func dirNames(t *testing.T, dir string) []string {
-	t.Helper()
-	es, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out []string
-	for _, e := range es {
-		out = append(out, e.Name())
-	}
-	return out
-}
-
 func hasPrefix(prefix string) func(string) bool {
 	return func(s string) bool { return strings.HasPrefix(s, prefix) }
 }
