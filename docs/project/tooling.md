@@ -34,6 +34,7 @@ A push of a `v*` tag runs [release.yaml](../../.github/workflows/release.yaml). 
 
 - `docgen_<version>_<os>_<arch>.tar.gz` for `linux` and `darwin`, and `.zip` for `windows`, each on `amd64` and `arm64`. Each archive holds `docgen`, `LICENSE` and `README.md`.
 - `checksums.txt`, with the sha256 of each archive.
+- `docgen_<version>_playground.tar` and `docgen_<version>_playground_checksums.txt`, the [playground](#playground) of the release. A later job adds them.
 
 A tag with a suffix, such as `v0.2.0-rc.1`, makes a prerelease. The workflow also adds a build provenance attestation for each archive. To check an archive:
 
@@ -84,6 +85,9 @@ GitHub Pages serves only [redirect.html](../site/redirect.html), which sends eac
 | `/v0.1.0/` | One directory for each tag. |
 | `/versions.json` | The versions, newest first, and the latest version. |
 | `/_redirects` | The rule that makes Cloudflare Pages send `/` to `/latest/` with no page. |
+| `/_headers` | The cross-origin isolation headers of `/playground/` and `/main/playground/`, and the cache time of their assets. A branch build has it too. |
+| `/playground/` | The [playground](#playground) of the latest release. |
+| `/main/playground/` | The playground of the main branch, with the toolchain of the latest release. |
 | `/llms.txt` | The list of the Markdown copies of `/latest/`, for agents. Each version has its own `llms.txt` too. |
 | `<page>.md` | The Markdown copy of each page, next to its HTML. Its links go to the Markdown copies of the other pages, and the HTML names it with `<link rel="alternate" type="text/markdown">`. |
 
@@ -96,4 +100,56 @@ To look at the output, serve it over HTTP, because the version picker reads `ver
 ```sh
 docs/site/build.sh --versions
 python3 -m http.server -d artifacts/docs-site 8000
+```
+
+### Playground
+
+The playground is a page that runs the Go toolchain and docgen in the browser, on a sample repository in memory. Each process is a Web Worker that runs a Go `js/wasm` program. The header of each docs page links to the playground of its version: a page of `/main/` links to `/main/playground/`, a page of a release links to `/playground/`, and a page of a branch build links to the `/playground/` of that build.
+
+| Path | Content |
+| --- | --- |
+| `playground/web/` | The page: `index.html`, the scripts, the kernel that runs the processes, `pending.html`, the licenses, and the npm packages of the editor bundle. |
+| `playground/overlay/` | The new files of the `go build -overlay` that gives `js/wasm` processes and pipes. |
+| `playground/build/mkoverlay.py` | Writes the overlay from the GOROOT of the build: the new files, and the changed copies of some GOROOT files. Each change is an exact replacement, so a Go version with other source stops the build. It also writes `wasm_exec.js`. |
+| `playground/bb/` | A Go module with a shell (`mvdan.cc/sh`) and common commands (u-root) in one binary. `bb/ucmd` is the output of `bb/vendor-uroot.py`. |
+| `playground/unzstd/` | A Go module that decodes zstd in the browser, with a copy of `internal/zstd` of the Go standard library. |
+| `playground/testdata/` | The sample repository `dg` that the page starts with, and the module `loop`, a test that does not stop. The directory name keeps `docgen check` of this repository away from them. |
+| `playground/build/build.sh` | Builds the playground. |
+| `playground/site.sh` | Puts the playground into the docs site, for `cloudflare.sh`. |
+| `playground/test/` | The browser test. |
+
+`playground/build/build.sh all OUT` builds the whole playground into `OUT`, with the Go version of `go.mod`:
+
+- `go`, `compile`, `link`, `asm` and `vet` of that Go version, `bb`, `unzstd` and `docgen`, for `js/wasm`, with `-trimpath -ldflags="-s -w"`. `go`, `docgen` and `bb` start processes, so they have the overlay. The others have no overlay, because it made `compile` 20 to 40% slower in Firefox.
+- `wasm-opt -Os` of binaryen on each tool other than `docgen`. This step takes most of the build time. `docgen` gets no `wasm-opt`, because the zstd file of its output is larger, and the Cloudflare build builds `docgen` on each push.
+- A bundle of the source of each standard package that the sample imports, a bundle of the sample, and a bundle of a GOCACHE. To make the GOCACHE, the script runs `docgen check`, `go test` and `go build` on the sample under Node, with the kernel of the page and the same tools.
+- Each tool and bundle compressed with `zstd -19` (without the `zstd` command, `playground/build/zstd` compresses at its best level), with the start of its SHA-256 in its name, and `manifest.json`, which also gives the Go version and the docgen version and commit. The page shows that version and commit.
+
+`build.sh preview BASE OUT` builds only `docgen` and the page of the checkout, and takes the other assets from `BASE`, an earlier output of `build.sh all`. It uses the Go version of `BASE`.
+
+#### Releases and the Cloudflare build
+
+On a `v*` tag, the Playground job of [release.yaml](../../.github/workflows/release.yaml) runs after GoReleaser. It runs `build.sh all`, puts the output in `docgen_<version>_playground.tar`, adds a build provenance attestation for it, and adds it and `docgen_<version>_playground_checksums.txt` to the release. The build takes about 30 minutes, so only a tag runs it. A pull request that changes `playground/`, `go.mod` or `docs/site/build.sh` runs the same build and the browser test in [playground.yaml](../../.github/workflows/playground.yaml), with no upload.
+
+`cloudflare.sh` runs `playground/site.sh`. On `main`, `site.sh release` downloads the archive of the latest release, checks its SHA-256 against the checksum file of the same release, and puts it at `/playground/`. The latest release is the tag of `/latest/`. Then `site.sh preview` builds `/main/playground/` with `build.sh preview`, from the archive of the latest release. On another branch, `site.sh preview` builds `/playground/` the same way, so a branch preview shows the playground of that branch. A change of the toolchain, such as of the overlay, `bb` or the sample, shows only after the next release, and the pull request check tests it.
+
+When there is no release, the release has no playground archive, or a download, a checksum or the build fails, `site.sh` puts `pending.html` at the path, prints a warning, and the docs build goes on. `pending.html` states that the playground comes with the next release. `PLAYGROUND_RELEASE_URL` replaces the release download URL, for tests only.
+
+The playground needs `SharedArrayBuffer`, so its pages need cross-origin isolation. `docs/site/build.sh` writes `_headers` with `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy` and `Cross-Origin-Resource-Policy` for `/playground*` and `/main/playground*` only, so the docs pages keep their fonts from Google Fonts. The assets of the playground have their hash in their names, so `_headers` gives them a cache time of one year.
+
+#### Change the Go version
+
+The playground uses the Go version of the `toolchain` line of `go.mod`, or else of its `go` line. To change it, change `go.mod`, then run `build.sh all` in a pull request, or let the playground workflow run it. When `mkoverlay.py` stops on a GOROOT file that changed, change the replacement in the script. The next release then has the toolchain of that version. A preview of `main` before that release keeps the Go version of the latest release.
+
+When the u-root version in `playground/bb/go.mod` changes, run `vendor-uroot.py` again, as its doc comment shows. The build stops when `bb/ucmd` differs from the output of the script.
+
+#### Test
+
+`playground/test/run.sh SITE OUT` serves the site in `SITE` on 127.0.0.1 with the rules of its `_headers`, checks the headers of the playground and, with `DOCS` set, that a docs page has no cross-origin isolation header, loads its fonts and links the playground. It then runs `scenario.mjs` in headless Firefox: the first load and a load from the browser cache, `docgen update` after an edit, `docgen check` on a clean and on a stale page, the output of the `exec=` markers, shell commands, a `go test` with a timeout, Stop during a build, the explorer, and the page at 390 px. The results and screenshots go to `OUT`.
+
+```sh
+playground/build/build.sh all artifacts/playground
+docs/site/build.sh
+cp -R artifacts/playground artifacts/docs-site/playground
+DOCS="/index.html playground/" playground/test/run.sh artifacts/docs-site artifacts/playground-test
 ```

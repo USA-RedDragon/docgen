@@ -54,6 +54,8 @@ For the full list, see [Markers](docs/reference/markers.md).
 
 Read the docs at <https://docgen.mcswain.dev/>. Each release has its own version of the docs.
 
+Try docgen in your browser at <https://docgen.mcswain.dev/playground/>. The playground runs the Go toolchain and docgen of the latest release on a sample repository: edit the code or a page, then run `docgen check`, `docgen update` or a shell command.
+
 - [Get started](docs/start/01-install.md)
 - [Markers](docs/reference/markers.md)
 - [Command line](docs/reference/command.md)
