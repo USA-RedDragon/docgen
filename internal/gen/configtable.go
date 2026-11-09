@@ -59,7 +59,7 @@ func defaultText(vs *valueSet, pi *load.Package, d defaults.Default, va valueArg
 // defaultValue returns the text of the value of the default d with the print=
 // value of va, as docgen:const prints it, and "" when the source of d is all
 // that the column holds: a literal is its own value, except with a fmt verb, a
-// method that prints it, or print=config of a time.Duration, and a value with
+// method that prints it, or a time.Duration with no print=raw, and a value with
 // no constant has no name.
 func defaultValue(vs *valueSet, pi *load.Package, d defaults.Default, va valueArgs) (string, error) {
 	printAs := va.printAs
@@ -79,7 +79,7 @@ func defaultValue(vs *valueSet, pi *load.Package, d defaults.Default, va valueAr
 		if expr, ok = vs.constExpr(pi, d.Type, d.Value); !ok {
 			return "", nil
 		}
-	} else if d.Literal && (printAs == "" || printAs == goprint.PrintRaw || printAs == goprint.PrintConfig && !types.IsDuration(d.Type)) {
+	} else if d.Literal && (printAs == goprint.PrintRaw || !types.IsDuration(d.Type) && (printAs == "" || printAs == goprint.PrintConfig)) {
 		return "", nil
 	}
 	return va.constText(vs, pi, expr, d.Type, d.Value)

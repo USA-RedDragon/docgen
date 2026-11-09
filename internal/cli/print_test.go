@@ -448,8 +448,8 @@ func TestConfigPrintConfig(t *testing.T) {
 			"| `Size` | `int` | `0x10` |",
 		}},
 		"setting": {"", "print: config\n", []string{"| `SlotTwo` (1) |", "| `Evening` (evening-3) |", "| `5 * time.Second` (5s) |"}},
-		"go":      {" print=go", "print: config\n", []string{"| `SlotTwo` (TS1) |", "| `Evening` (scene) |", "| `5 * time.Second` (5s) |"}},
-		"raw":     {" print=raw", "", []string{"| `SlotTwo` (1) |", "| `Evening` (3) |", "| `\"fast\"` |", "| `5 * time.Second` (5000000000) |"}},
+		"go":      {" print=go", "print: config\n", []string{"| `1500000000` (1.5s) |", "| `SlotTwo` (TS1) |", "| `Evening` (scene) |", "| `5 * time.Second` (5s) |"}},
+		"raw":     {" print=raw", "", []string{"| `1500000000` |", "| `SlotTwo` (1) |", "| `Evening` (3) |", "| `\"fast\"` |", "| `5 * time.Second` (5000000000) |"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
