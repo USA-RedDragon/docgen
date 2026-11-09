@@ -1,5 +1,5 @@
 #!/bin/sh
-# cloudflare.sh is the build command of the Cloudflare Worker docgen. The
+# cloudflare.sh is the build command of the Cloudflare Pages project docgen. The
 # output directory is artifacts/docs-site. The production branch main gets
 # all versions. Any other branch gets the current tree after docgen update,
 # so a stale page still gets a preview.

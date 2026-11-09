@@ -63,24 +63,17 @@ A path shows relative to the `root=` of the first `docgen:docgen` marker of the 
 
 ### Hosting
 
-The Cloudflare Worker `docgen` serves the site as static assets at <https://docgen.mcswain.dev/>. The Worker is connected to this repository with Workers Builds, so Cloudflare clones and builds each push, and GitHub holds no Cloudflare API token. [wrangler.jsonc](../../wrangler.jsonc) names the Worker and the asset directory `artifacts/docs-site`. The Worker has these build settings:
+The Cloudflare Pages project `docgen` serves the site at <https://docgen.mcswain.dev/>. The project is connected to this repository with the Cloudflare Git integration, so Cloudflare clones and builds each push, and GitHub holds no Cloudflare API token. [wrangler.jsonc](../../wrangler.jsonc) names the project and the output directory `artifacts/docs-site`. The project has the production branch `main` and the build command `docs/site/cloudflare.sh`.
 
-| Setting | Value |
-| --- | --- |
-| Production branch | `main` |
-| Build command | `docs/site/cloudflare.sh` |
-| Deploy command | `npx wrangler deploy` |
-| Non-production branch deploy command | `npx wrangler versions upload` |
+[cloudflare.sh](../site/cloudflare.sh) installs pandoc with [install-pandoc.sh](../site/install-pandoc.sh), the same script that the Docs workflow uses, and fetches the full history and the tags. The build image has an older Go, and Go downloads the toolchain of `go.mod`. On `main` the build makes all versions. On another branch it runs `go run . update` and builds the current tree, so a stale page still gets a preview, and Cloudflare puts the preview URL on the pull request. Cloudflare builds no pull request from a fork. The Docs workflow builds the site of each pull request as a check.
 
-[cloudflare.sh](../site/cloudflare.sh) installs pandoc with [install-pandoc.sh](../site/install-pandoc.sh), the same script that the Docs workflow uses, and fetches the full history and the tags. The build image has an older Go, and Go downloads the toolchain of `go.mod`. On `main` the build makes all versions. On another branch it runs `go run . update` and builds the current tree, so a stale page still gets a preview URL. Cloudflare builds no pull request from a fork. The Docs workflow builds the site of each pull request as a check.
-
-Workers Builds builds on a push to a branch, not on a tag. On a `v*` tag, the Docs workflow sends a POST to the deploy hook in the repository secret `CLOUDFLARE_DEPLOY_HOOK`, which builds `main` again, so `/latest/` shows the new tag. Create the hook under the Worker, Settings, Builds, Deploy Hooks, for the branch `main`. Without the secret, the job ends with a warning.
+Cloudflare Pages builds on a push to a branch, not on a tag. On a `v*` tag, the Docs workflow sends a POST to the deploy hook in the repository secret `CLOUDFLARE_DEPLOY_HOOK`, which builds `main` again, so `/latest/` shows the new tag. Create the hook under the project, Settings, Builds, Deploy hooks, for the branch `main`. Without the secret, the job ends with a warning.
 
 GitHub Pages serves only [redirect.html](../site/redirect.html), which sends each path under `https://usa-reddragon.github.io/docgen/` to the same path on the new domain. The Docs workflow deploys it after a push to `main`, and only when `https://docgen.mcswain.dev/versions.json` serves the docs, so GitHub Pages keeps the old site until the domain works.
 
 ### Versioned build
 
-`docs/site/build.sh --versions [out]` builds the site of each version, and the Workers Build of `main` serves the result. The Docs workflow in [docs.yaml](../../.github/workflows/docs.yaml) builds all versions on a push to `main` or on a `v*` tag as a check. A pull request builds the current tree only. The output has these paths:
+`docs/site/build.sh --versions [out]` builds the site of each version, and the Cloudflare Pages build of `main` serves the result. The Docs workflow in [docs.yaml](../../.github/workflows/docs.yaml) builds all versions on a push to `main` or on a `v*` tag as a check. A pull request builds the current tree only. The output has these paths:
 
 | Path | Content |
 | --- | --- |
