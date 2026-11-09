@@ -73,7 +73,7 @@ jobs:
           if curl -fsS -m 30 https://docgen.mcswain.dev/versions.json | jq -e '.latest' >/dev/null; then
             echo "ready=true" >>"$GITHUB_OUTPUT"
           else
-            echo "::warning::https://docgen.mcswain.dev/ does not serve the docs yet, so GitHub Pages keeps the old site. Attach the domain to the Pages project."
+            echo "::warning::https://docgen.mcswain.dev/ does not serve the docs yet, so GitHub Pages keeps the old site. Add the domain to the docgen Worker."
           fi
 
       - name: Checkout repository

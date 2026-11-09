@@ -1,7 +1,7 @@
 #!/bin/sh
 # install-pandoc.sh DIR downloads the pinned pandoc release for linux-amd64,
 # checks its SHA-256, extracts it under DIR, and prints the directory of the
-# pandoc binary. GitHub Actions and the Cloudflare Pages build both use it.
+# pandoc binary. GitHub Actions and the Cloudflare build both use it.
 set -eu
 
 version=3.13

@@ -1,0 +1,9 @@
+// The Cloudflare Worker that serves the docs site. Workers Builds runs
+// docs/site/cloudflare.sh, then wrangler uploads the output as static assets.
+{
+  "name": "docgen",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "artifacts/docs-site"
+  }
+}
