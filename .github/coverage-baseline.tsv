@@ -37,7 +37,7 @@ internal/gen/modfile.go	21	20
 internal/gen/nested.go	95	88
 internal/gen/output.go	63	60
 internal/gen/plan.go	66	65
-internal/gen/pool.go	30	30
+internal/gen/pool.go	30	29
 internal/gen/print.go	21	20
 internal/gen/program.go	43	40
 internal/gen/reference.go	21	21
@@ -48,7 +48,7 @@ internal/gen/states.go	15	15
 internal/gen/text.go	55	55
 internal/gen/unused.go	73	69
 internal/gen/usage.go	32	32
-internal/gen/values.go	107	97
+internal/gen/values.go	116	107
 internal/gen/var.go	15	15
 internal/gen/write.go	16	13
 internal/gocmd/gocmd.go	54	54
@@ -56,8 +56,8 @@ internal/gocmd/group_unix.go	9	9
 internal/gocmd/session.go	71	64
 internal/godoc/godoc.go	78	78
 internal/gomod/contain.go	59	54
-internal/gomod/gomod.go	102	90
-internal/goprint/goprint.go	95	89
+internal/gomod/gomod.go	114	102
+internal/goprint/goprint.go	104	98
 internal/links/anchors.go	65	62
 internal/links/blocks.go	151	142
 internal/links/definition.go	48	44
@@ -82,7 +82,7 @@ internal/types/constant.go	72	71
 internal/types/errors.go	17	17
 internal/types/field.go	67	60
 internal/types/kind.go	23	23
-internal/types/method.go	20	19
+internal/types/method.go	25	24
 internal/types/types.go	20	19
 internal/types/value.go	36	35
 main.go	1	0
