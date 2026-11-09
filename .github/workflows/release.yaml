@@ -49,25 +49,26 @@ jobs:
 
   # The playground of the docs site: the Go toolchain, docgen.wasm and the page
   # of this tag, in one archive on the release. The Cloudflare build serves the
-  # archive of the latest release at /playground/. GoReleaser makes the release
-  # first, so this job only adds files to it.
-  playground:
-    name: Playground
-    needs: release
+  # archive of the newest release that has one at /playground/. This job runs
+  # the build, with npm packages and Go modules, so it has a read-only token
+  # and hands the archive to the next job as a workflow artifact.
+  playground-build:
+    name: Playground build
     runs-on: ubuntu-26.04
     timeout-minutes: 90
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Build the playground
         env:
@@ -76,7 +77,6 @@ jobs:
         run: playground/build/build.sh all "$RUNNER_TEMP/dist/playground"
 
       - name: Make the archive and its checksum file
-        id: archive
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -85,6 +85,40 @@ jobs:
           tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf "$name.tar" playground
           sha256sum "$name.tar" >"${name}_checksums.txt"
           cat "${name}_checksums.txt"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playground
+          path: |
+            ${{ runner.temp }}/dist/*.tar
+            ${{ runner.temp }}/dist/*_checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  # GoReleaser makes the release first, so this job only adds files to it. It
+  # runs no code of the repository.
+  playground:
+    name: Playground upload
+    needs: [release, playground-build]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: playground
+          path: ${{ runner.temp }}/dist
+
+      - name: Check the archive
+        id: archive
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          name="docgen_${TAG#v}_playground"
+          cd "$RUNNER_TEMP/dist"
+          sha256sum -c "${name}_checksums.txt"
           echo "name=$name" >>"$GITHUB_OUTPUT"
 
       - name: Attest the build provenance
