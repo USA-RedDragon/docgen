@@ -108,14 +108,15 @@ The playground is a page that runs the Go toolchain and docgen in the browser, o
 
 | Path | Content |
 | --- | --- |
-| `playground/web/` | The page: `index.html`, the scripts, the kernel that runs the processes, `pending.html`, the licenses, and the npm packages of the editor bundle. |
-| `playground/overlay/` | The new files of the `go build -overlay` that gives `js/wasm` processes and pipes. |
+| `playground/web/` | The page: `index.html`, the scripts, the kernel that runs the processes, `pending.html`, and the npm packages of the editor bundle. |
+| `playground/overlay/` | The new files of the `go build -overlay` that gives `js/wasm` processes and pipes. Their names end in `.go.txt`, so they are not a package of the root module. |
 | `playground/build/mkoverlay.py` | Writes the overlay from the GOROOT of the build: the new files, and the changed copies of some GOROOT files. Each change is an exact replacement, so a Go version with other source stops the build. It also writes `wasm_exec.js`. |
-| `playground/bb/` | A Go module with a shell (`mvdan.cc/sh`) and common commands (u-root) in one binary. `bb/ucmd` is the output of `bb/vendor-uroot.py`. |
+| `playground/bb/` | A Go module with a shell (`mvdan.cc/sh`) and common commands (u-root) in one binary. `bb/ucmd` is the output of `bb/vendor-uroot.py`, with the license of u-root. |
 | `playground/unzstd/` | A Go module that decodes zstd in the browser, with a copy of `internal/zstd` of the Go standard library. |
 | `playground/testdata/` | The sample repository `dg` that the page starts with, and the module `loop`, a test that does not stop. The directory name keeps `docgen check` of this repository away from them. |
 | `playground/build/build.sh` | Builds the playground. |
 | `playground/site.sh` | Puts the playground into the docs site, for `cloudflare.sh`. |
+| `playground/build/checkmanifest.mjs` | Checks the manifest of a downloaded playground. |
 | `playground/test/` | The browser test. |
 
 `playground/build/build.sh all OUT` builds the whole playground into `OUT`, with the Go version of `go.mod`:
@@ -124,28 +125,45 @@ The playground is a page that runs the Go toolchain and docgen in the browser, o
 - `wasm-opt -Os` of binaryen on each tool other than `docgen`. This step takes most of the build time. `docgen` gets no `wasm-opt`, because the zstd file of its output is larger, and the Cloudflare build builds `docgen` on each push.
 - A bundle of the source of each standard package that the sample imports, a bundle of the sample, and a bundle of a GOCACHE. To make the GOCACHE, the script runs `docgen check`, `go test` and `go build` on the sample under Node, with the kernel of the page and the same tools.
 - Each tool and bundle compressed with `zstd -19` (without the `zstd` command, `playground/build/zstd` compresses at its best level), with the start of its SHA-256 in its name, and `manifest.json`, which also gives the Go version and the docgen version and commit. The page shows that version and commit.
+- `licenses/`: the license of Go, and the notices of the Go modules in `bb` and `docgen` and of the npm packages in the editor bundle. The build writes the notices from the module list and from the esbuild metafile, so they match the code of each build.
 
-`build.sh preview BASE OUT` builds only `docgen` and the page of the checkout, and takes the other assets from `BASE`, an earlier output of `build.sh all`. It uses the Go version of `BASE`.
+`build.sh preview BASE OUT` builds only `docgen` and the page of the checkout, and takes the other assets from `BASE`, an earlier output of `build.sh all`. It uses the Go version of `BASE`. `build.sh gover` prints the Go version of `go.mod`.
 
 #### Releases and the Cloudflare build
 
-On a `v*` tag, the Playground job of [release.yaml](../../.github/workflows/release.yaml) runs after GoReleaser. It runs `build.sh all`, puts the output in `docgen_<version>_playground.tar`, adds a build provenance attestation for it, and adds it and `docgen_<version>_playground_checksums.txt` to the release. The build takes about 10 minutes on four fast cores, most of it in `wasm-opt`, so only a tag runs it. A pull request that changes `playground/`, `go.mod` or `docs/site/build.sh` runs the same build and the browser test in [playground.yaml](../../.github/workflows/playground.yaml), with no upload.
+On a `v*` tag, two jobs of [release.yaml](../../.github/workflows/release.yaml) make the playground of the release. The Playground build job has a read-only token. It runs `build.sh all`, puts the output in `docgen_<version>_playground.tar` with `docgen_<version>_playground_checksums.txt`, and hands them to the next job as a workflow artifact. After GoReleaser, the Playground upload job checks the checksum, adds a build provenance attestation for the archive, and adds both files to the release. It runs no code of the repository. Then the Rebuild job starts a Cloudflare build of `main`. The build takes about 10 minutes on four fast cores, most of it in `wasm-opt`, so only a tag runs it.
 
-`cloudflare.sh` runs `playground/site.sh`. On `main`, `site.sh release` downloads the archive of the latest release, checks its SHA-256 against the checksum file of the same release, and puts it at `/playground/`. The latest release is the tag of `/latest/`. Then `site.sh preview` builds `/main/playground/` with `build.sh preview`, from the archive of the latest release. On another branch, `site.sh preview` builds `/playground/` the same way, so a branch preview shows the playground of that branch. A change of the toolchain, such as of the overlay, `bb` or the sample, shows only after the next release, and the pull request check tests it.
+A pull request that changes `playground/`, the Go source of docgen, `go.mod`, `go.sum`, `docs/site/build.sh`, `docs/site/cloudflare.sh`, `release.yaml` or the workflow runs the same build and the browser test in [playground.yaml](../../.github/workflows/playground.yaml), with no upload. `actions/cache` keeps the `wasm-opt` outputs by the SHA-256 of their inputs, so a pull request that changes no tool skips `wasm-opt`. A pull request can restore the caches of its own runs and of `main` only, so run the workflow by hand on `main` once to fill the cache for all pull requests, and again after a change of the Go version.
 
-When there is no release, the release has no playground archive, or a download, a checksum or the build fails, `site.sh` puts `pending.html` at the path, prints a warning, and the docs build goes on. `pending.html` states that the playground comes with the next release. `PLAYGROUND_RELEASE_URL` replaces the release download URL, for tests only.
+`cloudflare.sh` runs `playground/site.sh`. It takes the newest `v*` tag that is not a prerelease and that has a valid playground archive, and tries up to five tags. When all tags are prereleases, prereleases count, as for `/latest/`. A tag with no archive, such as a tag whose upload is not done or failed, is skipped. For each archive, `site.sh`:
+
+- Downloads it with time limits, and checks its SHA-256 against the checksum file of the same release.
+- Stops on a member that is not a regular file or a directory under `playground/`, or whose path has `..`, before it extracts the archive.
+- Checks `manifest.json` with `checkmanifest.mjs`: each URL must be `assets/` and a plain file name of a regular file.
+
+On `main`, `site.sh release` puts that playground at `/playground/`. Then `site.sh preview` builds `/main/playground/` with `build.sh preview`, from the same archive. On another branch, `site.sh preview` builds `/playground/` the same way, so a branch preview shows the playground of that branch. A change of the toolchain, such as of the overlay, `bb` or the sample, shows only after the next release, and the pull request check tests it.
+
+The archive and its checksum file come from the same release, so the checksum finds a damaged download, not a changed release. The Cloudflare build does not check the attestation, because `gh attestation verify` needs a GitHub token, and the build has none. To check an archive by hand:
+
+```sh
+gh attestation verify docgen_0.2.0_playground.tar --repo USA-RedDragon/docgen
+```
+
+When no tag has a valid archive, or the preview build fails or takes more than 15 minutes, `site.sh` puts `pending.html` at the path, prints a warning, and the docs build goes on. `pending.html` states that the playground is not available in this build. `PLAYGROUND_RELEASE_URL` replaces the release download URL, for tests only.
 
 The playground needs `SharedArrayBuffer`, so its pages need cross-origin isolation. `docs/site/build.sh` writes `_headers` with `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy` and `Cross-Origin-Resource-Policy` for `/playground*` and `/main/playground*` only, so the docs pages keep their fonts from Google Fonts. The assets of the playground have their hash in their names, so `_headers` gives them a cache time of one year.
 
 #### Change the Go version
 
-The playground uses the Go version of the `toolchain` line of `go.mod`, or else of its `go` line. To change it, change `go.mod`, then run `build.sh all` in a pull request, or let the playground workflow run it. When `mkoverlay.py` stops on a GOROOT file that changed, change the replacement in the script. The next release then has the toolchain of that version. A preview of `main` before that release keeps the Go version of the latest release.
+The playground uses the Go version of the `toolchain` line of `go.mod`, or else of its `go` line. To change it, change `go.mod`, then run `build.sh all` in a pull request, or let the playground workflow run it. When `mkoverlay.py` stops on a GOROOT file that changed, change the replacement in the script. The next release then has the toolchain of that version.
+
+The tools of a release and `docgen.wasm` use one `wasm_exec.js`, so a preview builds `docgen` with the Go version of the release. When the Go version of `go.mod` differs from that version, `site.sh preview` does not build. It puts `pending.html` at the preview path with a message that gives both versions, and prints a warning. So after a change of the Go version, `/main/playground/` and branch previews come back with the next release, and `/playground/` keeps the latest release.
 
 When the u-root version in `playground/bb/go.mod` changes, run `vendor-uroot.py` again, as its doc comment shows. The build stops when `bb/ucmd` differs from the output of the script.
 
 #### Test
 
-`playground/test/run.sh SITE OUT` serves the site in `SITE` on 127.0.0.1 with the rules of its `_headers`, checks the headers of the playground and, with `DOCS` set, that a docs page has no cross-origin isolation header, loads its fonts and links the playground. It then runs `scenario.mjs` in headless Firefox: the first load and a load from the browser cache, `docgen update` after an edit, `docgen check` on a clean and on a stale page, the output of the `exec=` markers, shell commands, a `go test` with a timeout, Stop during a build, the explorer, and the page at 390 px. The results and screenshots go to `OUT`.
+`playground/test/run.sh SITE OUT` serves the site in `SITE` on 127.0.0.1 with the rules of its `_headers`, checks the headers of the playground and, with `DOCS` set, that a docs page has no cross-origin isolation header, loads its fonts and links the playground. It then runs `scenario.mjs` in headless Firefox: the first load and a load from the browser cache, `docgen update` after an edit, `docgen check` on a clean and on a stale page, the output of the `exec=` markers, shell commands, a `go test` with a timeout, Stop during a build, the explorer, HTML in a Markdown preview that must run no script, and the page at 390 px. The results and screenshots go to `OUT`. A failed check, an error of the scenario, or a missing summary line makes `run.sh` exit 1.
 
 ```sh
 playground/build/build.sh all artifacts/playground
