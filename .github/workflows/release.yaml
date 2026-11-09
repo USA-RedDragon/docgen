@@ -46,3 +46,56 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: ${{ runner.temp }}/checksums.txt
+
+  # The playground of the docs site: the Go toolchain, docgen.wasm and the page
+  # of this tag, in one archive on the release. The Cloudflare build serves the
+  # archive of the latest release at /playground/. GoReleaser makes the release
+  # first, so this job only adds files to it.
+  playground:
+    name: Playground
+    needs: release
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build the playground
+        env:
+          PLAYGROUND_VERSION: ${{ github.ref_name }}
+          PLAYGROUND_WORK: ${{ runner.temp }}/playground-work
+        run: playground/build/build.sh all "$RUNNER_TEMP/dist/playground"
+
+      - name: Make the archive and its checksum file
+        id: archive
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          name="docgen_${TAG#v}_playground"
+          cd "$RUNNER_TEMP/dist"
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf "$name.tar" playground
+          sha256sum "$name.tar" >"${name}_checksums.txt"
+          cat "${name}_checksums.txt"
+          echo "name=$name" >>"$GITHUB_OUTPUT"
+
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/dist/${{ steps.archive.outputs.name }}.tar
+
+      - name: Add the archive to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          NAME: ${{ steps.archive.outputs.name }}
+        run: gh release upload "$TAG" "$RUNNER_TEMP/dist/$NAME.tar" "$RUNNER_TEMP/dist/${NAME}_checksums.txt" --repo "$REPO" --clobber
