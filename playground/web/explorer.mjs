@@ -303,7 +303,7 @@ export function createExplorer(o) {
     if (kind !== "folder") o.open(p, "file");
   }
   function copyEntry(e) {
-    const c = fsys.mkent(e.dir);
+    const c = fsys.newEntry(e.dir);
     c.mode = e.mode;
     if (e.dir) for (const [n, k] of e.children) c.children.set(n, copyEntry(k));
     else { c.data = e.data.slice(0, e.size); c.size = e.size; }

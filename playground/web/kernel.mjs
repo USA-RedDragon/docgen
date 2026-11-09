@@ -1,100 +1,216 @@
-// Kernel for Go js/wasm programs, one Web Worker per process.
-// The kernel runs on the main thread and holds the memfs, the fd tables, the pipes and the process table.
-// A process calls the kernel with a synchronous RPC: it posts a request and waits with Atomics.wait on a
-// SharedArrayBuffer that the kernel fills with the reply. A call that must block (a pipe read with no data,
-// a wait for a child) gets a "pending" reply and completes later with a message.
-// The Worker of a process is terminated when the process exits or is killed.
+// The kernel of the Go js/wasm processes of the playground. It runs on the main thread and holds the
+// memfs, the descriptor tables, the pipes and the process table. Each process runs in its own Worker
+// (proc.mjs) and calls the kernel synchronously: it posts a CALL message and blocks with Atomics.wait
+// until the kernel writes the reply into a SharedArrayBuffer. A call that must block, such as a pipe
+// read with no data or a wait for a child, gets a pending reply and completes later with a COMPLETE
+// message. The kernel terminates the Worker of a process when the process exits or is killed.
 import {
-  S_IFREG, S_IFDIR, S_IFIFO, S_IFCHR, OPEN_FLAGS as C, O_ACCMODE, WRITE_FLAGS, errnoError as err, CALL_BUFFER,
-  MESSAGE, SIG, SIGNAL_NAMES as SIGNAME, KILLED,
+  S_IFREG, S_IFDIR, S_IFIFO, S_IFCHR, OPEN_FLAGS, O_ACCMODE, WRITE_FLAGS, ERRNO, errnoError, CALL_BUFFER,
+  MESSAGE, SIG, SIGNAL_NAMES, KILLED,
 } from "./abi.mjs";
-const enc = new TextEncoder();
-const RSP_TOOLS = new Set(["compile", "link", "asm", "cgo", "cover", "pack"]);
+import { normalizePath } from "./paths.mjs";
+
+const textEncoder = new TextEncoder();
+/** The tools of Go that read their arguments from a response file "@file". */
+const RESPONSE_FILE_TOOLS = new Set(["compile", "link", "asm", "cgo", "cover", "pack"]);
+/** The size of the arguments and environment above which such a tool gets a response file. */
+const RESPONSE_FILE_MIN_SIZE = 6000;
+/** The calls that can change the file at their first path argument, and for rename and link the second. */
+const PATH_WRITE_CALLS = new Set(["open", "mkdir", "unlink", "rmdir", "rename", "truncate", "chmod", "utimes", "link", "symlink"]);
 const PENDING = Symbol("pending");
+/** The ppid of a process with no parent, a command of the page. */
+const NO_PARENT = 1;
+const FIRST_PID = 100;
+/** The first descriptor after standard input, output and error. */
+const FIRST_FREE_DESCRIPTOR = 3;
+const STDOUT = 1;
+const STDERR = 2;
+
+const DURATION_UNITS_MS = { ns: 1e-6, us: 1e-3, "µs": 1e-3, ms: 1, s: 1000, m: 60000, h: 3600000 };
 
 /** parseDuration parses a Go duration such as "2s", "1m30s" or "500ms" to milliseconds. It returns NaN for bad text. */
-export function parseDuration(t) {
-  const u = { ns: 1e-6, us: 1e-3, "µs": 1e-3, ms: 1, s: 1000, m: 60000, h: 3600000 };
-  if (t === "0") return 0;
-  const re = /([0-9]*\.?[0-9]+)(ns|us|µs|ms|s|m|h)/gy;
-  let ms = 0, m, n = 0;
-  while ((m = re.exec(t))) { ms += parseFloat(m[1]) * u[m[2]]; n = re.lastIndex; }
-  return n === t.length && n > 0 ? ms : NaN;
-}
-const WRITE_OPS = new Set(["open", "mkdir", "unlink", "rmdir", "rename", "truncate", "chmod", "utimes", "link", "symlink"]);
-
-export function normPath(p, cwd = "/") {
-  if (!p.startsWith("/")) p = cwd + "/" + p;
-  const out = [];
-  for (const s of p.split("/")) { if (!s || s === ".") continue; if (s === "..") out.pop(); else out.push(s); }
-  return "/" + out.join("/");
+function parseDuration(text) {
+  if (text === "0") return 0;
+  const term = /([0-9]*\.?[0-9]+)(ns|us|µs|ms|s|m|h)/gy;
+  let total = 0;
+  let parsedLength = 0;
+  let match;
+  while ((match = term.exec(text))) {
+    total += parseFloat(match[1]) * DURATION_UNITS_MS[match[2]];
+    parsedLength = term.lastIndex;
+  }
+  return parsedLength === text.length && parsedLength > 0 ? total : NaN;
 }
 
+/** testTimeoutOf returns the value of the -test.timeout argument of argv, or "". */
+function testTimeoutOf(argv) {
+  const index = argv.findIndex(arg => /^--?test\.timeout(=|$)/.test(arg));
+  if (index < 0) return "";
+  const arg = argv[index];
+  if (arg.includes("=")) return arg.slice(arg.indexOf("=") + 1);
+  return argv[index + 1] || "";
+}
+
+/**
+ * MemFS is the file system of the playground, in memory. An entry is a file or a directory:
+ * {dir, children, data, size, ino, mtime, mode}. A directory has children, a Map of name to entry.
+ * A file has data, whose first size bytes are the content.
+ */
 export class MemFS {
-  constructor() { this.ino = 1; this.root = this.mkent(true); this.dev = this.mkent(false); this.dev.chr = true; }
-  mkent(dir, mtime = Date.now()) {
-    return { dir, children: dir ? new Map() : null, data: dir ? null : new Uint8Array(0), size: 0, ino: this.ino++, mtime, mode: dir ? 0o755 : 0o644 };
+  constructor() {
+    this.nextIno = 1;
+    this.root = this.newEntry(true);
+    this.devNull = this.newEntry(false);
+    this.devNull.isCharDevice = true;
   }
-  lookup(p) {
-    if (p === "/dev/null") return this.dev;
-    let e = this.root;
-    for (const s of p.split("/")) { if (!s) continue; if (!e.dir) return null; e = e.children.get(s); if (!e) return null; }
-    return e;
+
+  /** newEntry returns a new directory (dir true) or empty file that is in no directory yet. */
+  newEntry(dir, mtime = Date.now()) {
+    return {
+      dir,
+      children: dir ? new Map() : null,
+      data: dir ? null : new Uint8Array(0),
+      size: 0,
+      ino: this.nextIno++,
+      mtime,
+      mode: dir ? 0o755 : 0o644,
+    };
   }
-  split(p) { const i = p.lastIndexOf("/"); return [this.lookup(p.slice(0, i) || "/"), p.slice(i + 1)]; }
-  mkdirAll(p, mtime) {
-    let e = this.root;
-    for (const s of p.split("/")) {
-      if (!s) continue;
-      let c = e.children.get(s);
-      if (!c) { c = this.mkent(true, mtime); e.children.set(s, c); }
-      if (!c.dir) throw err("ENOTDIR");
-      e = c;
+
+  /** lookup returns the entry at the absolute path, or null. */
+  lookup(path) {
+    if (path === "/dev/null") return this.devNull;
+    let entry = this.root;
+    for (const name of path.split("/")) {
+      if (!name) continue;
+      if (!entry.dir) return null;
+      entry = entry.children.get(name);
+      if (!entry) return null;
     }
-    return e;
+    return entry;
   }
-  writeFile(p, data, mtime) {
-    const i = p.lastIndexOf("/");
-    const d = this.mkdirAll(p.slice(0, i) || "/", mtime);
-    const name = p.slice(i + 1);
-    const e = d.children.get(name) || this.mkent(false, mtime);
-    e.data = data; e.size = data.length; e.mtime = mtime || Date.now();
-    d.children.set(name, e);
-    return e;
+
+  /** split returns the entry of the directory of path, or null, and the last name of path. */
+  split(path) {
+    const slash = path.lastIndexOf("/");
+    return [this.lookup(path.slice(0, slash) || "/"), path.slice(slash + 1)];
   }
-  readFile(p) { const e = this.lookup(p); if (!e || e.dir) throw err("ENOENT"); return e.data.subarray(0, e.size); }
+
+  /** mkdirAll makes the directory path and the directories above it, and returns its entry. */
+  mkdirAll(path, mtime) {
+    let entry = this.root;
+    for (const name of path.split("/")) {
+      if (!name) continue;
+      let child = entry.children.get(name);
+      if (!child) {
+        child = this.newEntry(true, mtime);
+        entry.children.set(name, child);
+      }
+      if (!child.dir) throw errnoError(ERRNO.ENOTDIR);
+      entry = child;
+    }
+    return entry;
+  }
+
+  /** writeFile sets the content of the file path to data, with its directories, and returns its entry. */
+  writeFile(path, data, mtime) {
+    const slash = path.lastIndexOf("/");
+    const dir = this.mkdirAll(path.slice(0, slash) || "/", mtime);
+    const name = path.slice(slash + 1);
+    const entry = dir.children.get(name) || this.newEntry(false, mtime);
+    entry.data = data;
+    entry.size = data.length;
+    entry.mtime = mtime || Date.now();
+    dir.children.set(name, entry);
+    return entry;
+  }
+
+  /** readFile returns the content of the file path. */
+  readFile(path) {
+    const entry = this.lookup(path);
+    if (!entry || entry.dir) throw errnoError(ERRNO.ENOENT);
+    return entry.data.subarray(0, entry.size);
+  }
+
+  /** walk calls visit(path, entry) for the entry at path and for each entry under it, a directory before its children. */
+  walk(path, visit, entry = this.lookup(path)) {
+    visit(path, entry);
+    if (!entry.dir) return;
+    for (const [name, child] of entry.children) this.walk(path + "/" + name, visit, child);
+  }
 }
 
-function ensure(e, n) {
-  if (e.data.length >= n) return;
-  const d = new Uint8Array(Math.max(n, e.data.length * 2, 4096)); d.set(e.data.subarray(0, e.size)); e.data = d;
+/** reserve grows the data of the file entry to hold at least size bytes. */
+function reserve(entry, size) {
+  if (entry.data.length >= size) return;
+  const data = new Uint8Array(Math.max(size, entry.data.length * 2, 4096));
+  data.set(entry.data.subarray(0, entry.size));
+  entry.data = data;
 }
 
+/** Pipe holds the bytes that the write end of a pipe gave and the read end did not take yet. */
 class Pipe {
-  constructor() { this.chunks = []; this.writers = 0; this.readers = 0; this.waiters = []; }
+  constructor() {
+    this.chunks = [];
+    this.writers = 0;
+    this.readers = 0;
+    /** The reads that wait for data: functions of the bytes, with the wanted length in want. */
+    this.waitingReads = [];
+  }
+
+  /** take removes up to length bytes from the start of the pipe and returns them. */
   take(length) {
-    const parts = []; let n = 0;
-    while (n < length && this.chunks.length) {
-      const c = this.chunks[0], k = Math.min(c.length, length - n);
-      parts.push(c.subarray(0, k)); n += k;
-      if (k === c.length) this.chunks.shift(); else this.chunks[0] = c.subarray(k);
+    const parts = [];
+    let taken = 0;
+    while (taken < length && this.chunks.length) {
+      const chunk = this.chunks[0];
+      const count = Math.min(chunk.length, length - taken);
+      parts.push(chunk.subarray(0, count));
+      taken += count;
+      if (count === chunk.length) this.chunks.shift();
+      else this.chunks[0] = chunk.subarray(count);
     }
     if (parts.length === 1) return parts[0];
-    const out = new Uint8Array(n); let o = 0;
-    for (const p of parts) { out.set(p, o); o += p.length; }
-    return out;
+    const bytes = new Uint8Array(taken);
+    let offset = 0;
+    for (const part of parts) {
+      bytes.set(part, offset);
+      offset += part.length;
+    }
+    return bytes;
   }
+
+  /** wake completes the waiting reads while there is data, or with no data when no writer is left. */
   wake() {
-    while (this.waiters.length && (this.chunks.length || this.writers === 0)) {
-      const w = this.waiters.shift();
-      w(this.take(w.want));
+    while (this.waitingReads.length && (this.chunks.length || this.writers === 0)) {
+      const read = this.waitingReads.shift();
+      read(this.take(read.want));
     }
   }
 }
 
 /**
- * makeWorker() returns {post(msg), onmessage, terminate()} for a new process Worker.
- * loadModule(path, entry) returns a Promise of a WebAssembly.Module.
+ * A descriptor is an open file of a process. Several descriptor numbers of several processes can
+ * share one, and references counts them. Its kind is one of these.
+ */
+const DESCRIPTOR = Object.freeze({
+  FILE: "file",
+  NULL: "null",
+  /** A callback of the page that gets the bytes of each write. */
+  SINK: "sink",
+  PIPE_READ: "pipe-read",
+  PIPE_WRITE: "pipe-write",
+});
+
+function newDescriptor(kind, fields = {}) {
+  return { kind, references: 0, ...fields };
+}
+
+/**
+ * Kernel runs processes on a MemFS. makeWorker() returns {post(message), onmessage, terminate()} for a
+ * new process Worker. loadModule(path, entry) returns a Promise of the WebAssembly.Module of a program.
+ * toolEnv, when set, maps a tool name to more environment variables, and onSpawn(process), when set,
+ * is called for each new process.
  */
 export class Kernel {
   /**
@@ -102,318 +218,574 @@ export class Kernel {
    * A process with a -test.timeout=D argument exits as a timed-out test at D.
    */
   constructor({ fs = new MemFS(), loadModule, makeWorker, limitMs = 0 }) {
-    this.fs = fs; this.loadModule = loadModule; this.makeWorker = makeWorker;
+    this.fs = fs;
+    this.loadModule = loadModule;
+    this.makeWorker = makeWorker;
     this.limitMs = limitMs;
-    this.procs = new Map(); this.nextPid = 100;
+    this.processes = new Map();
+    this.nextPid = FIRST_PID;
     this.stats = { spawns: 0, maxMem: {}, live: 0, maxLive: 0 };
+    /** The result of gorootImage, or undefined before its first call. */
+    this.goroot = undefined;
   }
 
-  newProc(parent, cwd, descs) {
-    const p = { pid: this.nextPid++, ppid: parent ? parent.pid : 1, cwd, fds: new Map(), nextFd: 3, exited: false, waiters: [] };
-    descs.forEach((d, i) => { if (d) { d.refs++; this.onOpen(d); p.fds.set(i, d); } });
-    this.procs.set(p.pid, p);
-    return p;
-  }
-  onOpen(d) { if (d.type === "pw" && d.refs === 1) d.pipe.writers++; if (d.type === "pr" && d.refs === 1) d.pipe.readers++; }
-  release(d) {
-    if (--d.refs > 0) return;
-    if (d.type === "pw") { d.pipe.writers--; d.pipe.wake(); }
-    if (d.type === "pr") d.pipe.readers--;
-  }
-  addFd(p, d) { const fd = p.nextFd++; d.refs++; this.onOpen(d); p.fds.set(fd, d); return fd; }
-  closeAll(p) { for (const d of p.fds.values()) this.release(d); p.fds.clear(); }
-  sink(fn) { return { type: "sink", fn, refs: 0 }; }
-
-  stat(e) {
-    return { ino: e.ino, mode: (e.chr ? S_IFCHR : e.dir ? S_IFDIR : S_IFREG) | e.mode, size: e.dir ? 4096 : e.size, mtimeMs: e.mtime };
-  }
-
-  writeDesc(d, b, position) {
-    switch (d.type) {
-      case "sink": d.fn(b.slice()); return b.length;
-      case "null": return b.length;
-      case "pw":
-        if (d.pipe.readers === 0) throw err("EPIPE");
-        if (b.length === 0) return 0;
-        d.pipe.chunks.push(b.slice()); d.pipe.wake(); return b.length;
-      case "file": {
-        const e = d.e, pos = position != null ? position : d.append ? e.size : d.pos;
-        ensure(e, pos + b.length); e.data.set(b, pos); e.size = Math.max(e.size, pos + b.length); e.mtime = Date.now();
-        if (position == null) d.pos = pos + b.length;
-        return b.length;
-      }
-      default: throw err("EBADF");
-    }
-  }
-
-  /** Returns the shared read-only image of /goroot: {buffer, index: [[path, {offset, size, mtimeMs, ino, mode, names}]]}; names is null for a file. */
-  roImage() {
-    if (this.ro !== undefined) return this.ro;
-    const root = this.fs.lookup("/goroot");
-    if (!root) return (this.ro = null);
-    const index = []; let size = 0;
-    const walk = (e, p) => { if (!e.dir) size += e.size; else for (const [n, c] of e.children) walk(c, p + "/" + n); };
-    walk(root, "/goroot");
-    const sab = new SharedArrayBuffer(size), u8 = new Uint8Array(sab);
-    let off = 0;
-    const add = (e, p) => {
-      const st = this.stat(e);
-      if (e.dir) { index.push([p, { offset: 0, size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, mode: st.mode, names: [...e.children.keys()] }]); for (const [n, c] of e.children) add(c, p + "/" + n); }
-      else { u8.set(e.data.subarray(0, e.size), off); index.push([p, { offset: off, size: e.size, mtimeMs: e.mtime, ino: e.ino, mode: st.mode, names: null }]); off += e.size; }
+  newProcess(parent, cwd, descriptors) {
+    const process = {
+      pid: this.nextPid++,
+      ppid: parent ? parent.pid : NO_PARENT,
+      cwd,
+      descriptors: new Map(),
+      nextDescriptor: FIRST_FREE_DESCRIPTOR,
+      exited: false,
+      waiters: [],
     };
-    add(root, "/goroot");
-    return (this.ro = { buffer: sab, index });
+    descriptors.forEach((descriptor, fd) => {
+      if (descriptor) this.share(process, fd, descriptor);
+    });
+    this.processes.set(process.pid, process);
+    return process;
   }
 
-  /** Runs one RPC of process p. Returns {res, data} or PENDING (then done(res, data) is called later). */
-  op(p, name, a, din, done) {
-    const M = this.fs, R = q => normPath(q, p.cwd);
-    const getfd = fd => { const d = p.fds.get(fd); if (!d) throw err("EBADF"); return d; };
-    if (this.ro && WRITE_OPS.has(name)) {
-      const ro = q => typeof q === "string" && (R(q) === "/goroot" || R(q).startsWith("/goroot/"));
-      if (name === "open" ? ro(a[0]) && (a[1] & WRITE_FLAGS) : ro(a[0]) || ((name === "rename" || name === "link") && ro(a[1]))) throw err("EROFS");
+  /** share gives the descriptor the number fd in process. */
+  share(process, fd, descriptor) {
+    descriptor.references++;
+    if (descriptor.references === 1 && descriptor.kind === DESCRIPTOR.PIPE_WRITE) descriptor.pipe.writers++;
+    if (descriptor.references === 1 && descriptor.kind === DESCRIPTOR.PIPE_READ) descriptor.pipe.readers++;
+    process.descriptors.set(fd, descriptor);
+  }
+
+  /** addDescriptor gives the descriptor the next free number in process and returns the number. */
+  addDescriptor(process, descriptor) {
+    const fd = process.nextDescriptor++;
+    this.share(process, fd, descriptor);
+    return fd;
+  }
+
+  release(descriptor) {
+    if (--descriptor.references > 0) return;
+    if (descriptor.kind === DESCRIPTOR.PIPE_WRITE) {
+      descriptor.pipe.writers--;
+      descriptor.pipe.wake();
     }
-    const ent = q => { const e = M.lookup(R(q)); if (!e) throw err("ENOENT"); return e; };
+    if (descriptor.kind === DESCRIPTOR.PIPE_READ) descriptor.pipe.readers--;
+  }
+
+  closeAll(process) {
+    for (const descriptor of process.descriptors.values()) this.release(descriptor);
+    process.descriptors.clear();
+  }
+
+  stat(entry) {
+    const type = entry.isCharDevice ? S_IFCHR : entry.dir ? S_IFDIR : S_IFREG;
+    return { ino: entry.ino, mode: type | entry.mode, size: entry.dir ? 4096 : entry.size, mtimeMs: entry.mtime };
+  }
+
+  /** write writes bytes to the descriptor, at position or at its own position when position is null. */
+  write(descriptor, bytes, position) {
+    switch (descriptor.kind) {
+      case DESCRIPTOR.SINK:
+        descriptor.sink(bytes.slice());
+        return bytes.length;
+      case DESCRIPTOR.NULL:
+        return bytes.length;
+      case DESCRIPTOR.PIPE_WRITE:
+        if (descriptor.pipe.readers === 0) throw errnoError(ERRNO.EPIPE);
+        if (bytes.length === 0) return 0;
+        descriptor.pipe.chunks.push(bytes.slice());
+        descriptor.pipe.wake();
+        return bytes.length;
+      case DESCRIPTOR.FILE: {
+        const entry = descriptor.entry;
+        let start = position;
+        if (start == null) start = descriptor.append ? entry.size : descriptor.position;
+        const end = start + bytes.length;
+        reserve(entry, end);
+        entry.data.set(bytes, start);
+        entry.size = Math.max(entry.size, end);
+        entry.mtime = Date.now();
+        if (position == null) descriptor.position = end;
+        return bytes.length;
+      }
+      default:
+        throw errnoError(ERRNO.EBADF);
+    }
+  }
+
+  /** writeStderr writes text to the standard error of process, when it has one. */
+  writeStderr(process, text) {
+    const descriptor = process.descriptors.get(STDERR);
+    if (!descriptor) return;
+    try {
+      this.write(descriptor, textEncoder.encode(text));
+    } catch {
+      // A pipe with no reader fails with EPIPE, and the text is lost.
+    }
+  }
+
+  /**
+   * gorootImage returns the read-only image of /goroot that the Workers share, or null with no
+   * /goroot: {buffer, index}. buffer is a SharedArrayBuffer with the content of each file, and index
+   * is a list of [path, {offset, size, mtimeMs, ino, mode, names}], where names lists the children of
+   * a directory and is null for a file.
+   */
+  gorootImage() {
+    if (this.goroot !== undefined) return this.goroot;
+    if (!this.fs.lookup("/goroot")) {
+      this.goroot = null;
+      return null;
+    }
+    let size = 0;
+    this.fs.walk("/goroot", (path, entry) => {
+      if (!entry.dir) size += entry.size;
+    });
+    const buffer = new SharedArrayBuffer(size);
+    const bytes = new Uint8Array(buffer);
+    const index = [];
+    let offset = 0;
+    this.fs.walk("/goroot", (path, entry) => {
+      const stats = this.stat(entry);
+      if (entry.dir) {
+        const names = [...entry.children.keys()];
+        index.push([path, { offset: 0, size: stats.size, mtimeMs: stats.mtimeMs, ino: stats.ino, mode: stats.mode, names }]);
+        return;
+      }
+      bytes.set(entry.data.subarray(0, entry.size), offset);
+      index.push([path, { offset, size: entry.size, mtimeMs: entry.mtime, ino: entry.ino, mode: stats.mode, names: null }]);
+      offset += entry.size;
+    });
+    this.goroot = { buffer, index };
+    return this.goroot;
+  }
+
+  /** writesGoroot reports whether the call name with args would change a file under /goroot. */
+  writesGoroot(process, name, args) {
+    if (!this.goroot || !PATH_WRITE_CALLS.has(name)) return false;
+    const inGoroot = path => {
+      if (typeof path !== "string") return false;
+      const absolute = normalizePath(path, process.cwd);
+      return absolute === "/goroot" || absolute.startsWith("/goroot/");
+    };
+    if (name === "open") return inGoroot(args[0]) && Boolean(args[1] & WRITE_FLAGS);
+    return inGoroot(args[0]) || ((name === "rename" || name === "link") && inGoroot(args[1]));
+  }
+
+  /**
+   * call runs the call name of process with args and data, the bytes of a write. It returns
+   * {result, data}, or PENDING, and then complete(result, data) runs later. It throws an errno Error.
+   */
+  call(process, name, args, data, complete) {
+    if (this.writesGoroot(process, name, args)) throw errnoError(ERRNO.EROFS);
+    const fs = this.fs;
+    const absolute = path => normalizePath(path, process.cwd);
+    const descriptorOf = fd => {
+      const descriptor = process.descriptors.get(fd);
+      if (!descriptor) throw errnoError(ERRNO.EBADF);
+      return descriptor;
+    };
+    const entryOf = path => {
+      const entry = fs.lookup(absolute(path));
+      if (!entry) throw errnoError(ERRNO.ENOENT);
+      return entry;
+    };
     switch (name) {
-      case "writeSync": case "write":
-        if (p.tests && a[0] === 1) this.scanTests(p, din);
-        return { res: this.writeDesc(getfd(a[0]), din, a[1]) };
-      case "read": {
-        const [fd, length, position] = a;
-        const d = getfd(fd);
-        if (d.type === "null" || d.type === "sink") return { res: 0 };
-        if (d.type === "pr") {
-          const pp = d.pipe;
-          if (pp.chunks.length) { const b = pp.take(length); return { res: b.length, data: b }; }
-          if (pp.writers === 0) return { res: 0 };
-          const w = b => done(b.length, b); w.want = length;
-          pp.waiters.push(w);
-          return PENDING;
-        }
-        if (d.type !== "file") throw err("EBADF");
-        if (d.e.dir) throw err("EISDIR");
-        const pos = position != null ? position : d.pos;
-        const n = Math.max(0, Math.min(length, d.e.size - pos, CALL_BUFFER.DATA_CAPACITY));
-        if (position == null) d.pos += n;
-        return { res: n, data: d.e.data.subarray(pos, pos + n) };
+      case "writeSync":
+      case "write": {
+        const [fd, position] = args;
+        if (process.runningTests && fd === STDOUT) this.scanTests(process, data);
+        return { result: this.write(descriptorOf(fd), data, position) };
       }
-      case "open": {
-        const [q0, flags] = a, q = R(q0);
-        if (q === "/dev/null") return { res: this.addFd(p, { type: "null", refs: 0 }) };
-        let e = M.lookup(q);
-        if (e && (flags & C.O_CREAT) && (flags & C.O_EXCL)) throw err("EEXIST");
-        if (!e) {
-          if (!(flags & C.O_CREAT)) throw err("ENOENT");
-          const [dir, nm] = M.split(q);
-          if (!dir || !dir.dir) throw err("ENOENT");
-          e = M.mkent(false); dir.children.set(nm, e);
-        }
-        if (e.dir && (flags & O_ACCMODE)) throw err("EISDIR");
-        if ((flags & C.O_DIRECTORY) && !e.dir) throw err("ENOTDIR");
-        if (flags & C.O_TRUNC) { e.size = 0; e.mtime = Date.now(); }
-        return { res: this.addFd(p, { type: "file", e, pos: 0, append: !!(flags & C.O_APPEND), refs: 0 }) };
+      case "read":
+        return this.read(descriptorOf(args[0]), args[1], args[2], complete);
+      case "open":
+        return { result: this.open(process, absolute(args[0]), args[1]) };
+      case "close": {
+        const descriptor = descriptorOf(args[0]);
+        process.descriptors.delete(args[0]);
+        this.release(descriptor);
+        return { result: null };
       }
-      case "close": { const d = getfd(a[0]); p.fds.delete(a[0]); this.release(d); return { res: null }; }
       case "pipe": {
-        const pp = new Pipe();
-        return { res: [this.addFd(p, { type: "pr", pipe: pp, refs: 0 }), this.addFd(p, { type: "pw", pipe: pp, refs: 0 })] };
+        const pipe = new Pipe();
+        const readEnd = this.addDescriptor(process, newDescriptor(DESCRIPTOR.PIPE_READ, { pipe }));
+        const writeEnd = this.addDescriptor(process, newDescriptor(DESCRIPTOR.PIPE_WRITE, { pipe }));
+        return { result: [readEnd, writeEnd] };
       }
       case "fstat": {
-        const d = getfd(a[0]);
-        return { res: d.type === "file" ? this.stat(d.e) : d.type === "null" ? this.stat(M.dev) : { ino: 0, mode: S_IFIFO | 0o600, size: 0, mtimeMs: 0 } };
+        const descriptor = descriptorOf(args[0]);
+        if (descriptor.kind === DESCRIPTOR.FILE) return { result: this.stat(descriptor.entry) };
+        if (descriptor.kind === DESCRIPTOR.NULL) return { result: this.stat(fs.devNull) };
+        return { result: { ino: 0, mode: S_IFIFO | 0o600, size: 0, mtimeMs: 0 } };
       }
-      case "stat": case "lstat": return { res: this.stat(ent(a[0])) };
+      case "stat":
+      case "lstat":
+        return { result: this.stat(entryOf(args[0])) };
       case "mkdir": {
-        const q = R(a[0]); if (M.lookup(q)) throw err("EEXIST");
-        const [dir, nm] = M.split(q); if (!dir) throw err("ENOENT"); if (!dir.dir) throw err("ENOTDIR");
-        dir.children.set(nm, M.mkent(true)); return { res: null };
+        const path = absolute(args[0]);
+        if (fs.lookup(path)) throw errnoError(ERRNO.EEXIST);
+        const [dir, newName] = fs.split(path);
+        if (!dir) throw errnoError(ERRNO.ENOENT);
+        if (!dir.dir) throw errnoError(ERRNO.ENOTDIR);
+        dir.children.set(newName, fs.newEntry(true));
+        return { result: null };
       }
-      case "readdir": { const e = ent(a[0]); if (!e.dir) throw err("ENOTDIR"); return { res: [...e.children.keys()] }; }
-      case "unlink": case "rmdir": {
-        const [dir, nm] = M.split(R(a[0])); const e = dir && dir.dir && dir.children.get(nm);
-        if (!e) throw err("ENOENT");
-        if (name === "unlink" && e.dir) throw err("EISDIR");
-        if (name === "rmdir") { if (!e.dir) throw err("ENOTDIR"); if (e.children.size) throw err("ENOTEMPTY"); }
-        dir.children.delete(nm); return { res: null };
+      case "readdir": {
+        const entry = entryOf(args[0]);
+        if (!entry.dir) throw errnoError(ERRNO.ENOTDIR);
+        return { result: [...entry.children.keys()] };
+      }
+      case "unlink":
+      case "rmdir": {
+        const [dir, entryName] = fs.split(absolute(args[0]));
+        const entry = dir && dir.dir && dir.children.get(entryName);
+        if (!entry) throw errnoError(ERRNO.ENOENT);
+        if (name === "unlink" && entry.dir) throw errnoError(ERRNO.EISDIR);
+        if (name === "rmdir" && !entry.dir) throw errnoError(ERRNO.ENOTDIR);
+        if (name === "rmdir" && entry.children.size) throw errnoError(ERRNO.ENOTEMPTY);
+        dir.children.delete(entryName);
+        return { result: null };
       }
       case "rename": {
-        const [da, na] = M.split(R(a[0])); const e = da && da.dir && da.children.get(na); if (!e) throw err("ENOENT");
-        const [db, nb] = M.split(R(a[1])); if (!db || !db.dir) throw err("ENOENT");
-        const t = db.children.get(nb); if (t && t.dir && t.children.size) throw err("ENOTEMPTY");
-        da.children.delete(na); db.children.set(nb, e); return { res: null };
+        const [fromDir, fromName] = fs.split(absolute(args[0]));
+        const entry = fromDir && fromDir.dir && fromDir.children.get(fromName);
+        if (!entry) throw errnoError(ERRNO.ENOENT);
+        const [toDir, toName] = fs.split(absolute(args[1]));
+        if (!toDir || !toDir.dir) throw errnoError(ERRNO.ENOENT);
+        const replaced = toDir.children.get(toName);
+        if (replaced && replaced.dir && replaced.children.size) throw errnoError(ERRNO.ENOTEMPTY);
+        fromDir.children.delete(fromName);
+        toDir.children.set(toName, entry);
+        return { result: null };
       }
-      case "fsync": case "chown": case "fchown": case "lchown": return { res: null };
-      case "ftruncate": case "truncate": {
-        const e = name === "ftruncate" ? getfd(a[0]).e : ent(a[0]); if (!e) throw err("EINVAL");
-        ensure(e, a[1]); if (a[1] > e.size) e.data.fill(0, e.size, a[1]); e.size = a[1]; return { res: null };
+      case "fsync":
+      case "chown":
+      case "fchown":
+      case "lchown":
+        return { result: null };
+      case "ftruncate":
+      case "truncate": {
+        const entry = name === "ftruncate" ? descriptorOf(args[0]).entry : entryOf(args[0]);
+        const size = args[1];
+        if (!entry) throw errnoError(ERRNO.EINVAL);
+        reserve(entry, size);
+        if (size > entry.size) entry.data.fill(0, entry.size, size);
+        entry.size = size;
+        return { result: null };
       }
-      case "chmod": ent(a[0]).mode = a[1] & 0o7777; return { res: null };
-      case "fchmod": { const d = getfd(a[0]); if (d.e) d.e.mode = a[1] & 0o7777; return { res: null }; }
-      case "utimes": ent(a[0]).mtime = a[2] * 1000; return { res: null };
-      case "readlink": throw err("EINVAL");
-      case "symlink": throw err("ENOSYS");
+      case "chmod":
+        entryOf(args[0]).mode = args[1] & 0o7777;
+        return { result: null };
+      case "fchmod": {
+        const descriptor = descriptorOf(args[0]);
+        if (descriptor.entry) descriptor.entry.mode = args[1] & 0o7777;
+        return { result: null };
+      }
+      case "utimes":
+        entryOf(args[0]).mtime = args[2] * 1000;
+        return { result: null };
+      case "readlink":
+        throw errnoError(ERRNO.EINVAL);
+      case "symlink":
+        throw errnoError(ERRNO.ENOSYS);
       case "link": {
-        const e = ent(a[0]); if (e.dir) throw err("EPERM");
-        const [db, nb] = M.split(R(a[1])); if (!db) throw err("ENOENT"); if (db.children.has(nb)) throw err("EEXIST");
-        db.children.set(nb, e); return { res: null };
+        const entry = entryOf(args[0]);
+        if (entry.dir) throw errnoError(ERRNO.EPERM);
+        const [dir, linkName] = fs.split(absolute(args[1]));
+        if (!dir) throw errnoError(ERRNO.ENOENT);
+        if (dir.children.has(linkName)) throw errnoError(ERRNO.EEXIST);
+        dir.children.set(linkName, entry);
+        return { result: null };
       }
       case "chdir": {
-        const q = R(a[0]); const e = M.lookup(q); if (!e) throw err("ENOENT"); if (!e.dir) throw err("ENOTDIR");
-        p.cwd = q; return { res: q };
+        const path = absolute(args[0]);
+        const entry = fs.lookup(path);
+        if (!entry) throw errnoError(ERRNO.ENOENT);
+        if (!entry.dir) throw errnoError(ERRNO.ENOTDIR);
+        process.cwd = path;
+        return { result: path };
       }
       case "spawn": {
-        const [argv0, argv, env, dir, fds] = a;
+        const [argv0, argv, env, dir, fds] = args;
         try {
-          const descs = fds.map(fd => fd < 0 ? null : getfd(fd));
-          return { res: this.spawn(p, argv0, argv, env, dir ? R(dir) : p.cwd, descs).pid };
-        } catch (e) { return { res: { code: e.code || "ENOSYS", message: String(e.message) } }; }
+          const descriptors = fds.map(fd => (fd < 0 ? null : descriptorOf(fd)));
+          const child = this.spawn(process, argv0, argv, env, dir ? absolute(dir) : process.cwd, descriptors);
+          return { result: child.pid };
+        } catch (error) {
+          // goSpawn of the overlay returns the error as an object with a code, not as an Error.
+          return { result: { code: error.code || ERRNO.ENOSYS, message: String(error.message) } };
+        }
       }
-      case "kill": return { res: this.kill(a[0], a[1]) };
+      case "kill":
+        return { result: this.kill(args[0], args[1]) };
       case "wait": {
-        const c = this.procs.get(a[0]);
-        if (!c) return { res: null };
-        if (c.exited) { this.procs.delete(c.pid); return { res: c.code }; }
-        c.waiters.push(code => done(code));
+        const child = this.processes.get(args[0]);
+        if (!child) return { result: null };
+        if (child.exited) {
+          this.processes.delete(child.pid);
+          return { result: child.code };
+        }
+        child.waiters.push(code => complete(code));
         return PENDING;
       }
-      default: throw err("ENOSYS", "kernel: no op " + name);
+      default:
+        throw errnoError(ERRNO.ENOSYS, "kernel: no call " + name);
     }
   }
 
-  /** Kills process pid with a js signal number: terminates its Worker at once. The wait status is KILLED + sig. */
-  kill(pid, sig = SIG.KILL) {
-    const c = this.procs.get(pid);
-    if (!c || c.exited) return false;
-    if (!SIGNAME[sig]) sig = SIG.KILL;
-    this.finish(c, KILLED + sig, null);
+  /** read runs a read call of length bytes at position, or at the position of the descriptor when position is null. */
+  read(descriptor, length, position, complete) {
+    if (descriptor.kind === DESCRIPTOR.NULL || descriptor.kind === DESCRIPTOR.SINK) return { result: 0 };
+    if (descriptor.kind === DESCRIPTOR.PIPE_READ) {
+      const pipe = descriptor.pipe;
+      if (pipe.chunks.length) {
+        const bytes = pipe.take(length);
+        return { result: bytes.length, data: bytes };
+      }
+      if (pipe.writers === 0) return { result: 0 };
+      const waitingRead = bytes => complete(bytes.length, bytes);
+      waitingRead.want = length;
+      pipe.waitingReads.push(waitingRead);
+      return PENDING;
+    }
+    if (descriptor.kind !== DESCRIPTOR.FILE) throw errnoError(ERRNO.EBADF);
+    const entry = descriptor.entry;
+    if (entry.dir) throw errnoError(ERRNO.EISDIR);
+    const start = position != null ? position : descriptor.position;
+    const count = Math.max(0, Math.min(length, entry.size - start, CALL_BUFFER.DATA_CAPACITY));
+    if (position == null) descriptor.position += count;
+    return { result: count, data: entry.data.subarray(start, start + count) };
+  }
+
+  /** open opens the absolute path with the open flags in process and returns the descriptor number. */
+  open(process, path, flags) {
+    if (path === "/dev/null") return this.addDescriptor(process, newDescriptor(DESCRIPTOR.NULL));
+    let entry = this.fs.lookup(path);
+    if (entry && flags & OPEN_FLAGS.O_CREAT && flags & OPEN_FLAGS.O_EXCL) throw errnoError(ERRNO.EEXIST);
+    if (!entry) {
+      if (!(flags & OPEN_FLAGS.O_CREAT)) throw errnoError(ERRNO.ENOENT);
+      const [dir, name] = this.fs.split(path);
+      if (!dir || !dir.dir) throw errnoError(ERRNO.ENOENT);
+      entry = this.fs.newEntry(false);
+      dir.children.set(name, entry);
+    }
+    if (entry.dir && flags & O_ACCMODE) throw errnoError(ERRNO.EISDIR);
+    if (flags & OPEN_FLAGS.O_DIRECTORY && !entry.dir) throw errnoError(ERRNO.ENOTDIR);
+    if (flags & OPEN_FLAGS.O_TRUNC) {
+      entry.size = 0;
+      entry.mtime = Date.now();
+    }
+    const append = Boolean(flags & OPEN_FLAGS.O_APPEND);
+    return this.addDescriptor(process, newDescriptor(DESCRIPTOR.FILE, { entry, position: 0, append }));
+  }
+
+  /** kill kills process pid with a js/wasm signal number: it terminates the Worker at once. The wait status is KILLED + signal. */
+  kill(pid, signal = SIG.KILL) {
+    const process = this.processes.get(pid);
+    if (!process || process.exited) return false;
+    if (!SIGNAL_NAMES[signal]) signal = SIG.KILL;
+    this.finish(process, KILLED + signal, null);
     return true;
   }
 
-  /** Kills pid and each of its descendants, the children first. Returns the number of processes killed. */
-  killTree(pid, sig = SIG.KILL) {
-    let n = 0;
-    for (const c of [...this.procs.values()]) if (c.ppid === pid && !c.exited) n += this.killTree(c.pid, sig);
-    return n + (this.kill(pid, sig) ? 1 : 0);
+  /** killTree kills pid and each of its descendants, the children first. It returns the number of processes killed. */
+  killTree(pid, signal = SIG.KILL) {
+    let killed = 0;
+    for (const process of [...this.processes.values()]) {
+      if (process.ppid === pid && !process.exited) killed += this.killTree(process.pid, signal);
+    }
+    return killed + (this.kill(pid, signal) ? 1 : 0);
   }
 
-  /** scanTests records the === RUN and --- PASS/FAIL/SKIP lines of the test binary p from its standard output. */
-  scanTests(p, b) {
-    const text = p.testTail + new TextDecoder().decode(b);
+  /** scanTests records the === RUN and --- PASS/FAIL/SKIP lines that the test binary process writes to standard output. */
+  scanTests(process, bytes) {
+    const text = process.testOutputTail + new TextDecoder().decode(bytes);
     const lines = text.split("\n");
-    p.testTail = lines.pop().slice(-512);
-    for (const l of lines) {
-      let m = /^=== (RUN|CONT)\s+(\S+)/.exec(l);
-      if (m) { if (!p.tests.has(m[2])) p.tests.set(m[2], performance.now()); continue; }
-      m = /^\s*--- (PASS|FAIL|SKIP): (\S+)/.exec(l);
-      if (m) p.tests.delete(m[2]);
+    process.testOutputTail = lines.pop().slice(-512);
+    for (const line of lines) {
+      const started = /^=== (RUN|CONT)\s+(\S+)/.exec(line);
+      if (started) {
+        if (!process.runningTests.has(started[2])) process.runningTests.set(started[2], performance.now());
+        continue;
+      }
+      const ended = /^\s*--- (PASS|FAIL|SKIP): (\S+)/.exec(line);
+      if (ended) process.runningTests.delete(ended[2]);
     }
   }
 
-  /** testTimedOut ends the test binary p as the testing package does when -test.timeout passes: the panic text on standard error and exit status 2. */
-  testTimedOut(p, text) {
-    if (p.exited) return;
-    let msg = `panic: test timed out after ${text}`;
-    if (p.tests.size) {
+  /**
+   * testTimedOut ends the test binary process as package testing does when -test.timeout passes: the
+   * panic text on standard error and exit status 2.
+   */
+  testTimedOut(process, timeout) {
+    if (process.exited) return;
+    let text = `panic: test timed out after ${timeout}`;
+    if (process.runningTests.size) {
       const now = performance.now();
-      const list = [...p.tests].map(([name, t]) => `${name} (${Math.round((now - t) / 1000)}s)`).sort();
-      msg += "\n\trunning tests:" + list.map(x => "\n\t\t" + x).join("");
+      const running = [...process.runningTests].map(([name, startedAt]) => `${name} (${Math.round((now - startedAt) / 1000)}s)`);
+      text += "\n\trunning tests:" + running.sort().map(test => "\n\t\t" + test).join("");
     }
-    msg += `\n\n[kernel: pid ${p.pid} terminated at the -test.timeout deadline; no goroutine dump is available]\n`;
-    try { this.writeDesc(p.fds.get(2), enc.encode(msg)); } catch {}
-    this.finish(p, 2, null, "timeout");
+    text += `\n\n[kernel: pid ${process.pid} terminated at the -test.timeout deadline; no goroutine dump is available]\n`;
+    this.writeStderr(process, text);
+    this.finish(process, 2, null, "timeout");
   }
 
-  /** overLimit kills p when it runs longer than limitMs. */
-  overLimit(p) {
-    if (p.exited) return;
-    try { this.writeDesc(p.fds.get(2), enc.encode(`kernel: pid ${p.pid} (${p.tool}) killed: it ran past the process limit of ${this.limitMs / 1000}s\n`)); } catch {}
-    this.finish(p, KILLED + SIG.KILL, null, "limit");
+  /** overLimit kills process when it runs longer than limitMs. */
+  overLimit(process) {
+    if (process.exited) return;
+    const limit = this.limitMs / 1000;
+    this.writeStderr(process, `kernel: pid ${process.pid} (${process.tool}) killed: it ran past the process limit of ${limit}s\n`);
+    this.finish(process, KILLED + SIG.KILL, null, "limit");
   }
 
-  finish(p, code, mem, reason = "") {
-    if (p.exited) return;
-    p.exited = true; p.code = code; p.reason = reason;
-    for (const t of p.timers || []) clearTimeout(t);
-    if (p.worker) { p.worker.terminate(); p.worker = null; }
+  /** finish ends process with the wait status code. memoryBytes is the size of its memory, when known. */
+  finish(process, code, memoryBytes, reason = "") {
+    if (process.exited) return;
+    process.exited = true;
+    process.code = code;
+    process.reason = reason;
+    for (const timer of process.timers || []) clearTimeout(timer);
+    if (process.worker) {
+      process.worker.terminate();
+      process.worker = null;
+    }
     this.stats.live--;
-    if (mem) this.stats.maxMem[p.tool] = Math.max(this.stats.maxMem[p.tool] || 0, mem);
-    this.closeAll(p);
+    if (memoryBytes) this.stats.maxMem[process.tool] = Math.max(this.stats.maxMem[process.tool] || 0, memoryBytes);
+    this.closeAll(process);
     // An exited process stays in the table as a zombie until a wait reaps it, as on Unix, so a wait
     // that comes after the exit still gets the status.
-    const reaped = p.waiters.length > 0 || p.ppid === 1;
-    for (const w of p.waiters) w(code);
-    p.waiters = [];
-    p.resolve(code);
-    if (reaped) this.procs.delete(p.pid);
+    const reaped = process.waiters.length > 0 || process.ppid === NO_PARENT;
+    for (const waiter of process.waiters) waiter(code);
+    process.waiters = [];
+    process.resolve(code);
+    if (reaped) this.processes.delete(process.pid);
   }
 
-  /** Starts a process in a new Worker. argv0 is a path in the memfs. p.done resolves with the exit code. */
-  spawn(parent, argv0, argv, env, cwd, descs) {
-    const path = normPath(argv0, parent ? parent.cwd : cwd);
-    const e = this.fs.lookup(path);
-    if (!e || e.dir) throw err("ENOENT");
-    const p = this.newProc(parent, cwd, descs);
-    p.tool = path.split("/").pop(); p.timers = [];
-    {
-      const ta = argv.findIndex(x => /^--?test\.timeout(=|$)/.test(x));
-      const text = ta < 0 ? "" : argv[ta].includes("=") ? argv[ta].slice(argv[ta].indexOf("=") + 1) : argv[ta + 1] || "";
-      const ms = text ? parseDuration(text) : 0;
-      if (ms > 0) { p.tests = new Map(); p.testTail = ""; p.timers.push(setTimeout(() => this.testTimedOut(p, text), ms)); }
+  /**
+   * spawn starts a process in a new Worker and returns it. argv0 is a path in the memfs, and env is a
+   * list of "name=value". process.done resolves with the wait status.
+   */
+  spawn(parent, argv0, argv, env, cwd, descriptors) {
+    const path = normalizePath(argv0, parent ? parent.cwd : cwd);
+    const entry = this.fs.lookup(path);
+    if (!entry || entry.dir) throw errnoError(ERRNO.ENOENT);
+    const process = this.newProcess(parent, cwd, descriptors);
+    process.tool = path.split("/").pop();
+    process.timers = [];
+    const timeout = testTimeoutOf(argv);
+    const timeoutMs = timeout ? parseDuration(timeout) : 0;
+    if (timeoutMs > 0) {
+      process.runningTests = new Map();
+      process.testOutputTail = "";
+      process.timers.push(setTimeout(() => this.testTimedOut(process, timeout), timeoutMs));
     }
-    if (this.limitMs > 0) p.timers.push(setTimeout(() => this.overLimit(p), this.limitMs));
-    if (this.onSpawn) this.onSpawn(p);
-    p.done = new Promise(r => (p.resolve = r));
-    this.stats.spawns++; this.stats.live++; this.stats.maxLive = Math.max(this.stats.maxLive, this.stats.live);
-    let args = argv.slice(1);
-    const size = [...argv, ...env].reduce((n, s) => n + enc.encode(s).length + 16, 0);
-    if (size > 6000 && RSP_TOOLS.has(p.tool)) {
-      const rsp = `/tmp/rsp-${p.pid}.txt`;
-      this.fs.writeFile(rsp, enc.encode(args.map(x => "'" + x.replace(/'/g, "'\\''") + "'").join("\n")));
-      args = ["@" + rsp];
+    if (this.limitMs > 0) process.timers.push(setTimeout(() => this.overLimit(process), this.limitMs));
+    if (this.onSpawn) this.onSpawn(process);
+    process.done = new Promise(resolve => (process.resolve = resolve));
+    this.stats.spawns++;
+    this.stats.live++;
+    this.stats.maxLive = Math.max(this.stats.maxLive, this.stats.live);
+    const args = this.responseFileArgs(process, argv, env);
+    this.startWorker(process, path, entry, [argv[0] || path, ...args], env, cwd);
+    return process;
+  }
+
+  /**
+   * responseFileArgs returns the arguments of process after argv[0]. For a tool that reads a response
+   * file and has long arguments, it writes them to a file and returns ["@file"], as cmd/go does when
+   * the command line is too long.
+   */
+  responseFileArgs(process, argv, env) {
+    const args = argv.slice(1);
+    const size = [...argv, ...env].reduce((total, text) => total + textEncoder.encode(text).length + 16, 0);
+    if (size <= RESPONSE_FILE_MIN_SIZE || !RESPONSE_FILE_TOOLS.has(process.tool)) return args;
+    const responseFile = `/tmp/rsp-${process.pid}.txt`;
+    const quoted = args.map(arg => "'" + arg.replace(/'/g, "'\\''") + "'");
+    this.fs.writeFile(responseFile, textEncoder.encode(quoted.join("\n")));
+    return ["@" + responseFile];
+  }
+
+  /** startWorker loads the program at path, starts a Worker for process and answers its calls. */
+  async startWorker(process, path, entry, argv, env, cwd) {
+    let module;
+    try {
+      module = await this.loadModule(path, entry);
+    } catch (error) {
+      this.writeStderr(process, `kernel: ${path}: ${(error && error.stack) || error}\n`);
+      return this.finish(process, 2);
     }
-    (async () => {
-      let mod;
-      try { mod = await this.loadModule(path, e); } catch (x) {
-        try { this.writeDesc(p.fds.get(2), enc.encode(`kernel: ${path}: ${x && x.stack || x}\n`)); } catch {}
-        return this.finish(p, 2);
+    if (process.exited) return;
+    const buffer = new SharedArrayBuffer(CALL_BUFFER.SIZE);
+    const state = new Int32Array(buffer, 0, 4);
+    const bytes = new Uint8Array(buffer);
+    const worker = this.makeWorker();
+    process.worker = worker;
+    const reply = (message, data) => {
+      const json = textEncoder.encode(JSON.stringify(message));
+      if (json.length > CALL_BUFFER.JSON_CAPACITY) throw new Error("kernel: reply too large");
+      bytes.set(json, CALL_BUFFER.JSON_OFFSET);
+      state[CALL_BUFFER.JSON_LENGTH] = json.length;
+      if (data) {
+        bytes.set(data, CALL_BUFFER.DATA_OFFSET);
+        state[CALL_BUFFER.DATA_LENGTH] = data.length;
+      } else {
+        state[CALL_BUFFER.DATA_LENGTH] = -1;
       }
-      if (p.exited) return;
-      const sab = new SharedArrayBuffer(CALL_BUFFER.SIZE);
-      const i32 = new Int32Array(sab, 0, 4), u8 = new Uint8Array(sab);
-      const w = this.makeWorker();
-      p.worker = w;
-      const reply = (obj, data) => {
-        const j = enc.encode(JSON.stringify(obj));
-        if (j.length > CALL_BUFFER.JSON_CAPACITY) throw new Error("kernel: reply too large");
-        u8.set(j, CALL_BUFFER.JSON_OFFSET); i32[CALL_BUFFER.JSON_LENGTH] = j.length;
-        if (data) { u8.set(data, CALL_BUFFER.DATA_OFFSET); i32[CALL_BUFFER.DATA_LENGTH] = data.length; } else i32[CALL_BUFFER.DATA_LENGTH] = -1;
-        Atomics.store(i32, CALL_BUFFER.STATE, 1); Atomics.notify(i32, CALL_BUFFER.STATE);
-      };
-      w.onmessage = m => {
-        if (p.exited) return;
-        if (m.type === MESSAGE.CALL) {
-          let r;
-          try {
-            r = this.op(p, m.name, m.args, m.data, (res, data) => { if (!p.exited && p.worker) p.worker.post({ type: MESSAGE.COMPLETE, id: m.id, result: res, data: data && data.slice() }); });
-          } catch (x) { reply({ errno: x.code || "EIO", message: String(x.message) }); return; }
-          if (r === PENDING) reply({ pendingId: m.id }); else reply({ result: r.res }, r.data);
-        } else if (m.type === MESSAGE.EXIT) {
-          this.finish(p, m.code, m.memoryBytes);
+      Atomics.store(state, CALL_BUFFER.STATE, 1);
+      Atomics.notify(state, CALL_BUFFER.STATE);
+    };
+    worker.onmessage = message => {
+      if (process.exited) return;
+      if (message.type === MESSAGE.CALL) {
+        const complete = (result, data) => {
+          if (process.exited || !process.worker) return;
+          process.worker.post({ type: MESSAGE.COMPLETE, id: message.id, result, data: data && data.slice() });
+        };
+        let outcome;
+        try {
+          outcome = this.call(process, message.name, message.args, message.data, complete);
+        } catch (error) {
+          reply({ errno: error.code || ERRNO.EIO, message: String(error.message) });
+          return;
         }
-        else if (m.type === MESSAGE.CRASH) { try { this.writeDesc(p.fds.get(2), enc.encode(`kernel: ${path}: ${m.text}\n`)); } catch {} this.finish(p, 2, m.memoryBytes); }
-      };
-      const envObj = {};
-      for (const kv of env) { const i = kv.indexOf("="); if (i > 0) envObj[kv.slice(0, i)] = kv.slice(i + 1); }
-      if (this.toolEnv && this.toolEnv[p.tool]) Object.assign(envObj, this.toolEnv[p.tool]);
-      w.post({ type: MESSAGE.START, goroot: this.roImage(), module: mod, buffer: sab, pid: p.pid, ppid: p.ppid, cwd, argv: [argv[0] || path, ...args], env: envObj });
-    })();
-    return p;
+        if (outcome === PENDING) reply({ pendingId: message.id });
+        else reply({ result: outcome.result }, outcome.data);
+      } else if (message.type === MESSAGE.EXIT) {
+        this.finish(process, message.code, message.memoryBytes);
+      } else if (message.type === MESSAGE.CRASH) {
+        this.writeStderr(process, `kernel: ${path}: ${message.text}\n`);
+        this.finish(process, 2, message.memoryBytes);
+      }
+    };
+    const envObject = {};
+    for (const variable of env) {
+      const equals = variable.indexOf("=");
+      if (equals > 0) envObject[variable.slice(0, equals)] = variable.slice(equals + 1);
+    }
+    if (this.toolEnv && this.toolEnv[process.tool]) Object.assign(envObject, this.toolEnv[process.tool]);
+    worker.post({
+      type: MESSAGE.START,
+      goroot: this.gorootImage(),
+      module,
+      buffer,
+      pid: process.pid,
+      ppid: process.ppid,
+      cwd,
+      argv,
+      env: envObject,
+    });
   }
 
-  /** Starts a top-level command with stdout and stderr sent to callbacks. Returns the process; p.done resolves with the wait status. */
+  /**
+   * run starts a command of the page, with standard output and error sent to the callbacks onOut and
+   * onErr, and env an object of variables. It returns the process; process.done resolves with the
+   * wait status.
+   */
   run(argv0, argv, env, cwd, onOut, onErr) {
-    const descs = [{ type: "null", refs: 0 }, this.sink(onOut), this.sink(onErr)];
-    const envArr = Object.entries(env).map(([a, b]) => `${a}=${b}`);
-    return this.spawn(null, argv0, argv, envArr, cwd, descs);
+    const descriptors = [
+      newDescriptor(DESCRIPTOR.NULL),
+      newDescriptor(DESCRIPTOR.SINK, { sink: onOut }),
+      newDescriptor(DESCRIPTOR.SINK, { sink: onErr }),
+    ];
+    const envList = Object.entries(env).map(([name, value]) => `${name}=${value}`);
+    return this.spawn(null, argv0, argv, envList, cwd, descriptors);
   }
 }

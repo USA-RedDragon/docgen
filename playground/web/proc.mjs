@@ -4,6 +4,7 @@
 import {
   S_IFMT, S_IFDIR, OPEN_FLAGS, WRITE_FLAGS, ERRNO, errnoError, FORWARDED_FS_CALLS, CALL_BUFFER, MESSAGE,
 } from "./abi.mjs";
+import { normalizePath } from "./paths.mjs";
 
 const textDecoder = new TextDecoder();
 /** The descriptors of the GOROOT image start here, far above the descriptors of the kernel. */
@@ -90,21 +91,10 @@ function forwardCall(name, convertResult = result => result) {
   };
 }
 
-function normalizePath(path) {
-  if (!path.startsWith("/")) path = cwd + "/" + path;
-  const parts = [];
-  for (const part of path.split("/")) {
-    if (!part || part === ".") continue;
-    if (part === "..") parts.pop();
-    else parts.push(part);
-  }
-  return "/" + parts.join("/");
-}
-
 /** gorootPath returns the absolute path of path when it is in the GOROOT image, else null. */
 function gorootPath(path) {
   if (!gorootIndex) return null;
-  const absolute = normalizePath(path);
+  const absolute = normalizePath(path, cwd);
   return absolute === "/goroot" || absolute.startsWith("/goroot/") ? absolute : null;
 }
 
