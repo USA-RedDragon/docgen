@@ -220,6 +220,13 @@ else
 	build_pages "$out" "$out/.pages"
 	rm "$out/.pages"
 fi
+# Cloudflare Pages reads _headers. The playground at /playground/ and
+# /main/playground/ needs cross-origin isolation for SharedArrayBuffer. The
+# docs pages do not get it, so they keep their fonts from Google Fonts. The
+# name of each playground asset holds its hash, so it is cached for a year.
+for p in /playground /main/playground; do
+	printf '%s*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n  Cross-Origin-Resource-Policy: same-origin\n  X-Content-Type-Options: nosniff\n%s/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n' "$p" "$p"
+done >"$out/_headers"
 # A host such as Cloudflare Pages serves the top index.html for a path with no
 # file when the site has no 404.html, and the redirect of the top index.html
 # then adds latest/ to the path again and again.

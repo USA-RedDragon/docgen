@@ -3,6 +3,7 @@
 The pages of the docs site, in reading order, by section. The site navigation comes from this list.
 
 - [Overview](../README.md)
+- [Playground](/playground/)
 - Get started
   - [Install](start/01-install.md)
   - [Your first page](start/02-first-page.md)
@@ -34,4 +35,4 @@ The pages of the docs site, in reading order, by section. The site navigation co
   - [Versioning and compatibility](project/versioning.md)
   - [Tooling and checks](project/tooling.md)
 
-Each item is a link to a page, or, for a page that is planned and not written, its title and its path in code. A comment `<!-- old: <path> -->` after a link gives the path of the page before it moved; the site uses that file until the new one exists. A link to a file that is not a page, or to another site, shows in the navigation and opens that file or site.
+Each item is a link to a page, or, for a page that is planned and not written, its title and its path in code. A comment `<!-- old: <path> -->` after a link gives the path of the page before it moved; the site uses that file until the new one exists. A link to a file that is not a page, or to another site, shows in the navigation and opens that file or site. A link that starts with one `/` goes to that path of the site of the build: on `main` and on a branch build, the path is under the pages of that build, and on a release, it is at the top of the site, such as `/playground/`, the playground of the latest release.

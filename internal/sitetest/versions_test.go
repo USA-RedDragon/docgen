@@ -155,7 +155,7 @@ func TestVersionsLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	site, _ := buildVersions(t, root)
-	for _, f := range []string{"index.html", "404.html", "_redirects", "llms.txt", "latest/llms.txt", "latest/ten.md", "versions.json", ".nojekyll", ".docgen-site", "latest/index.html", "latest/ten.html", "main/next.html", "main/search-index.js", "v0.9.0/old.html", "v0.9.0/sub/deep.html", "v0.10.0/ten.html"} {
+	for _, f := range []string{"index.html", "404.html", "_redirects", "_headers", "llms.txt", "latest/llms.txt", "latest/ten.md", "versions.json", ".nojekyll", ".docgen-site", "latest/index.html", "latest/ten.html", "main/next.html", "main/search-index.js", "v0.9.0/old.html", "v0.9.0/sub/deep.html", "v0.10.0/ten.html"} {
 		exists(t, filepath.Join(site, filepath.FromSlash(f)))
 	}
 	absent(t, site, "page.html", "search-index.js", ".work", ".pages", "main/.search", "v0.9.0/.search", "v0.9.0/.docgen-site", "main/old.html", "v0.10.0/old.html")
@@ -468,4 +468,39 @@ func TestEditorBundleInEachVersionWithABlock(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestPlaygroundLinks(t *testing.T) {
+	t.Parallel()
+	needPandoc(t)
+	root := taggedRepo(t)
+	writeRepoFile(t, root, "docs/nav.md", "- [Home](../README.md)\n- [Page](page.md)\n- [Next](next.md)\n- [Try it](/playground/)\n")
+	site, _ := buildVersions(t, root)
+	for page, want := range map[string]string{
+		"main/page.html":       `<a href="playground/">Playground</a>`,
+		"v0.9.0/page.html":     `<a href="../playground/">Playground</a>`,
+		"v0.9.0/sub/deep.html": `<a href="../../playground/">Playground</a>`,
+		"latest/page.html":     `<a href="../playground/">Playground</a>`,
+	} {
+		holds(t, page, read(t, site, page), want)
+	}
+	holds(t, "main/page.html", read(t, site, "main/page.html"), `<li><a href="playground/">Try it</a></li>`)
+	headers := read(t, site, "_headers")
+	holds(t, "_headers", headers, "/playground*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n", "/main/playground*\n", "/playground/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n")
+	for _, line := range strings.Split(headers, "\n") {
+		if line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "/playground") && !strings.HasPrefix(line, "/main/playground") {
+			t.Errorf("_headers has a rule for %s, which is not a playground path", line)
+		}
+	}
+}
+
+func TestPlaygroundLinksOfABranchBuild(t *testing.T) {
+	t.Parallel()
+	needPandoc(t)
+	root := repo(t)
+	writeRepoFile(t, root, "docs/nav.md", "- [Home](../README.md)\n- [Page](page.md)\n- [Deep](sub/deep.md)\n- [Try it](/playground/)\n")
+	writeRepoFile(t, root, "docs/sub/deep.md", "# Deep\n")
+	holds(t, "page.html", buildPage(t, root, nil, "page.html"), `<a href="playground/">Playground</a>`, `<li><a href="playground/">Try it</a></li>`)
+	holds(t, "sub/deep.html", read(t, filepath.Join(root, "artifacts/docs-site"), "sub/deep.html"), `<a href="../playground/">Playground</a>`, `<a href="../playground/">Try it</a>`)
+	holds(t, "_headers", read(t, filepath.Join(root, "artifacts/docs-site"), "_headers"), "/playground*\n  Cross-Origin-Opener-Policy: same-origin\n")
 }

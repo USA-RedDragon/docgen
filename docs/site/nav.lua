@@ -171,6 +171,11 @@ function M.load()
       it.kind = "external"
       return it
     end
+    if it.target:match("^/[^/]") then
+      it.kind = "site"
+      it.path = it.target:sub(2)
+      return it
+    end
     local p = M.resolve(M.docs, it.target)
     local out = p and M.default_out(p)
     if not out or not p:match("%.md$") then

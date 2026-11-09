@@ -83,10 +83,21 @@ local function toc_html(toc)
   return "<ul>" .. table.concat(items) .. "</ul>"
 end
 
+-- top_href returns the link from a page to path of the site of its build.
+-- The site of a branch build and of main is the root of the pages, and the site
+-- of a tag is the top of the versioned site, such as /playground/, the
+-- playground of the latest release.
+local function top_href(root, version, path)
+  if version and version ~= "main" then
+    return root .. "../" .. path
+  end
+  return root .. path
+end
+
 -- nav_html returns the navigation. toc is the list of the headings of the page, or
 -- nil, and goes under the item of the page, in a closed native disclosure, so
 -- that it works with no script. A page with no item gets a section for the list.
-local function nav_html(nav, page, root, repo, ref, pin, toc)
+local function nav_html(nav, page, root, repo, ref, pin, toc, version)
   local parts, placed = {}, false
   for _, sec in ipairs(nav.sections) do
     local items = {}
@@ -99,6 +110,8 @@ local function nav_html(nav, page, root, repo, ref, pin, toc)
         end
       elseif it.kind == "external" then
         href = pin(it.target)
+      elseif it.kind == "site" then
+        href = top_href(root, version, it.path)
       elseif it.kind == "file" and it.path and (read_file(it.path) or navlib.is_dir(it.path)) then
         href = source_url(repo, ref, it.path)
       end
@@ -689,7 +702,7 @@ function Pandoc(doc)
   write_file(outdir .. "/.search/" .. page:gsub("[%%/]", { ["%"] = "%25", ["/"] = "%2F" }) .. ".json", pandoc.json.encode(entry))
 
   local raw = function(s) return pandoc.MetaBlocks({ pandoc.RawBlock("html", s) }) end
-  local links = { '<a href="' .. html(pin(navlib.go_api_url())) .. '">Go API</a>', '<a href="' .. repo .. '">GitHub</a>' }
+  local links = { '<a href="' .. html(top_href(root, version, "playground/")) .. '">Playground</a>', '<a href="' .. html(pin(navlib.go_api_url())) .. '">Go API</a>', '<a href="' .. repo .. '">GitHub</a>' }
   doc.meta.outdir = nil
   doc.meta.page = nil
   doc.meta.latest = nil
@@ -699,7 +712,7 @@ function Pandoc(doc)
   doc.meta.site = site
   doc.meta.pagetitle = (page == "index.html" or not h1) and site or h1 .. " - " .. site
   doc.meta.description = description or site
-  doc.meta.nav = raw(nav_html(nav, page, root, repo, ref, pin, toc_html(toc)))
+  doc.meta.nav = raw(nav_html(nav, page, root, repo, ref, pin, toc_html(toc), version))
   doc.meta.links = raw(table.concat(links))
   local pager = pager_html(nav, page, root)
   doc.meta.pager = pager and raw(pager) or nil
