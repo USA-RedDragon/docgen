@@ -122,6 +122,7 @@ build_pages() {
 		pandoc -f gfm -t html5 --wrap=none --standalone --template "$DOCS_SITE/template.html" --lua-filter "$DOCS_SITE/site.lua" -M outdir="$dest" -M page="$page" "$@" -o "$dest/$page" "$src"
 	done <"$list"
 	pandoc lua "$DOCS_SITE/index.lua" "$dest"
+	pandoc lua "$DOCS_SITE/llms.lua" "$dest"
 	if [ -e "$dest/.editor" ]; then
 		rm "$dest/.editor"
 		cp "$DOCS_SITE/editor.js" "$DOCS_SITE/vendor/codemirror.js" "$dest"
@@ -203,6 +204,7 @@ build_versions() {
 	cp -R "$out/${latest:-main}" "$out/latest"
 	# shellcheck disable=SC2086
 	DOCS_MAIN_SHA=$(git -C "$root" rev-parse --short HEAD 2>/dev/null || :) pandoc lua "$DOCS_SITE/versions.lua" site "$out" $kept
+	pandoc lua "$DOCS_SITE/llms.lua" "$out" latest/
 	: >"$out/.nojekyll"
 }
 

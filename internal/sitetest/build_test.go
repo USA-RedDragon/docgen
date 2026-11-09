@@ -170,6 +170,8 @@ func TestOutputPaths(t *testing.T) {
 	}
 	exists(t, filepath.Join(cwd, "site out/index.html"))
 	exists(t, filepath.Join(cwd, "site out/page.html"))
+	exists(t, filepath.Join(cwd, "site out/page.md"))
+	exists(t, filepath.Join(cwd, "site out/llms.txt"))
 	if _, err := os.Stat(filepath.Join(root, "site out")); err == nil {
 		t.Error("the relative output resolved from the repository root")
 	}

@@ -533,6 +533,7 @@ function Pandoc(doc)
     return navlib.pin_api(url, ref)
   end
 
+  local source = doc:clone()
   local has_editor
   doc.blocks, has_editor = editors(doc.blocks, here, src)
   if has_editor then
@@ -554,6 +555,42 @@ function Pandoc(doc)
     end
     return relative(page_dir, out_path(p))
   end
+
+  -- The Markdown copy of the page is for readers of plain text, such as
+  -- agents. Its links go to the Markdown copies of the other pages.
+  local markdown = page:gsub("%.html$", ".md")
+  source = source:walk({
+    Image = function(img)
+      if not img.src:match("^%a[%w+.-]*:") then
+        img.src = site_image(img.src)
+      end
+      return img
+    end,
+    Link = function(l)
+      local t = l.target
+      if t:match("^%a[%w+.-]*:") then
+        l.target = pin(t)
+        return l
+      end
+      if t:match("^#") then
+        return l
+      end
+      local file, frag = t:match("^([^#]*)(#?.*)$")
+      local p = resolve(here, file)
+      if not p then
+        return l
+      end
+      local target = built[p]
+      if target then
+        l.target = relative(page_dir, (target:gsub("%.html$", ".md"))) .. frag
+      elseif read_file(p) or navlib.is_dir(p) then
+        l.target = source_url(repo, ref, p) .. frag
+      end
+      return l
+    end,
+  })
+  write_file(outdir .. "/" .. markdown, pandoc.write(source, "gfm", { wrap_text = "none" }))
+  doc.meta.markdown = relative(page_dir, markdown)
 
   doc = doc:walk({
     Image = function(img)

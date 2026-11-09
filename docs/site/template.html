@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>$pagetitle$</title>
 <meta name="description" content="$description$">
+$if(markdown)$
+<link rel="alternate" type="text/markdown" href="$markdown$">
+$endif$
 <script>try { var m = localStorage.getItem("mode"); if (m === "light" || m === "dark") { document.documentElement.setAttribute("data-theme", m); } } catch (e) {}</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,600;0,700;1,400&family=Inconsolata:wght@400;600&display=swap">
 <style>
