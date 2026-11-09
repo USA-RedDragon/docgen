@@ -1,15 +1,23 @@
 name: Playground
 
-# A pull request that changes the playground builds all of it, as the release
-# workflow does on a tag, and runs the browser test in headless Firefox. It
-# uploads nothing to a release.
+# A pull request that changes the playground or docgen builds all of it, as the
+# release workflow does on a tag, and runs the browser test in headless
+# Firefox. It uploads nothing to a release. A pull request can restore only
+# the caches of its own runs and of main, so a manual run on main fills the
+# wasm-opt cache for all pull requests.
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'playground/**'
+      - '*.go'
+      - 'internal/**'
       - 'go.mod'
+      - 'go.sum'
       - 'docs/site/build.sh'
+      - 'docs/site/cloudflare.sh'
       - '.github/workflows/playground.yaml'
+      - '.github/workflows/release.yaml'
 
 permissions:
   contents: read
@@ -26,16 +34,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
+      # The wasm-opt outputs, by the SHA-256 of their inputs. Without a change
+      # of a tool, the build takes no wasm-opt time.
+      - name: Restore the wasm-opt outputs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/playground-work/opt-cache
+          key: playground-opt-${{ hashFiles('go.mod', 'playground/bb/**', 'playground/unzstd/**', 'playground/overlay/**', 'playground/build/mkoverlay.py', 'playground/build/package-lock.json') }}
+          restore-keys: playground-opt-
+
       - name: Build the playground
         env:
-          PLAYGROUND_VERSION: pr-${{ github.event.number }}
-          PLAYGROUND_COMMIT: ${{ github.event.pull_request.head.sha }}
+          PLAYGROUND_VERSION: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || github.ref_name }}
+          PLAYGROUND_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           PLAYGROUND_WORK: ${{ runner.temp }}/playground-work
         run: playground/build/build.sh all "$RUNNER_TEMP/playground"
 

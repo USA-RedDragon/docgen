@@ -109,16 +109,21 @@ npm_ci() {
 	rm -rf "$work/npm-$1"
 	mkdir -p "$work/npm-$1"
 	cp "$2/package.json" "$2/package-lock.json" "$work/npm-$1/"
-	(cd "$work/npm-$1" && npm ci --ignore-scripts --no-audit --no-fund --loglevel=error)
+	(cd "$work/npm-$1" && npm ci --ignore-scripts --no-audit --no-fund --loglevel=error --fetch-timeout=60000 --fetch-retries=2)
 }
 
 # wasm_opt writes the wasm-opt -Os output of $1 to $2. The Go builds are
 # reproducible, so $work/opt-cache keeps each output by the SHA-256 of its
 # input and of package-lock.json, and a second build in the same work
-# directory skips wasm-opt.
+# directory skips wasm-opt. The pull request workflow keeps opt-cache with
+# actions/cache. build_toolchain moves the cache to opt-cache.old first and
+# removes what this build does not use, so the cache does not grow.
 wasm_opt() {
 	key=$(cat "$1" "$here/package-lock.json" | sha256sum | cut -d ' ' -f 1)
 	mkdir -p "$work/opt-cache"
+	if [ -f "$work/opt-cache.old/$key.wasm" ]; then
+		mv "$work/opt-cache.old/$key.wasm" "$work/opt-cache/$key.wasm"
+	fi
 	if [ ! -f "$work/opt-cache/$key.wasm" ]; then
 		"$work/npm-build/node_modules/.bin/wasm-opt" --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int -Os "$1" -o "$work/opt-cache/$key.tmp"
 		mv "$work/opt-cache/$key.tmp" "$work/opt-cache/$key.wasm"
@@ -203,11 +208,16 @@ build_toolchain() {
 	pids="$pids $!"
 	wait_all
 
+	rm -rf "$work/opt-cache.old"
+	if [ -d "$work/opt-cache" ]; then
+		mv "$work/opt-cache" "$work/opt-cache.old"
+	fi
 	for t in go compile link asm vet bb unzstd; do
 		wasm_opt "$work/bin/$t.wasm" "$work/raw/$t.wasm" &
 		pids="$pids $!"
 	done
 	wait_all
+	rm -rf "$work/opt-cache.old"
 
 	# The GOROOT bundle holds the source of each standard package that the
 	# sample imports, with its tests.
