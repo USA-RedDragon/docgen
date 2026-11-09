@@ -52,7 +52,7 @@ For the full list, see [Markers](docs/reference/markers.md).
 
 ## Documentation
 
-Read the docs at <https://usa-reddragon.github.io/docgen/>. Each release has its own version of the docs.
+Read the docs at <https://docgen.mcswain.dev/>. Each release has its own version of the docs.
 
 - [Get started](docs/start/01-install.md)
 - [Markers](docs/reference/markers.md)

@@ -15,10 +15,6 @@ jobs:
   docs:
     runs-on: ubuntu-26.04
 
-    env:
-      PANDOC_VERSION: "3.13"
-      PANDOC_SHA256: 38aa33b325a2bc96a4c39409631212db55702f564250bcdbead180b3bf646389
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,11 +32,7 @@ jobs:
         run: go run . check
 
       - name: Install pandoc
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/pandoc.tar.gz" "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-amd64.tar.gz"
-          echo "${PANDOC_SHA256}  $RUNNER_TEMP/pandoc.tar.gz" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/pandoc.tar.gz" -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/pandoc-${PANDOC_VERSION}/bin" >> "$GITHUB_PATH"
+        run: docs/site/install-pandoc.sh "$RUNNER_TEMP/pandoc" >>"$GITHUB_PATH"
 
       - name: Test the site scripts
         run: go test ./internal/sitetest
@@ -53,15 +45,10 @@ jobs:
         if: github.event_name == 'push'
         run: docs/site/build.sh --versions
 
-      - name: Upload the docs site
-        if: github.event_name == 'push'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: artifacts/docs-site
-          include-hidden-files: true
-
-  deploy:
-    if: github.event_name == 'push'
+  # GitHub Pages serves only a redirect, so links to the old address
+  # https://usa-reddragon.github.io/docgen/ keep working.
+  redirect:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: docs
     runs-on: ubuntu-26.04
 
@@ -78,6 +65,38 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - name: Deploy the docs site
+      # Until the custom domain serves the site, GitHub Pages keeps the old
+      # copy of the docs, so no link ends at a page that is not there.
+      - name: Check the new domain
+        id: domain
+        run: |
+          if curl -fsS -m 30 https://docgen.mcswain.dev/versions.json | jq -e '.latest' >/dev/null; then
+            echo "ready=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::warning::https://docgen.mcswain.dev/ does not serve the docs yet, so GitHub Pages keeps the old site. Attach the domain to the Pages project."
+          fi
+
+      - name: Checkout repository
+        if: steps.domain.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: docs/site/redirect.html
+          sparse-checkout-cone-mode: false
+
+      - name: Make the redirect site
+        if: steps.domain.outputs.ready == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/redirect"
+          cp docs/site/redirect.html "$RUNNER_TEMP/redirect/index.html"
+          cp docs/site/redirect.html "$RUNNER_TEMP/redirect/404.html"
+
+      - name: Upload the redirect site
+        if: steps.domain.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/redirect
+
+      - name: Deploy the redirect site
+        if: steps.domain.outputs.ready == 'true'
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

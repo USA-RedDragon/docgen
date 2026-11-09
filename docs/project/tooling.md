@@ -61,24 +61,25 @@ A path shows relative to the `root=` of the first `docgen:docgen` marker of the 
 
 `build.sh` copies `editor.js` and the bundle to the root of each version that has an editor block. Only a page with an editor block loads them. They are JavaScript modules, and some browsers load no module from a `file:` URL, so serve the site over HTTP. In those browsers the block stays plain. [docs/site/vendor/README.md](../site/vendor/README.md) holds the versions of the bundle and the command that builds it.
 
-### Pull request preview
+### Hosting
 
-Each pull request gets a preview of the site on Cloudflare Pages, in two workflows:
+The Cloudflare Pages project `docgen` serves the site at <https://docgen.mcswain.dev/>. The project is connected to this repository with the Cloudflare Git integration, so Cloudflare clones and builds each push, and GitHub holds no Cloudflare token. The project has these build settings:
 
-- [docs-preview.yaml](../../.github/workflows/docs-preview.yaml) runs on `pull_request` with a read-only token and no secrets. It runs `go run . update`, builds the site, and uploads it with the number of the pull request as the `docs-preview` artifact.
-- [docs-preview-deploy.yaml](../../.github/workflows/docs-preview-deploy.yaml) runs on `workflow_run` when that build succeeds. It runs no code of the pull request. It checks the artifact, deploys it with `wrangler pages deploy` to the branch `pr-<number>`, and puts the URL in one comment on the pull request.
+| Setting | Value |
+| --- | --- |
+| Production branch | `main` |
+| Build command | `docs/site/cloudflare.sh` |
+| Build output directory | `artifacts/docs-site` |
 
-A `workflow_run` workflow runs from the default branch only, so a change to the deploy workflow has effect after the merge. Until the secret and the account variable are set, the deploy job ends with a notice and does not fail. The first deploy creates the Pages project for direct upload, named `docgen` or the name in `CLOUDFLARE_PAGES_PROJECT`. Do not connect the repository to Cloudflare in the dashboard: a project with a Git source builds each push on Cloudflare. To set up the preview, the owner:
+[cloudflare.sh](../site/cloudflare.sh) installs pandoc with [install-pandoc.sh](../site/install-pandoc.sh), the same script that the Docs workflow uses, and fetches the full history and the tags. The build image has an older Go, and Go downloads the toolchain of `go.mod`. On `main` the build makes all versions. On another branch it runs `go run . update` and builds the current tree, so a stale page still gets a preview, and Cloudflare puts the preview URL on the pull request. Cloudflare builds no pull request from a fork. The Docs workflow builds the site of each pull request as a check.
 
-1. Creates an API token with the permission Account, Cloudflare Pages, Edit, and adds it as the repository secret `CLOUDFLARE_API_TOKEN`.
-2. Adds the repository variable `CLOUDFLARE_ACCOUNT_ID`, and optionally `CLOUDFLARE_PAGES_PROJECT`, which has the default `docgen`.
-3. Sets Settings, Actions, General, Approval for running fork pull request workflows to require approval for all external contributors, so no fork build runs before a review.
+Cloudflare builds on a push to a branch, not on a tag. To put a new tag in `/latest/`, push the tag before or together with the commit on `main`, or retry the latest production deployment in the Cloudflare dashboard.
 
-A closed pull request needs no cleanup step. Its preview stays at `pr-<number>.<project>.pages.dev` until someone deletes the deployments in the Cloudflare dashboard.
+GitHub Pages serves only [redirect.html](../site/redirect.html), which sends each path under `https://usa-reddragon.github.io/docgen/` to the same path on the new domain. The Docs workflow deploys it after a push to `main`, and only when `https://docgen.mcswain.dev/versions.json` serves the docs, so GitHub Pages keeps the old site until the domain works.
 
 ### Versioned build
 
-`docs/site/build.sh --versions [out]` builds the site of each version, and the Docs workflow in [docs.yaml](../../.github/workflows/docs.yaml) publishes the result to GitHub Pages on a push to `main` or on a `v*` tag. A pull request builds the current tree only. The output has these paths:
+`docs/site/build.sh --versions [out]` builds the site of each version, and the Cloudflare build of `main` serves the result. The Docs workflow in [docs.yaml](../../.github/workflows/docs.yaml) builds all versions on a push to `main` or on a `v*` tag as a check. A pull request builds the current tree only. The output has these paths:
 
 | Path | Content |
 | --- | --- |
