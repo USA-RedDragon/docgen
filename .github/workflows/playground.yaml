@@ -48,7 +48,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/playground-work/opt-cache
-          key: playground-opt-${{ hashFiles('go.mod', 'playground/bb/**', 'playground/unzstd/**', 'playground/overlay/**', 'playground/build/mkoverlay.py', 'playground/build/package-lock.json') }}
+          key: playground-opt-${{ hashFiles('go.mod', 'playground/bb/**', 'playground/overlay/**', 'playground/build/mkoverlay.py', 'playground/build/package-lock.json') }}
           restore-keys: playground-opt-
 
       - name: Build the playground

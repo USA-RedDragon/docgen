@@ -224,8 +224,13 @@ fi
 # /main/playground/ needs cross-origin isolation for SharedArrayBuffer. The
 # docs pages do not get it, so they keep their fonts from Google Fonts. The
 # name of each playground asset holds its hash, so it is cached for a year.
+# The files in assets/zstd/ are zstd files, so they get Content-Encoding:
+# zstd, and the browser decodes them. Cloudflare Pages sends such a file as it
+# is. For a browser with no zstd, a test deploy showed that Cloudflare sends a
+# file of type application/wasm with Brotli, so each file there gets that
+# type, the bundles too. The page reads their bytes and does not use the type.
 for p in /playground /main/playground; do
-	printf '%s*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n  Cross-Origin-Resource-Policy: same-origin\n  X-Content-Type-Options: nosniff\n%s/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n' "$p" "$p"
+	printf '%s*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n  Cross-Origin-Resource-Policy: same-origin\n  X-Content-Type-Options: nosniff\n%s/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n%s/assets/zstd/*\n  Content-Encoding: zstd\n  Content-Type: application/wasm\n' "$p" "$p" "$p"
 done >"$out/_headers"
 # A host such as Cloudflare Pages serves the top index.html for a path with no
 # file when the site has no 404.html, and the redirect of the top index.html

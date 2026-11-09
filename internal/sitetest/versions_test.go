@@ -487,6 +487,11 @@ func TestPlaygroundLinks(t *testing.T) {
 	holds(t, "main/page.html", read(t, site, "main/page.html"), `<li><a href="playground/">Try it</a></li>`)
 	headers := read(t, site, "_headers")
 	holds(t, "_headers", headers, "/playground*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n", "/main/playground*\n", "/playground/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n")
+	// The zstd assets of the playground need their encoding and a type that
+	// Cloudflare compresses, under both paths.
+	for _, prefix := range []string{"/playground", "/main/playground"} {
+		holds(t, "_headers", headers, prefix+"/assets/zstd/*\n  Content-Encoding: zstd\n  Content-Type: application/wasm\n")
+	}
 	for _, line := range strings.Split(headers, "\n") {
 		if line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "/playground") && !strings.HasPrefix(line, "/main/playground") {
 			t.Errorf("_headers has a rule for %s, which is not a playground path", line)

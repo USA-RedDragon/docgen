@@ -112,7 +112,6 @@ The playground is a page that runs the Go toolchain and docgen in the browser, o
 | `playground/overlay/` | The new files of the `go build -overlay` that gives `js/wasm` processes and pipes. Their names end in `.go.txt`, so they are not a package of the root module. |
 | `playground/build/mkoverlay.py` | Writes the overlay from the GOROOT of the build: the new files, and the changed copies of some GOROOT files. Each change is an exact replacement, so a Go version with other source stops the build. It also writes `wasm_exec.js`. |
 | `playground/bb/` | A Go module with a shell (`mvdan.cc/sh`) and common commands (u-root) in one binary. `bb/ucmd` is the output of `bb/vendor-uroot.py`, with the license of u-root. |
-| `playground/unzstd/` | A Go module that decodes zstd in the browser, with a copy of `internal/zstd` of the Go standard library. |
 | `playground/testdata/` | The sample repository `dg` that the page starts with, and the module `loop`, a test that does not stop. The directory name keeps `docgen check` of this repository away from them. |
 | `playground/build/build.sh` | Builds the playground. |
 | `playground/site.sh` | Puts the playground into the docs site, for `cloudflare.sh`. |
@@ -121,13 +120,25 @@ The playground is a page that runs the Go toolchain and docgen in the browser, o
 
 `playground/build/build.sh all OUT` builds the whole playground into `OUT`, with the Go version of `go.mod`:
 
-- `go`, `compile`, `link`, `asm` and `vet` of that Go version, `bb`, `unzstd` and `docgen`, for `js/wasm`, with `-trimpath -ldflags="-s -w"`. `go`, `docgen` and `bb` start processes, so they have the overlay. The others have no overlay, because it made `compile` 20 to 40% slower in Firefox.
-- `wasm-opt -Os` of binaryen on each tool other than `docgen`. This step takes most of the build time. `docgen` gets no `wasm-opt`, because the zstd file of its output is larger, and the Cloudflare build builds `docgen` on each push.
+- `go`, `compile`, `link`, `asm` and `vet` of that Go version, `bb` and `docgen`, for `js/wasm`, with `-trimpath -ldflags="-s -w"`. `go`, `docgen` and `bb` start processes, so they have the overlay. The others have no overlay, because it made `compile` 20 to 40% slower in Firefox.
+- `wasm-opt -Os` of binaryen on each tool other than `docgen`. This step takes most of the build time. `docgen` gets no `wasm-opt`, because its output is larger after compression, and the Cloudflare build builds `docgen` on each push.
 - A bundle of the source of each standard package that the sample imports, a bundle of the sample, and a bundle of a GOCACHE. To make the GOCACHE, the script runs `docgen check`, `go test` and `go build` on the sample under Node, with the kernel of the page and the same tools.
-- Each tool and bundle compressed with `zstd -19` (without the `zstd` command, `playground/build/zstd` compresses at its best level), with the start of its SHA-256 in its name, and `manifest.json`, which also gives the Go version and the docgen version and commit. The page shows that version and commit.
+- Each tool and bundle compressed with `zstd -19` in `assets/zstd/`, with the start of the SHA-256 of the raw file in its name (see [Compression](#compression)), and `manifest.json`. The manifest gives the Go version, and the docgen version and commit. The page shows that version and commit.
 - `licenses/`: the license of Go, and the notices of the Go modules in `bb` and `docgen` and of the npm packages in the editor bundle. The build writes the notices from the module list and from the esbuild metafile, so they match the code of each build.
 
 `build.sh preview BASE OUT` builds only `docgen` and the page of the checkout, and takes the other assets from `BASE`, an earlier output of `build.sh all`. It uses the Go version of `BASE`. `build.sh gover` prints the Go version of `go.mod`.
+
+#### Compression
+
+The playground has no compression or decompression code of its own. The build compresses each tool and bundle with the `zstd` command (`zstd -19`), and the browser decodes the files natively:
+
+- A compressed asset is in `assets/zstd/`, with a `.zst` name, such as `assets/zstd/compile-020bd05ab708136a.wasm.zst`. The `_headers` rule of that directory gives it `Content-Encoding: zstd` and `Content-Type: application/wasm`. Cloudflare Pages sends such a file as it is, and the browser decodes it. A sitetest checks these rules, and `run.sh` checks the headers of each asset.
+- The bundles (`root`, `gocache`, `sample`) also get `application/wasm`. The page reads their bytes and does not use the type. A test deploy showed that Cloudflare sends a file of that type with Brotli to a browser with no zstd. [Cloudflare compression](https://developers.cloudflare.com/speed/optimization/content/compression/) lists the types that it compresses; `application/wasm` is on that list, and `application/octet-stream` is not.
+- The release build stops when there is no `zstd` command. GitHub's Ubuntu runners have it. The Cloudflare build image documents no `zstd` command, so a preview build without it puts `docgen.wasm` raw in `assets/`, with no `Content-Encoding`, and Cloudflare compresses it on the fly. The zone of `docgen.mcswain.dev` has a compression rule: Cloudflare sends Zstandard to a browser that accepts it, else Brotli, else gzip.
+- `manifest.json` gives the encoding of each asset (`zstd` or `identity`), its URL, the size of the decoded file and its SHA-256. The page checks the size and the SHA-256 of the decoded bytes with `crypto.subtle`, and keeps them in the Cache API. The progress of the first load counts the bytes of the decoded files.
+- Cloudflare Pages serves no file over 25 MiB, and each compressed asset is far below that. The build stops when a file of the output is over 25 MiB.
+
+The release archive is a plain tar. Its assets are compressed already, and the Cloudflare build extracts it with no `zstd` command.
 
 #### Releases and the Cloudflare build
 

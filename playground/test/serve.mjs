@@ -1,6 +1,8 @@
 // A static server for a build of the docs site, for tests. It binds 127.0.0.1 only, and it
 // applies the _headers file of the site in the way of Cloudflare Pages: each rule whose URL
-// pattern matches the path adds its headers, and a splat (*) matches any text.
+// pattern matches the path adds its headers, and a splat (*) matches any text. A rule can set
+// Content-Type and Content-Encoding. The server sends the bytes of the file as they are, so a file
+// with Content-Encoding: zstd goes to the browser compressed, and the browser decodes it.
 // /__test/frame.html?src=URL is a page with the cross-origin isolation headers and a 390 x 844
 // iframe of URL, because headless Firefox has a minimum window width of 500 px.
 // Usage: node serve.mjs SITE_DIR PORT

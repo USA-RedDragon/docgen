@@ -52,6 +52,25 @@ else
 	echo "FAIL $page$asset has no long Cache-Control"
 	fail=1
 fi
+# An asset of the encoding zstd needs Content-Encoding: zstd, and each asset
+# needs the type application/wasm, which Cloudflare compresses.
+bad=0
+for a in $(node -e 'for (const f of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).files) console.log(f.url + "," + f.encoding)' "$site$page/manifest.json"); do
+	h=$(curl -fsSI "$base$page${a%,*}" | tr -d '\r' | tr 'A-Z' 'a-z')
+	enc=$(printf '%s\n' "$h" | sed -n 's/^content-encoding: *//p')
+	type=$(printf '%s\n' "$h" | sed -n 's/^content-type: *//p')
+	want=${a#*,}
+	[ "$want" = identity ] && want=
+	if [ "$enc" != "$want" ] || [ "$type" != application/wasm ]; then
+		echo "FAIL $page${a%,*} has Content-Encoding '$enc' and Content-Type '$type'"
+		bad=1
+	fi
+done
+if [ "$bad" = 0 ]; then
+	echo "PASS each asset of $page has its Content-Encoding and the Content-Type application/wasm"
+else
+	fail=1
+fi
 if [ -n "${DOCS:-}" ]; then
 	doc=${DOCS%% *}
 	if curl -fsSI "$base$doc" | tr -d '\r' | tr 'A-Z' 'a-z' | grep -q '^cross-origin-'; then

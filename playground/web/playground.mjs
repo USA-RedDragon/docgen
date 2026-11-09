@@ -32,45 +32,36 @@ $("theme").addEventListener("click", () => {
 applyTheme();
 pg.setTheme = t => { theme = t; applyTheme(); };
 
-// Loading of the tools and bundles: from the Cache API when there, else fetched (zstd) and decoded in Workers.
+// Loading of the tools and bundles: from the Cache API when there, else fetched. An asset with the
+// encoding zstd has Content-Encoding: zstd, so the browser decodes it, and the progress counts the
+// bytes of the decoded files.
 const fmtMB = n => (n / 2 ** 20).toFixed(1) + " MiB";
-let decoders = [], nextDecoder = 0, decodeId = 0, decoderURL = "";
-const decodeWaits = new Map();
-function decoder() {
-  if (!decoders.length) {
-    const n = Math.min(3, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
-    for (let i = 0; i < n; i++) {
-      const w = new Worker("unzstd-worker.js?wasm=" + encodeURIComponent(decoderURL));
-      w.onmessage = e => { const f = decodeWaits.get(e.data.id); decodeWaits.delete(e.data.id); if (f) f(e.data); else if (e.data.error) pg.errors.push(e.data.error); };
-      decoders.push(w);
-    }
-  }
-  return decoders[nextDecoder++ % decoders.length];
-}
-const decode = (data, size) => new Promise((res, rej) => {
-  const id = ++decodeId;
-  decodeWaits.set(id, r => (r.error ? rej(new Error(r.error)) : res(r.out)));
-  decoder().postMessage({ id, data, size }, [data.buffer]);
-});
 
 async function openCache() {
   try { return await caches.open(CACHE); } catch (e) { pg.log.push("no Cache API: " + e); return null; }
 }
 
-async function fetchProgress(url, onBytes) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-  const len = +r.headers.get("content-length") || 0;
+/**
+ * fetchAsset fetches the asset of manifest entry f, calls onBytes with each count of decoded bytes
+ * that arrives, and checks the size and the SHA-256 of the decoded bytes. A response with a
+ * Content-Encoding has the Content-Length of the encoded body, so only the size of the manifest
+ * counts.
+ */
+async function fetchAsset(f, onBytes) {
+  const r = await fetch(f.url);
+  if (!r.ok) throw new Error(`${f.url}: HTTP ${r.status}`);
+  const out = new Uint8Array(f.size);
   const reader = r.body.getReader();
-  const parts = []; let n = 0;
+  let n = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    parts.push(value); n += value.length; onBytes(value.length);
+    if (n + value.length > f.size) throw new Error(`${f.url}: more than ${f.size} bytes`);
+    out.set(value, n); n += value.length; onBytes(value.length);
   }
-  const out = new Uint8Array(n); let o = 0;
-  for (const p of parts) { out.set(p, o); o += p.length; }
-  if (len && n !== len) throw new Error(`${url}: ${n} of ${len} bytes`);
+  if (n !== f.size) throw new Error(`${f.url}: ${n} of ${f.size} bytes`);
+  const sum = [...new Uint8Array(await crypto.subtle.digest("SHA-256", out))].map(b => b.toString(16).padStart(2, "0")).join("");
+  if (sum !== f.sha256) throw new Error(`${f.name}: the SHA-256 is ${sum}, not ${f.sha256}`);
   return out;
 }
 
@@ -87,7 +78,6 @@ function showVersion(m) {
 async function loadAssets() {
   const t0 = performance.now();
   const manifest = await (await fetch("manifest.json", { cache: "no-cache" })).json();
-  decoderURL = manifest.decoder;
   showVersion(manifest);
   const cache = await openCache();
   const keyOf = f => new URL(`cache/${f.name}.${f.sha256.slice(0, 16)}`, location.href).href;
@@ -95,7 +85,7 @@ async function loadAssets() {
     const want = new Set(manifest.files.map(keyOf));
     for (const k of await cache.keys()) if (!want.has(k.url)) await cache.delete(k);
   }
-  const total = manifest.files.reduce((a, f) => a + f.zsize, 0);
+  const total = manifest.files.reduce((a, f) => a + f.size, 0);
   let got = 0, hits = 0, ready = 0;
   const rows = new Map();
   for (const f of manifest.files) {
@@ -104,7 +94,7 @@ async function loadAssets() {
     $("lfiles").append(li); rows.set(f.name, li);
   }
   const bar = $("lbar");
-  const tick = () => { bar.value = (got + ready * 1e-9) / total; $("ltext").textContent = `${fmtMB(got)} of ${fmtMB(total)} fetched (zstd), ${ready} of ${manifest.files.length} files ready`; };
+  const tick = () => { bar.value = (got + ready * 1e-9) / total; $("ltext").textContent = `${fmtMB(got)} of ${fmtMB(total)} fetched, ${ready} of ${manifest.files.length} files ready`; };
   const done = (f, how) => { ready++; rows.get(f.name).lastChild.textContent = `${fmtMB(f.size)} ${how}`; tick(); };
   const out = { tools: {}, bundles: {}, perFile: {}, sha: Object.fromEntries(manifest.files.map(f => [f.name, f.sha256])) };
   await Promise.all(manifest.files.map(async f => {
@@ -112,16 +102,14 @@ async function loadAssets() {
     const key = keyOf(f);
     let hit = cache && await cache.match(key);
     if (hit) {
-      hits++; got += f.zsize;
+      hits++; got += f.size;
       if (f.kind === "tool") out.tools[f.name] = WebAssembly.compileStreaming(hit);
       else out.bundles[f.name] = new Uint8Array(await hit.arrayBuffer());
       if (f.kind === "tool") await out.tools[f.name];
       out.perFile[f.name] = Math.round(performance.now() - ft);
       return done(f, "cached");
     }
-    const z = await fetchProgress(f.url, n => { got += n; tick(); });
-    const raw = await decode(z, f.size);
-    if (raw.length !== f.size) throw new Error(`${f.name}: decoded ${raw.length} bytes, want ${f.size}`);
+    const raw = await fetchAsset(f, n => { got += n; tick(); });
     if (cache) {
       try { await cache.put(key, new Response(raw, { headers: { "content-type": f.kind === "tool" ? "application/wasm" : "application/octet-stream" } })); }
       catch (e) { pg.log.push(`cache put ${f.name}: ${e}`); }
@@ -131,11 +119,8 @@ async function loadAssets() {
     out.perFile[f.name] = Math.round(performance.now() - ft);
     done(f, "fetched");
   }));
-  for (const w of decoders) w.terminate();
-  decoders = [];
   out.ms = Math.round(performance.now() - t0);
-  out.hits = hits; out.files = manifest.files.length; out.zbytes = total;
-  out.bytes = manifest.files.reduce((a, f) => a + f.size, 0);
+  out.hits = hits; out.files = manifest.files.length; out.bytes = total;
   return out;
 }
 
@@ -758,7 +743,7 @@ try {
   pg.storage = store ? store.kind : "none";
   if (q.has("clearcache")) { try { await caches.delete(CACHE); } catch {} try { if (store) await store.clear(); } catch {} try { localStorage.removeItem("pg-explorer-open"); } catch {} }
   const a = await loadAssets();
-  pg.load = { ms: a.ms, hits: a.hits, files: a.files, zbytes: a.zbytes, bytes: a.bytes, perFile: a.perFile, navToAssets: Math.round(T0) };
+  pg.load = { ms: a.ms, hits: a.hits, files: a.files, bytes: a.bytes, perFile: a.perFile, navToAssets: Math.round(T0) };
   makeSession(a.tools);
   const tb = performance.now();
   for (const b of ["root", "gocache", "sample"]) loadBundle(S.fsys, a.bundles[b], b === "gocache" ? Date.now() : 0);

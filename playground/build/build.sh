@@ -2,7 +2,7 @@
 # build.sh builds the docgen playground.
 #
 #   build.sh all OUT           The whole playground: the Go toolchain, the bb
-#                              shell and commands, the zstd decoder, the GOROOT
+#                              shell and commands, the GOROOT
 #                              and GOCACHE bundles, docgen.wasm and the page.
 #   build.sh preview BASE OUT  docgen.wasm and the page of this checkout, with
 #                              the toolchain of BASE, an earlier output of
@@ -106,6 +106,19 @@ echo "build.sh: $mode with $gover in $goroot, work directory $work" >&2
 
 rm -rf "$work/raw" "$work/z" "$work/ov" "$work/licenses"
 mkdir -p "$work/raw" "$work/z" "$work/licenses"
+
+# The assets go out compressed with zstd -19, and the browser decodes them.
+# The release build needs the zstd command. A preview without it sends
+# docgen.wasm as it is, and Cloudflare compresses it on the fly.
+if command -v zstd >/dev/null 2>&1; then
+	have_zstd=1
+elif [ "$mode" = all ]; then
+	echo "build.sh: the zstd command is not on PATH; install zstd" >&2
+	exit 1
+else
+	have_zstd=0
+	echo "build.sh: no zstd command, so docgen.wasm goes out as it is" >&2
+fi
 python3 -I "$here/mkoverlay.py" "$goroot" "$work/ov"
 
 wasm() {
@@ -136,15 +149,6 @@ wasm_opt() {
 		mv "$work/opt-cache/$key.tmp" "$work/opt-cache/$key.wasm"
 	fi
 	cp "$work/opt-cache/$key.wasm" "$2"
-}
-
-# compress writes the zstd file $2 of the file $1.
-compress() {
-	if command -v zstd >/dev/null 2>&1; then
-		zstd -19 -T0 -q -f "$1" -o "$2"
-	else
-		(cd "$here/zstd" && go run . "$1" "$2")
-	fi
 }
 
 # wait_all waits for each PID in $pids and stops when one failed.
@@ -178,7 +182,7 @@ go_notices() {
 }
 
 build_docgen() {
-	# No wasm-opt: it takes about 90 s, and the zstd file of its output is larger.
+	# No wasm-opt: it takes about 90 s, and its output is larger after compression.
 	(cd "$root" && wasm -overlay "$work/ov/overlay.json" -o "$work/raw/docgen.wasm" .)
 	go_notices "$root" "$work/licenses/docgen.txt"
 }
@@ -207,8 +211,6 @@ build_toolchain() {
 	done
 	(cd "$pg/bb" && wasm -buildvcs=false -overlay "$work/ov/overlay.json" -o "$work/bin/bb.wasm" .) &
 	pids="$pids $!"
-	(cd "$pg/unzstd" && wasm -buildvcs=false -o "$work/bin/unzstd.wasm" .) &
-	pids="$pids $!"
 	go_notices "$pg/bb" "$work/licenses/bb.txt" &
 	pids="$pids $!"
 	npm_ci build "$here" &
@@ -219,7 +221,7 @@ build_toolchain() {
 	if [ -d "$work/opt-cache" ]; then
 		mv "$work/opt-cache" "$work/opt-cache.old"
 	fi
-	for t in go compile link asm vet bb unzstd; do
+	for t in go compile link asm vet bb; do
 		wasm_opt "$work/bin/$t.wasm" "$work/raw/$t.wasm" &
 		pids="$pids $!"
 	done
@@ -256,7 +258,7 @@ if [ "$mode" = all ]; then
 	build_docgen
 	build_toolchain
 	wait "$page_pid"
-	items="unzstd:decoder:wasm go:tool:wasm docgen:tool:wasm bb:tool:wasm compile:tool:wasm link:tool:wasm asm:tool:wasm vet:tool:wasm root:bundle:bin gocache:bundle:bin sample:bundle:bin"
+	items="go:tool:wasm docgen:tool:wasm bb:tool:wasm compile:tool:wasm link:tool:wasm asm:tool:wasm vet:tool:wasm root:bundle:bin gocache:bundle:bin sample:bundle:bin"
 else
 	build_page &
 	page_pid=$!
@@ -265,31 +267,36 @@ else
 	items="docgen:tool:wasm"
 fi
 
-pids=
-for it in $items; do
-	name=${it%%:*}
-	kind=${it#*:}
-	kind=${kind%%:*}
-	if [ "$kind" != decoder ]; then
-		compress "$work/raw/$name.${it##*:}" "$work/z/$name.${it##*:}.zst" &
-		pids="$pids $!"
-	fi
-done
-wait_all
-
 rm -rf "$out"
 mkdir -p "$out"
 cp "$pg/web/index.html" "$pg/web/playground.mjs" "$pg/web/explorer.mjs" "$pg/web/session.mjs" "$pg/web/kernel.mjs" \
-	"$pg/web/proc.js" "$pg/web/unzstd-worker.js" "$work/ov/wasm_exec.js" "$work/editor-bundle.js" "$out/"
-# The licenses of Go (the tools and unzstd), bb, docgen and the editor bundle.
+	"$pg/web/proc.js" "$work/ov/wasm_exec.js" "$work/editor-bundle.js" "$out/"
+if [ "$have_zstd" = 1 ]; then
+	pids=
+	for it in $items; do
+		f=${it%%:*}.${it##*:}
+		zstd -19 -T0 -q -f "$work/raw/$f" -o "$work/z/$f.zst" &
+		pids="$pids $!"
+	done
+	wait_all
+fi
+
+# The licenses of Go (the tools), bb, docgen and the editor bundle.
 mkdir -p "$out/licenses"
 if [ "$mode" = all ]; then
 	cp "$goroot/LICENSE" "$out/licenses/go.txt"
-	cp "$work/licenses/bb.txt" "$out/licenses/bb.txt"
+	cp "$work/licenses/bb.txt" "$out/licenses/"
 else
 	cp "$base/licenses/go.txt" "$base/licenses/bb.txt" "$out/licenses/"
 fi
 cp "$work/licenses/docgen.txt" "$work/licenses/editor-bundle.txt" "$out/licenses/"
 # shellcheck disable=SC2086
 node "$here/mkmanifest.mjs" "$out" "$work" "${base:-}" "$gover" "$version" "$commit" $items
+# Cloudflare Pages serves no file over 25 MiB.
+big=$(find "$out" -type f -size +25600k)
+if [ -n "$big" ]; then
+	echo "build.sh: these files are over 25 MiB, the file limit of Cloudflare Pages:" >&2
+	echo "$big" >&2
+	exit 1
+fi
 echo "build.sh: wrote $out" >&2
