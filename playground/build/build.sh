@@ -97,8 +97,8 @@ case $goroot in
 esac
 echo "build.sh: $mode with $gover in $goroot, work directory $work" >&2
 
-rm -rf "$work/raw" "$work/z" "$work/ov"
-mkdir -p "$work/raw" "$work/z"
+rm -rf "$work/raw" "$work/z" "$work/ov" "$work/licenses"
+mkdir -p "$work/raw" "$work/z" "$work/licenses"
 python3 -I "$here/mkoverlay.py" "$goroot" "$work/ov"
 
 wasm() {
@@ -153,13 +153,22 @@ build_page() {
 	npm_ci web "$pg/web"
 	cp "$pg/web/editor.entry.js" "$work/npm-web/"
 	(cd "$work/npm-web" && node_modules/.bin/esbuild editor.entry.js --bundle --format=esm --minify --log-level=warning \
-		--banner:js="/* CodeMirror 6 and markdown-it 15 with their dependencies, MIT licenses; see licenses/. */" \
-		--outfile="$work/editor-bundle.js")
+		--banner:js="/* CodeMirror 6 and markdown-it 15 with their dependencies; see licenses/editor-bundle.txt. */" \
+		--metafile="$work/editor-meta.json" --outfile="$work/editor-bundle.js")
+	node "$here/notices.mjs" npm "$work/editor-meta.json" "$work/npm-web/node_modules" >"$work/licenses/editor-bundle.txt"
+}
+
+# go_notices writes the license notices of the modules of the js/wasm build of
+# the main package in directory $1 to the file $2.
+go_notices() {
+	(cd "$1" && GOOS=js GOARCH=wasm go list -deps -f '{{with .Module}}{{if not .Main}}{{.Path}} {{.Version}} {{.Dir}}{{end}}{{end}}' .) |
+		sort -u | node "$here/notices.mjs" go >"$2"
 }
 
 build_docgen() {
 	# No wasm-opt: it takes about 90 s, and the zstd file of its output is larger.
 	(cd "$root" && wasm -overlay "$work/ov/overlay.json" -o "$work/raw/docgen.wasm" .)
+	go_notices "$root" "$work/licenses/docgen.txt"
 }
 
 build_toolchain() {
@@ -169,7 +178,7 @@ build_toolchain() {
 	(cd "$pg/bb" && go mod download)
 	uroot=$(cd "$pg/bb" && go list -m -f '{{.Dir}}' github.com/u-root/u-root)
 	# shellcheck disable=SC2046
-	python3 -I "$pg/bb/vendor-uroot.py" "$uroot" "$work/ucmd" $(cd "$pg/bb/ucmd" && ls)
+	python3 -I "$pg/bb/vendor-uroot.py" "$uroot" "$work/ucmd" $(cd "$pg/bb/ucmd" && ls -d */ | tr -d /)
 	if ! diff -r "$work/ucmd" "$pg/bb/ucmd" >&2; then
 		echo "build.sh: playground/bb/ucmd differs from the output of vendor-uroot.py; run it again" >&2
 		exit 1
@@ -187,6 +196,8 @@ build_toolchain() {
 	(cd "$pg/bb" && wasm -buildvcs=false -overlay "$work/ov/overlay.json" -o "$work/bin/bb.wasm" .) &
 	pids="$pids $!"
 	(cd "$pg/unzstd" && wasm -buildvcs=false -o "$work/bin/unzstd.wasm" .) &
+	pids="$pids $!"
+	go_notices "$pg/bb" "$work/licenses/bb.txt" &
 	pids="$pids $!"
 	npm_ci build "$here" &
 	pids="$pids $!"
@@ -253,7 +264,15 @@ rm -rf "$out"
 mkdir -p "$out"
 cp "$pg/web/index.html" "$pg/web/playground.mjs" "$pg/web/explorer.mjs" "$pg/web/session.mjs" "$pg/web/kernel.mjs" \
 	"$pg/web/proc.js" "$pg/web/unzstd-worker.js" "$work/ov/wasm_exec.js" "$work/editor-bundle.js" "$out/"
-cp -R "$pg/web/licenses" "$out/licenses"
+# The licenses of Go (the tools and unzstd), bb, docgen and the editor bundle.
+mkdir -p "$out/licenses"
+if [ "$mode" = all ]; then
+	cp "$goroot/LICENSE" "$out/licenses/go.txt"
+	cp "$work/licenses/bb.txt" "$out/licenses/bb.txt"
+else
+	cp "$base/licenses/go.txt" "$base/licenses/bb.txt" "$out/licenses/"
+fi
+cp "$work/licenses/docgen.txt" "$work/licenses/editor-bundle.txt" "$out/licenses/"
 # shellcheck disable=SC2086
 node "$here/mkmanifest.mjs" "$out" "$work" "${base:-}" "$gover" "$version" "$commit" $items
 echo "build.sh: wrote $out" >&2

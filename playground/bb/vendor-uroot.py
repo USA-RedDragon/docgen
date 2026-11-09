@@ -6,13 +6,17 @@ Usage: python3 -I vendor-uroot.py <u-root dir> <out dir> <name>...
 
 After a change of the u-root version in go.mod, run it again from playground/bb:
 
-  python3 -I vendor-uroot.py "$(go list -m -f "{{.Dir}}" github.com/u-root/u-root)" ucmd $(ls ucmd)
+  python3 -I vendor-uroot.py "$(go list -m -f "{{.Dir}}" github.com/u-root/u-root)" ucmd $(cd ucmd && ls -d */ | tr -d /)
+
+It also copies the LICENSE file of u-root into the out dir.
 
 build.sh stops when ucmd differs from its output.
 """
-import os, re, sys
+import os, re, shutil, sys
 
 src, out, names = sys.argv[1], sys.argv[2], sys.argv[3:]
+os.makedirs(out, exist_ok=True)
+shutil.copyfile(os.path.join(src, "LICENSE"), os.path.join(out, "LICENSE"))
 FUNCS = "Parse|Bool|Int|String|Duration|BoolVar|IntVar|StringVar|DurationVar|Int64|Int64Var|Uint|UintVar|Uint64|Uint64Var|Float64|Float64Var|Var|Func|BoolFunc|TextVar|Args|Arg|NArg|NFlag|Usage|PrintDefaults|Lookup|Set|Visit|VisitAll|CommandLine|Parsed"
 for n in names:
     d = os.path.join(src, "cmds/core", n)
