@@ -3,10 +3,11 @@
 //   --goroot and --stddirs add the Go source of each directory in the list at /goroot, without
 //   tests and files of other systems, and the GOROOT files that cmd/go reads.
 //   --mods adds each directory at <prefix>/<base name of the directory>.
-// Format: u32 length of the header, the JSON header {files: [[path, offset, length, mtimeMs]]},
-// then the bytes of the files. Each file has the mtime 2000-01-01, so the bundle is reproducible.
+// The format is the one of web/bundle.mjs. Each file has the mtime 2000-01-01, so the bundle is
+// reproducible.
 import fs from "node:fs";
 import path from "node:path";
+import { encodeBundle } from "../web/bundle.mjs";
 
 const [out, ...flags] = process.argv.slice(2);
 const opt = Object.fromEntries(flags.map(f => { const [k, ...v] = f.replace(/^--/, "").split("="); return [k, v.join("=")]; }));
@@ -36,10 +37,6 @@ if (opt.goroot) {
   for (const n of fs.readdirSync(path.join(root, "pkg/include")).sort()) add("/goroot/pkg/include/" + n, path.join(root, "pkg/include", n));
 }
 for (const m of (opt.mods || "").split(",").filter(Boolean)) walkAdd(m, `${opt.prefix || "/work"}/${path.basename(m)}`);
-let off = 0;
-const head = { files: files.map(([p, d]) => { const r = [p, off, d.length, MTIME]; off += d.length; return r; }) };
-const hb = Buffer.from(JSON.stringify(head));
-const lb = Buffer.alloc(4);
-lb.writeUInt32LE(hb.length);
-fs.writeFileSync(out, Buffer.concat([lb, hb, ...files.map(f => f[1])]));
-console.log(`${out}: ${files.length} files, ${off} bytes of content`);
+fs.writeFileSync(out, encodeBundle({}, files.map(([dst, data]) => [dst, data, MTIME])));
+const contentLength = files.reduce((total, [, data]) => total + data.length, 0);
+console.log(`${out}: ${files.length} files, ${contentLength} bytes of content`);

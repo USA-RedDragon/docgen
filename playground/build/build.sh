@@ -270,7 +270,8 @@ fi
 rm -rf "$out"
 mkdir -p "$out"
 cp "$pg/web/index.html" "$pg/web/playground.mjs" "$pg/web/explorer.mjs" "$pg/web/session.mjs" "$pg/web/kernel.mjs" \
-	"$pg/web/abi.mjs" "$pg/web/proc.mjs" "$work/ov/wasm_exec.js" "$work/editor-bundle.js" "$out/"
+	"$pg/web/abi.mjs" "$pg/web/paths.mjs" "$pg/web/bundle.mjs" "$pg/web/dom.mjs" \
+	"$pg/web/proc.mjs" "$work/ov/wasm_exec.js" "$work/editor-bundle.js" "$out/"
 if [ "$have_zstd" = 1 ]; then
 	pids=
 	for it in $items; do
