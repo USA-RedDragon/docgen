@@ -151,11 +151,11 @@ export async function explorerSteps(t) {
   check("svg: source ends with </svg>", !!m);
   await ff.js(`window.__pg.replace("docs/states/machine-lamp.svg", "</svg>", '<rect x="0" y="0" width="40" height="40" fill="#e11"/></svg>')`);
   await until(`window.__pg.sideImages().length && window.__pg.sideImages()[0].src !== ${JSON.stringify(before.src)} && window.__pg.sideImages()[0].w > 0`);
-  check("svg: the side preview follows an edit of the source", true);
+  check("svg: the side preview updates after an edit of the source", true);
   await shot("1280-light-svg-side");
   await ff.js("document.getElementById('sideclose').click()");
 
-  // 6. Markdown: source, preview, side preview that follows edits.
+  // 6. Markdown: source, preview, and a side preview that updates after edits.
   await h.click(rowSel("docs/lamp.md"));
   const mdc = await cur();
   check("md: the explorer opens the Markdown source", mdc.kind === "file" && mdc.code && mdc.lang === "Markdown", mdc);
@@ -167,7 +167,7 @@ export async function explorerSteps(t) {
   const r0 = await ff.js("return window.__pg.renders");
   await ff.js(`window.__pg.replace("docs/lamp.md", "# The lamp", "# The lamp, edited live")`);
   await until("window.__pg.sideText().includes('The lamp, edited live')");
-  check("md: the side preview follows edits", true, { renders: (await ff.js("return window.__pg.renders")) - r0 });
+  check("md: the side preview updates after edits", true, { renders: (await ff.js("return window.__pg.renders")) - r0 });
   await shot("1280-light-md-side");
   await h.click("#openpv");
   check("md: the preview tab shows the edit", (await ff.js("return window.__pg.previewText()")).includes("The lamp, edited live"));
@@ -189,7 +189,7 @@ export async function explorerSteps(t) {
   const mv = await h.drag(rowSel("machine/port.go"), rowSel("docs"));
   check("dnd: a file moves to another folder", mv.accepted && await exists("docs/port.go") && !(await exists("machine/port.go")), mv);
   const tp = await tabsNow();
-  check("dnd: the open tab follows the move", tp.some(x => x.path === "dg/docs/port.go") && !tp.some(x => x.path === "dg/machine/port.go"), tp);
+  check("dnd: the open tab gets the new path after the move", tp.some(x => x.path === "dg/docs/port.go") && !tp.some(x => x.path === "dg/machine/port.go"), tp);
   check("dnd: badge U on the moved file", (await ff.js("return window.__pg.marks()"))["dg/docs/port.go"] === "U" && await ff.js(`return document.querySelector(arguments[0]).textContent.endsWith("U")`, [rowSel("docs/port.go")]));
   const self = await h.drag(rowSel("docs"), rowSel("docs/states"));
   check("dnd: a folder cannot move into itself", !self.accepted && await exists("docs/lamp.md") && (await notes()).at(-1).includes("into itself"), { self, note: (await notes()).at(-1) });
@@ -205,13 +205,13 @@ export async function explorerSteps(t) {
   const errSlash = await tryName("a/b.go"), errDots = await tryName(".."), errEmpty = await tryName("  ");
   await h.keys(K.Enter);
   const stillEditing = await ff.js("return !!document.querySelector('.ex-input')");
-  check("rename: refuses a duplicate, a slash, .. and an empty name, inline", errDup.includes("already exists") && errSlash.includes("slash") && errDots.includes("not valid") && errEmpty.includes("must be provided") && stillEditing, { errDup, errSlash, errDots, errEmpty, stillEditing });
+  check("rename: a duplicate, a slash, .. and an empty name show an inline error", errDup.includes("already exists") && errSlash.includes("slash") && errDots.includes("not valid") && errEmpty.includes("must be provided") && stillEditing, { errDup, errSlash, errDots, errEmpty, stillEditing });
   await tryName("plug.go");
   await h.keys(K.Enter);
   await until("!document.querySelector('.ex-input')");
   const tr = await tabsNow();
   check("rename: F2 renames the file in the memfs", await exists("docs/plug.go") && !(await exists("docs/port.go")));
-  check("rename: the open tab follows the rename", tr.some(x => x.path === "dg/docs/plug.go") && !tr.some(x => x.path === "dg/docs/port.go"), tr);
+  check("rename: the open tab gets the new path after the rename", tr.some(x => x.path === "dg/docs/plug.go") && !tr.some(x => x.path === "dg/docs/port.go"), tr);
   await ff.js(`[...document.querySelectorAll(".vs-tab")].find(t => t.dataset.path.endsWith("plug.go")).querySelector("button").click()`);
   check("rename: the editor of the renamed file still writes to it", (await cur()).lang === "Go" && await ff.js(`window.__pg.cursorEnd(); return true`) && (await ff.js(`window.__pg.replace("docs/plug.go", "package machine", "package machine // renamed"); return window.__pg.text("docs/plug.go").includes("// renamed")`)));
 
@@ -238,7 +238,7 @@ export async function explorerSteps(t) {
   await until("document.getElementById('dlg').open");
   const dd = await h.dialog();
   await shot("1280-light-explorer-delete-confirm");
-  check("menu: Delete asks in the page", dd && dd.title === "Delete notes copy.md?", dd);
+  check("menu: Delete opens a confirmation dialog in the page", dd && dd.title === "Delete notes copy.md?", dd);
   await h.click("#dlgok");
   await until("!document.getElementById('dlg').open");
   check("menu: Delete removes the file after the confirm", !(await exists("docs/notes copy.md")));

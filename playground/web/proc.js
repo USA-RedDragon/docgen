@@ -43,7 +43,7 @@
   const simple = (op, conv = x => x) => (...a) => { const cb = a.pop(); let r; try { r = conv(call(op, a).r); } catch (e) { return later(cb, e); } later(cb, null, r); };
   let cwd = "/";
   // Read-only GOROOT image shared by all processes: open, stat, read, readdir and close of /goroot paths
-  // run in the Worker with no RPC. The kernel refuses writes under /goroot, so the image stays exact.
+  // run in the Worker with no RPC. A write under /goroot gets an error from the kernel, so the image stays exact.
   let ro = null, roData = null, nextLocal = 1 << 20;
   const localFds = new Map();
   const norm = p => {

@@ -1,6 +1,6 @@
 // The explorer of the playground page: a tree of one memfs folder, after the Explorer of VS Code.
 // It does the file operations (new, rename, move, duplicate, delete, upload, download, copy path) on the memfs
-// and gives the changed paths to the page, so that tabs, badges and storage follow.
+// and gives the changed paths to the page, which then updates the tabs, the badges and the storage.
 const NS = "http://www.w3.org/2000/svg";
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const byName = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
@@ -26,7 +26,7 @@ export function icon(id, cls = "ex-icon") {
   return s;
 }
 
-/** longPress calls fn(x, y, event) when a touch or pen holds still on el for 500 ms. It returns a function that tells if a long press just happened. */
+/** longPress calls fn(x, y, event) when a touch or pen holds still on el for 500 ms. It returns a function that returns true right after a long press. */
 export function longPress(el, fn) {
   let t = 0, x = 0, y = 0, at = 0;
   const stop = () => clearTimeout(t);
@@ -72,8 +72,8 @@ export function zip(entries) {
 /**
  * createExplorer shows the folder o.root of o.fsys in o.tree. The page gives these functions:
  * open(path, how) opens a file ("file", "preview" or "side"); changes() returns a Map of path to "M" or "U";
- * edited(path) tells if a file differs from the starter; moved(pairs) and removed(paths, edited) follow file operations;
- * changed() is called after each change of the memfs; busy() tells if a run is going; note(text) shows a message;
+ * edited(path) returns true when a file differs from the starter; moved(pairs) and removed(paths, edited) run after file operations;
+ * changed() is called after each change of the memfs; busy() returns true during a run; note(text) shows a message;
  * ask({title, text, list, ok}) resolves to true on OK; reset() restores the sample; showTree() makes the tree visible.
  */
 export function createExplorer(o) {
