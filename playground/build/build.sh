@@ -7,6 +7,7 @@
 #   build.sh preview BASE OUT  docgen.wasm and the page of this checkout, with
 #                              the toolchain of BASE, an earlier output of
 #                              build.sh all. The Go version is the one of BASE.
+#   build.sh gover             Print the Go version of go.mod, such as go1.27.0.
 #
 # OUT is a directory that the playground page serves from. The release
 # workflow runs "all" on a v* tag, and cloudflare.sh runs "preview" for
@@ -22,10 +23,11 @@ mode=${1:-}
 case $mode in
 all) [ $# -eq 2 ] || mode= ;;
 preview) [ $# -eq 3 ] || mode= ;;
+gover) [ $# -eq 1 ] || mode= ;;
 *) mode= ;;
 esac
 if [ -z "$mode" ]; then
-	echo "usage: build.sh all OUT | build.sh preview BASE OUT" >&2
+	echo "usage: build.sh all OUT | build.sh preview BASE OUT | build.sh gover" >&2
 	exit 2
 fi
 
@@ -33,7 +35,9 @@ here=$(cd "$(dirname "$0")" && pwd -P)
 pg=$(dirname "$here")
 root=$(dirname "$pg")
 abs() (mkdir -p "$1" && cd "$1" && pwd -P)
-if [ "$mode" = all ]; then
+if [ "$mode" = gover ]; then
+	:
+elif [ "$mode" = all ]; then
 	out=$(abs "$2")
 else
 	base=$(cd "$2" && pwd -P)
@@ -63,7 +67,10 @@ gomod_go() {
 	echo "$v"
 }
 
-if [ "$mode" = all ]; then
+if [ "$mode" = gover ]; then
+	gomod_go
+	exit 0
+elif [ "$mode" = all ]; then
 	gover=$(gomod_go)
 else
 	gover=$(sed -n 's/^ *"go": "\(go[0-9.]*\)".*/\1/p' "$base/manifest.json")

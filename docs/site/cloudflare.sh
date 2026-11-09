@@ -22,11 +22,11 @@ else
 	git fetch --quiet --tags "$remote"
 fi
 
-# /playground/ is the playground of the latest release. On main,
+# /playground/ is the playground of the newest release that has one. On main,
 # /main/playground/ and, on another branch, /playground/ is the playground of
-# this checkout with the toolchain of the latest release. site.sh does not
-# stop the build: on an error it puts a page there that states that the
-# playground comes with the next release.
+# this checkout with the toolchain of that release. site.sh does not stop the
+# build: on an error it puts a page there that states that the playground is
+# not available.
 if [ "${CF_PAGES_BRANCH:-}" = main ]; then
 	docs/site/build.sh --versions
 	playground/site.sh release artifacts/docs-site/playground

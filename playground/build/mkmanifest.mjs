@@ -3,10 +3,11 @@
 //   Each item is WORK/raw/NAME.EXT, compressed in WORK/z/NAME.EXT.zst. The decoder item is not
 //   compressed. The name of each asset holds the start of its SHA-256, so a server can cache it
 //   for a long time. BASE, when not empty, is an earlier output: its items that are not in the
-//   list stay, with their assets.
+//   list stay, with their assets. checkmanifest.mjs checks the manifest of BASE first.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { check } from "./checkmanifest.mjs";
 
 const [out, work, base, go, version, commit, ...items] = process.argv.slice(2);
 const assets = path.join(out, "assets");
@@ -15,7 +16,7 @@ const order = ["go", "docgen", "bb", "compile", "link", "asm", "vet", "root", "g
 const files = new Map();
 let decoder = null;
 if (base) {
-  const m = JSON.parse(fs.readFileSync(path.join(base, "manifest.json"), "utf8"));
+  const m = check(base);
   if (m.go !== go) throw new Error(`${base}/manifest.json is for ${m.go}, not ${go}`);
   const keep = url => fs.copyFileSync(path.join(base, url), path.join(out, url));
   for (const f of m.files) { files.set(f.name, f); keep(f.url); }
