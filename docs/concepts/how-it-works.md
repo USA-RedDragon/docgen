@@ -10,10 +10,10 @@ The markers are HTML comments, so they do not show when the page renders. The re
 
 ## One run
 
-1. docgen gets the repository root and reads the module path from `go.mod`.
+1. docgen gets the repository root: the nearest directory with a `.docgen.yaml` file or a `.git` entry.
 2. It parses the markers of each scanned page. A marker in code is text, so you can show marker syntax in a page. See [Marker rules](../reference/markers.md#marker-rules).
-3. It loads the package of each marker, with its tests.
-4. It runs each example program, each Example and each state recording in the markers.
+3. It loads the code of each marker. A `pkg=` marker loads the Go package with its tests, with the module path from `go.mod`. A `crate=` marker reads the Cargo workspace. See [Rust pipeline](#rust-pipeline).
+4. It runs what the markers need: each example program, each Example and each state recording of Go, and each value test, example, binary and doctest of Rust.
 5. It computes the body of each marker and compares it with the page.
 6. `update` writes each change. `check` writes nothing and reports each change.
 
@@ -25,9 +25,39 @@ Facts come from the code and from the tests, and not from doc text:
 
 - The default of a config field comes from the statement that assigns it.
 - A transition comes from a call that a test made.
-- The output of an Example comes from the comment that `go test` checks.
+- The output of an Example comes from the comment that `go test` checks. The output of a Rust doctest comes from the code that `cargo test --doc` checks.
+- A Rust constant comes from a test that prints it, so `MAX_JOBS / 4` is the number, not the expression.
 
 A fact with no source in the code or the tests is not in the output.
+
+## Go and Rust side by side
+
+| | Go | Rust |
+|---|---|---|
+| Marker argument | `pkg=` | `crate=` |
+| Unit | A package of the module | A package of the Cargo workspace |
+| Reads the code with | The `go` command and its type checker | A helper that uses `syn` |
+| Values from | The type checker, and `go test` for a value that needs code | `cargo test --locked` on a copy of the workspace |
+| Programs | `go run` of a directory | A `cargo` build of a binary or example |
+| Links | pkg.go.dev | docs.rs |
+| Settings | `tags`, `jobs` | `features`, `all-features`, `no-default-features`, `jobs` |
+| Needs on the `PATH` | `go` | `cargo` |
+
+A repository can mix both. A page can hold markers for both kinds.
+
+## Rust pipeline
+
+A Rust marker reads the Cargo workspace of the module directory, and runs your `cargo` from the `PATH`.
+
+This is the order of a run that has Rust markers:
+
+1. docgen reads the workspace once, with `cargo metadata`.
+2. The helper reads the module tree of a crate: each `mod`, with inline modules, `foo.rs`, `foo/mod.rs` and `#[path]`. Your cargo builds the helper once, with `cargo build --release --locked`, and docgen caches it in the user cache directory for each version of the helper and of rustc. The helper needs Rust 1.71 or later.
+3. A marker that reads the source, such as `docgen:doc` or `docgen:errors`, takes its text from the helper.
+4. A marker that needs a value gets it from the value test: docgen copies the workspace, with no `target` directory, adds a `#[cfg(test)]` module with one test to each module with a value, and runs `cargo test --locked` once for each crate. Private items work, and your files are not changed.
+5. Binaries and examples are built once for each set of features, into the temporary directory of the run.
+
+Every cargo command passes `--locked`, so a run never changes `Cargo.lock`. The cargo commands run with your environment, so `CARGO_HOME`, a registry mirror and `RUSTUP_TOOLCHAIN` work as they do for cargo. Choose Cargo features with the `features` settings. For the full rules, see [Rust crates](../reference/markers.md#rust-crates), [Cargo features](../reference/markers.md#cargo-features) and [Rust links](../reference/markers.md#rust-links).
 
 ## Defaults
 
@@ -81,12 +111,18 @@ A machine of a Rust crate has its own rules, which docgen:states lists.
 - A program from `docgen:usage` or `exec=` that starts its own session keeps running after an interrupt, because the signal goes to the process group.
 - An inline marker at the start of a line starts an HTML block in Markdown, so its backticks show as text. Put text before the marker.
 - The body of a block marker gets no prefix, so a block marker in a list or a blockquote has its generated body outside the list or the quote.
+- A Rust crate that does not build in test mode with its dev-dependencies fails the markers that need a value, a doctest or a state run. The markers that read only the source still work.
+- A cold build of a crate with many dependencies can take minutes. Each cargo command stops after 10 minutes.
 - `docgen:errors` lists only the names that resolve. A doc comment that names an error that does not exist adds no row and no error.
 
 ## Network and resources
+
+For Go:
 
 <!-- docgen:doc pkg=. section=Environment -->
 docgen runs go with your environment, so `GOPROXY`, `GOWORK` and `GOFLAGS` work as they do for any go command. The go command downloads missing modules at the versions that `go.mod` and `go.sum` pin. Set `GOPROXY=off` to forbid the network. `jobs` adds `-p` to `GOFLAGS` and `tags` adds `-tags`, joined with the value of `go env -w GOFLAGS`.
 
 `GOTMPDIR` is a new directory for each run, below docgen in the user cache directory, so that builds are not on a tmpfs. docgen removes it at the end of the run, also after an interrupt, so a go command that the interrupt ends leaves no build directory.
 <!-- /docgen:doc -->
+
+For Rust, cargo downloads crates at the versions of `Cargo.lock`, and `--locked` makes an out-of-date lock file an error. Builds go into the temporary directory of the run, never into your `target` directory, and the run removes it at the end. `jobs` sets `CARGO_BUILD_JOBS`. With no `cargo` on the `PATH`, the markers that read only the source still work when `DOCGEN_RUST_HELPER` names a prebuilt helper, as in the playground.
