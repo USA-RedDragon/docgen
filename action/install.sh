@@ -4,8 +4,10 @@
 #   install.sh resolve           Write the install plan to $GITHUB_OUTPUT.
 #   install.sh install           Install docgen by the plan, and write its path.
 #   install.sh download VER DIR  Download and verify the release archive.
+#   install.sh rust              Write the plan of the Rust caches to $GITHUB_OUTPUT.
 #
 # resolve reads INPUT_VERSION, ACTION_REF, ACTION_REPOSITORY and ACTION_PATH.
+# rust reads INPUT_RUST_CACHE, ACTION_PATH and the current directory.
 # install reads MODE, VERSION, FALLBACK, DIR and ACTION_PATH. download exits 1
 # on a bad checksum and 2 when no release archive is available, so that install
 # builds docgen instead.
@@ -196,9 +198,73 @@ install() {
   echo "bin=$bin" >>"$GITHUB_OUTPUT"
 }
 
+# user_cache_dir prints what os.UserCacheDir of Go gives, which is where docgen
+# keeps the build of its Rust helper.
+user_cache_dir() {
+  case ${RUNNER_OS:-} in
+  Windows) printf '%s' "${LOCALAPPDATA:-}" ;;
+  macOS) printf '%s/Library/Caches' "$HOME" ;;
+  *)
+    if [[ ${XDG_CACHE_HOME:-} == /* ]]; then
+      printf '%s' "$XDG_CACHE_HOME"
+    else
+      printf '%s/.cache' "$HOME"
+    fi
+    ;;
+  esac
+}
+
+# native prints a path in the form that actions/cache reads.
+native() {
+  if command -v cygpath >/dev/null; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+
+# rust decides whether to cache the Rust helper and the cargo registry. The
+# helper source decides its key, as the source of the action that the checkout
+# at ACTION_PATH holds; the cache directory also keys each build by its own
+# hash, so a key that is too coarse costs a rebuild and nothing else.
+rust() {
+  local want=${INPUT_RUST_CACHE:-auto} on=false
+  case $want in
+  true | false | auto) ;;
+  *)
+    echo "::error::rust-cache is '$want'; it must be auto, true or false."
+    exit 1
+    ;;
+  esac
+  if [ "$want" != false ]; then
+    if ! command -v rustc >/dev/null; then
+      if [ "$want" = true ]; then
+        echo "::warning::rust-cache is true, but rustc is not on PATH, so nothing is cached. Set rust-toolchain, or add a Rust setup step before this one."
+      fi
+    elif [ "$want" = true ] || [ -n "$(find . -maxdepth 3 \( -name node_modules -o -name target -o -name .git \) -prune -o -name Cargo.toml -print -quit)" ]; then
+      on=true
+    fi
+  fi
+  {
+    echo "enabled=$on"
+    if [ "$on" = true ]; then
+      local src=$ACTION_PATH/internal/rustsrc/helper srchash=none
+      if [ -f "$src/Cargo.toml" ]; then
+        srchash=$(
+          cd "$src"
+          for f in Cargo.toml Cargo.lock src/main.rs; do
+            if [ -f "$f" ]; then printf '%s %s\n' "$(sha256 "$f")" "$f"; fi
+          done | sha256
+        )
+      fi
+      local cargo_home=${CARGO_HOME:-$HOME/.cargo}
+      echo "helper_dir=$(native "$(user_cache_dir)/docgen/rust-helper")"
+      echo "helper_key=docgen-rust-helper-${RUNNER_OS:-}-${RUNNER_ARCH:-}-$srchash-$(rustc -vV | sha256)"
+      echo "cargo_home=$(native "$cargo_home")"
+    fi
+  } >>"$GITHUB_OUTPUT"
+}
+
 case ${1:-} in
+rust) rust ;;
 resolve) resolve ;;
 install) install ;;
 download) download "$2" "$3" ;;
-*) echo "usage: install.sh resolve | install | download VERSION DIR" >&2; exit 2 ;;
+*) echo "usage: install.sh resolve | install | download VERSION DIR | rust" >&2; exit 2 ;;
 esac

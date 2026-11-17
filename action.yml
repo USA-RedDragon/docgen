@@ -35,6 +35,14 @@ inputs:
     description: A docgen version, such as v0.1.0 or latest. A release tag downloads the release binary, and another version installs with go install. Empty uses the ref of the action.
     required: false
     default: ''
+  rust-toolchain:
+    description: A Rust toolchain to install with dtolnay/rust-toolchain, such as stable or 1.85. Empty installs none, so cargo must be on PATH for markers with crate=.
+    required: false
+    default: ''
+  rust-cache:
+    description: Cache the build of the docgen Rust helper and the cargo registry. auto caches when rustc is on PATH and the working directory has a Cargo.toml up to three levels down; true and false force it.
+    required: false
+    default: auto
   comment:
     description: With check on a pull_request event, post or update one comment on the pull request with the result. The job needs pull-requests write.
     required: false
@@ -98,6 +106,41 @@ runs:
       with:
         path: ${{ steps.find.outputs.dir }}
         key: ${{ steps.find.outputs.key }}
+
+    # Nothing installs Rust unless rust-toolchain asks for it.
+    - name: Set up Rust
+      if: inputs.rust-toolchain != ''
+      uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      with:
+        toolchain: ${{ inputs.rust-toolchain }}
+
+    - name: Plan the Rust caches
+      id: rust
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_RUST_CACHE: ${{ inputs.rust-cache }}
+      run: '"$ACTION_PATH/action/install.sh" rust'
+
+    # The helper that reads Rust code builds once per helper source and rustc.
+    # Its directory holds every build, so the key has no more than that.
+    - name: Cache the docgen Rust helper
+      if: steps.rust.outputs.enabled == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.rust.outputs.helper_dir }}
+        key: ${{ steps.rust.outputs.helper_key }}
+
+    - name: Cache the cargo registry
+      if: steps.rust.outputs.enabled == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ steps.rust.outputs.cargo_home }}/registry/index
+          ${{ steps.rust.outputs.cargo_home }}/registry/cache
+          ${{ steps.rust.outputs.cargo_home }}/git/db
+        key: docgen-cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: docgen-cargo-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Run docgen
       id: docgen

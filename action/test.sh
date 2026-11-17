@@ -219,6 +219,68 @@ else
   pass "a release tag with no release builds from source"
 fi
 
+# rust INPUT WITH_RUSTC WITH_MANIFEST WANT_ENABLED. A fake rustc prints a fixed
+# version, and a fake project has a Cargo.toml or not.
+mkdir -p "$work/rustbin" "$work/proj-rust/crates/a" "$work/proj-go" "$work/proj-deep/a/b/c/d"
+printf '#!/bin/sh\necho "rustc 1.99.0"\necho "release: 1.99.0"\n' >"$work/rustbin/rustc"
+chmod +x "$work/rustbin/rustc"
+touch "$work/proj-rust/crates/a/Cargo.toml" "$work/proj-deep/a/b/c/d/Cargo.toml"
+nobin=$work/nobin
+mkdir -p "$nobin"
+for t in bash env find tr cut awk sort sha256sum shasum head mktemp cat; do
+  p=$(command -v "$t" || true)
+  if [ -n "$p" ]; then ln -sf "$p" "$nobin/$t"; fi
+done
+check_rust() {
+  local input=$1 rustc=$2 proj=$3 want=$4 out=$work/rust.out
+  local path=$nobin
+  if [ "$rustc" = yes ]; then path=$work/rustbin:$nobin; fi
+  : >"$out"
+  set +e
+  (cd "$work/$proj" && GITHUB_OUTPUT=$out PATH=$path RUNNER_OS=Linux RUNNER_ARCH=X64 HOME=$work/home \
+    XDG_CACHE_HOME= CARGO_HOME= ACTION_PATH=$here/.. INPUT_RUST_CACHE=$input "$nobin/bash" "$install" rust >"$work/out" 2>&1)
+  local rc=$?
+  set -e
+  local got
+  got=$(grep '^enabled=' "$out" || true)
+  if [ "$rc" != 0 ] || [ "$got" != "enabled=$want" ]; then
+    fail "rust cache '$input' rustc=$rustc project=$proj: exit $rc, '$got', want enabled=$want: $(cat "$work/out")"
+  else
+    pass "rust cache '$input' rustc=$rustc project=$proj: $want"
+  fi
+}
+check_rust auto yes proj-rust true
+check_rust auto yes proj-go false
+check_rust auto yes proj-deep false
+check_rust auto no proj-rust false
+check_rust false yes proj-rust false
+check_rust true yes proj-go true
+check_rust true no proj-go false
+
+# The plan names the helper directory of the user cache, a key with the helper
+# source and rustc, and the cargo home.
+out=$work/rust.out
+: >"$out"
+(cd "$work/proj-rust" && PATH=$work/rustbin:$PATH GITHUB_OUTPUT=$out RUNNER_OS=Linux RUNNER_ARCH=X64 HOME=$work/home \
+  XDG_CACHE_HOME= CARGO_HOME= ACTION_PATH=$here/.. INPUT_RUST_CACHE=auto "$install" rust >"$work/out" 2>&1)
+if ! grep -qx "helper_dir=$work/home/.cache/docgen/rust-helper" "$out" ||
+  ! grep -qE '^helper_key=docgen-rust-helper-Linux-X64-[0-9a-f]{64}-[0-9a-f]{64}$' "$out" ||
+  ! grep -qx "cargo_home=$work/home/.cargo" "$out"; then
+  fail "rust plan outputs: $(cat "$out")"
+else
+  pass "the rust plan names the helper directory, key and cargo home"
+fi
+(cd "$work/proj-rust" && PATH=$work/rustbin:$PATH GITHUB_OUTPUT=$out RUNNER_OS=macOS RUNNER_ARCH=ARM64 HOME=$work/home \
+  CARGO_HOME=$work/ch ACTION_PATH=$here/.. INPUT_RUST_CACHE=auto "$install" rust >"$work/out" 2>&1)
+if ! grep -qx "helper_dir=$work/home/Library/Caches/docgen/rust-helper" "$out" || ! grep -qx "cargo_home=$work/ch" "$out"; then
+  fail "rust plan on macOS: $(cat "$out")"
+else
+  pass "the rust plan follows the macOS cache directory and CARGO_HOME"
+fi
+rc=0
+(cd "$work/proj-rust" && GITHUB_OUTPUT=$out ACTION_PATH=$here/.. INPUT_RUST_CACHE=maybe "$install" rust >"$work/out" 2>&1) || rc=$?
+if [ "$rc" != 1 ]; then fail "rust-cache maybe: exit $rc, want 1"; else pass "a bad rust-cache fails"; fi
+
 if [ "$failures" != 0 ]; then
   echo "$failures failed"
   exit 1
