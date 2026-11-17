@@ -23,6 +23,18 @@ inputs:
     description: Comma-separated build tags. Empty uses the tags setting.
     required: false
     default: ''
+  features:
+    description: Comma-separated Cargo features, as feature or crate/feature. Empty uses the features setting.
+    required: false
+    default: ''
+  all-features:
+    description: Set to true to enable every feature of each crate. Empty uses the all-features setting.
+    required: false
+    default: ''
+  no-default-features:
+    description: Set to true to leave the default feature of each crate off. Empty uses the no-default-features setting.
+    required: false
+    default: ''
   jobs:
     description: The -p of each go command. Empty uses the jobs setting.
     required: false
@@ -153,12 +165,18 @@ runs:
         INPUT_DIRECTORY: ${{ inputs.directory }}
         INPUT_MODULE: ${{ inputs.module }}
         INPUT_TAGS: ${{ inputs.tags }}
+        INPUT_FEATURES: ${{ inputs.features }}
+        INPUT_ALL_FEATURES: ${{ inputs.all-features }}
+        INPUT_NO_DEFAULT_FEATURES: ${{ inputs.no-default-features }}
         INPUT_JOBS: ${{ inputs.jobs }}
         INPUT_DIFF: ${{ inputs.diff }}
       run: |
         args=("$INPUT_COMMAND")
         if [ -n "$INPUT_MODULE" ]; then args+=(-module "$INPUT_MODULE"); fi
         if [ -n "$INPUT_TAGS" ]; then args+=(-tags "$INPUT_TAGS"); fi
+        if [ -n "$INPUT_FEATURES" ]; then args+=(-features "$INPUT_FEATURES"); fi
+        if [ "$INPUT_ALL_FEATURES" = true ]; then args+=(-all-features); fi
+        if [ "$INPUT_NO_DEFAULT_FEATURES" = true ]; then args+=(-no-default-features); fi
         if [ -n "$INPUT_JOBS" ]; then args+=(-jobs "$INPUT_JOBS"); fi
         if [ "$INPUT_COMMAND" = check ] && [ "$INPUT_DIFF" = true ]; then args+=(-diff); fi
         if [ -n "$INPUT_DIRECTORY" ]; then args+=("$INPUT_DIRECTORY"); fi

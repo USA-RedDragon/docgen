@@ -39,6 +39,9 @@ docgen runs the go command to load the packages of your module, so set up Go bef
 | `directory` | | The directory argument. |
 | `module` | | The `-module` flag. |
 | `tags` | | The `-tags` flag. |
+| `features` | | The `-features` flag. |
+| `all-features` | | `true` passes the `-all-features` flag. |
+| `no-default-features` | | `true` passes the `-no-default-features` flag. |
 | `jobs` | | The `-jobs` flag. |
 | `diff` | `true` | The `-diff` flag of `check`. `update` ignores it. |
 | `version` | | A docgen version, such as `v0.1.0` or `latest`. Empty uses the ref in `uses:`. |
