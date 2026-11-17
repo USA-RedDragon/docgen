@@ -166,6 +166,8 @@
 //     definition, such as one per `#ifdef` branch, is an error, and so is a
 //     definition that shares a line with other code. Only top-level definitions
 //     are found.
+//   - `symbol=` in a Rust file is one item of the file, as whole lines from its
+//     first attribute to its last token, with no doc comment. See Rust symbols.
 //   - `region=` is the lines between the line `docgen:region <name>` and the next
 //     line `docgen:end`. Each mark is the whole line apart from comment syntax. In
 //     a page, a mark in code or in a marker body is text. Other excerpts of the
@@ -179,13 +181,61 @@
 //   - `raw=true`, with `symbol=`, `lines=` or the whole file, keeps the text of the
 //     file: doc comments, region marks and the output comment of an Example.
 //     `symbol=package` in a Go file is then the package clause with its doc comment.
-//     Any other value is an error.
+//     In a Rust file the lines of an item start at its first doc comment or
+//     attribute, and `symbol=crate` is the lines of the `//!` comments and
+//     `#![doc]` attributes of the file, the crate or module doc, which is an error
+//     with no `raw=true`. Any other value is an error.
 //
 // An excerpt with no text is an error.
 //
 // On a scanned page, the excerpt is the text that update writes to that page. An
 // excerpt of the page of its own marker is an error, and so are excerpts that do
 // not settle in 8 passes.
+//
+// # Rust symbols
+//
+// `symbol=` in a Rust file reads the one file, not a crate, so the file can be
+// in no crate and `file=` is a path of the repository, as for any excerpt. The
+// syn helper that `crate=` uses reads the file alone: a `mod name;` is not
+// followed, and a file that does not parse is an error with the place of the
+// error. The helper is built once with `cargo`, and no Cargo workspace is read.
+//
+// An excerpt is whole lines of the file, from the first attribute of the item,
+// such as `#[derive]` or `#[cfg]`, to its last token. A doc comment of the item,
+// `///` or `#[doc = "..."]`, and the `//!` comments inside an inline module are
+// not in it, and `raw=true` keeps them. A comment with `//` between the
+// attributes stays. An item of an impl, a trait or an inline module loses the
+// indent that its lines share. The names of `symbol=` are:
+//
+//   - `name` is a `fn`, `struct`, `enum`, `union`, `trait`, `type`, `const`,
+//     `static`, `macro_rules!` macro or inline `mod` of the top level of the
+//     file, and `a::b` is such an item of the inline modules `a` and `a::b`: a
+//     name starts at the root of the file. A `mod name;` with no body is the line
+//     of the declaration.
+//   - `Type::name` is an associated `fn`, `const` or `type` of an impl of `Type`,
+//     with or without a trait, and `Trait::name` is an item of the `trait`
+//     definition. In a module, `a::Type::name` and `a::Trait::name`.
+//   - `<Type as Trait>::name` is an item of an impl of `Trait` for `Type`.
+//   - `impl Type` and `impl Trait for Type` are an impl block with its items. A
+//     negative impl is `impl !Trait for Type`. An impl block in an inline module
+//     has the same name as at the top level.
+//   - `crate`, with `raw=true`, is the `//!` comments and `#![doc]` attributes of
+//     the file, which are the crate doc in `lib.rs` and the module doc in another
+//     file, as `symbol=package raw=true` is for Go. With no `raw=true` it is an
+//     error, and so is a file with no such comment.
+//
+// A type and a trait are written as in the file, or with no generic arguments,
+// and a trait also by its last segment alone: `impl Display for Port` selects
+// `impl std::fmt::Display for Port<u8>`, and `Port::new` selects the `new` of
+// `impl<T> Port<T>`. Spaces do not matter. A field and an enum variant have no
+// name. A name that selects more than one item is an error that lists each item
+// with its line and its `#[cfg]`. This is a name in two impls, two items with
+// different `#[cfg]`, or two impls of one trait for the same type with different
+// generic arguments. Where the items have different full spellings, such as
+// `<Port<u8> as Shape>::area`, the error lists them and one is the `symbol=`. Items that
+// have the same spelling, such as `fn f` under `#[cfg(unix)]` and under
+// `#[cfg(windows)]`, are an error that suggests `region=`. A name of no item is
+// an error that lists the names of the file.
 //
 // # docgen:config
 //

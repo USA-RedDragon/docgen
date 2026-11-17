@@ -54,7 +54,7 @@ func (l *Lamp) Start(now time.Duration) error {
 
 ## A YAML key, with `symbol=`
 
-`symbol=` also works in [YAML](../reference/markers.md#a-yaml-key-with-symbol), [JSON](../reference/markers.md#a-json-member-with-symbol), [TOML](../reference/markers.md#a-toml-table-or-key-with-symbol) and [C](../reference/markers.md#a-c-function-type-or-define-with-symbol) files. In YAML, the excerpt is a key with its block, or items of a list by name:
+`symbol=` also works in [YAML](../reference/markers.md#a-yaml-key-with-symbol), [JSON](../reference/markers.md#a-json-member-with-symbol), [TOML](../reference/markers.md#a-toml-table-or-key-with-symbol) and [C](../reference/markers.md#a-c-function-type-or-define-with-symbol) files, and in [Rust](../reference/markers.md#rust-items-with-symbol) files. In YAML, the excerpt is a key with its block, or items of a list by name:
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/ci/workflow.yaml -->
@@ -328,6 +328,83 @@ struct lamp_config {
 <!-- docgen:code file=native/lamp.c symbol=lamp_config_t -->
 ```c
 typedef struct lamp_config lamp_config_t;
+```
+<!-- /docgen:code -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+## A Rust item, with `symbol=`
+
+In Rust, the excerpt is a `fn`, `struct`, `enum`, `trait`, `type`, `const`, `static`, macro, inline `mod` or `impl` block of one file, with its attributes and no doc comment. `Type::method` is an associated item, and `<Type as Trait>::method` an item of a trait impl. The file needs no crate, and `symbol=crate` with `raw=true` is the `//!` comments of the file. A name of more than one item, such as two impls with a `new`, is an error that lists the items. For the names, see [Rust symbols](../reference/markers.md#rust-items-with-symbol).
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust module=. page=docs/guide-code-symbol.md -->
+#### Before
+
+```
+# The port
+
+<!-- docgen:code file=loose/symbols.rs symbol=Port -->
+<!-- /docgen:code -->
+
+A method, with its doc comment:
+
+<!-- docgen:code file=loose/symbols.rs symbol=Port::new raw=true -->
+<!-- /docgen:code -->
+
+A trait impl, and the file doc:
+
+<!-- docgen:code file=loose/symbols.rs symbol="impl Display for Port" -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=loose/symbols.rs symbol=crate raw=true -->
+<!-- /docgen:code -->
+```
+
+#### After
+
+````
+# The port
+
+<!-- docgen:code file=loose/symbols.rs symbol=Port -->
+```rust
+#[derive(Debug)]
+pub struct Port<T> {
+    /// The number.
+    number: T,
+}
+```
+<!-- /docgen:code -->
+
+A method, with its doc comment:
+
+<!-- docgen:code file=loose/symbols.rs symbol=Port::new raw=true -->
+```rust
+/// Makes a port.
+#[inline]
+pub const fn new(number: T) -> Self {
+    Port { number }
+}
+```
+<!-- /docgen:code -->
+
+A trait impl, and the file doc:
+
+<!-- docgen:code file=loose/symbols.rs symbol="impl Display for Port" -->
+```rust
+impl std::fmt::Display for Port<u8> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.number)
+    }
+}
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=loose/symbols.rs symbol=crate raw=true -->
+```rust
+//! A file with no crate.
+//! It holds one of each item.
 ```
 <!-- /docgen:code -->
 ````

@@ -247,10 +247,11 @@ The arguments:
   - `symbol=` in a YAML file is the block of the key at a dotted path, such as `jobs.test` of a workflow. A last segment `key[A:B]` is the items of the list at `key` from the item with name `A` to the item with name `B`, and `key[A]` is the one item `A`.
   - `symbol=` in a JSON or TOML file uses the same path form. In JSON the excerpt is `"key": value`. In TOML it is a key with its value, or a table `[a.b]` with its keys and sub-tables, and `key[A]` is an item of the array of tables `[[key]]`. An item is found by its `name` key, or by a number, its index from 0. `\.` is a dot in a key.
   - `symbol=` in a C or header file is a `#define`, a function definition or a `typedef`, by name, as whole lines with no comment above. `symbol="struct Tag"`, `"union Tag"` or `"enum Tag"` is the definition of a tagged type, with its body. A bare name never matches a tag: `struct foo {...};` is `struct foo`, and `typedef struct foo foo;` is `foo`. `typedef struct foo {...} foo_t;` is both `struct foo` and `foo_t`. A name with more than one definition, such as one per `#ifdef` branch, is an error, and so is a definition that shares a line with other code. Only top-level definitions are found.
+  - `symbol=` in a Rust file is one item of the file, as whole lines from its first attribute to its last token, with no doc comment. See Rust symbols.
   - `region=` is the lines between the line `docgen:region <name>` and the next line `docgen:end`. Each mark is the whole line apart from comment syntax. In a page, a mark in code or in a marker body is text. Other excerpts of the file leave out those two lines.
   - `lines=` is those lines of the file. For a Go file the lines must hold whole declarations or statements. When the file changes, check and update fail. The error holds the new range when the old excerpt moved, and otherwise states that the range is out of date. A range past the last line is an error.
   - With none of these, the excerpt is the whole file.
-  - `raw=true`, with `symbol=`, `lines=` or the whole file, keeps the text of the file: doc comments, region marks and the output comment of an Example. `symbol=package` in a Go file is then the package clause with its doc comment. Any other value is an error.
+  - `raw=true`, with `symbol=`, `lines=` or the whole file, keeps the text of the file: doc comments, region marks and the output comment of an Example. `symbol=package` in a Go file is then the package clause with its doc comment. In a Rust file the lines of an item start at its first doc comment or attribute, and `symbol=crate` is the lines of the `//!` comments and `#![doc]` attributes of the file, the crate or module doc, which is an error with no `raw=true`. Any other value is an error.
 
 An excerpt with no text is an error.
 
@@ -745,6 +746,95 @@ go mod download
 go build ./...
 # docgen:end
 go test ./...
+```
+<!-- /docgen:code -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### Rust items, with `symbol=`
+
+<!-- docgen:doc pkg=. section="Rust symbols" -->
+`symbol=` in a Rust file reads the one file, not a crate, so the file can be in no crate and `file=` is a path of the repository, as for any excerpt. The syn helper that `crate=` uses reads the file alone: a `mod name;` is not followed, and a file that does not parse is an error with the place of the error. The helper is built once with `cargo`, and no Cargo workspace is read.
+
+An excerpt is whole lines of the file, from the first attribute of the item, such as `#[derive]` or `#[cfg]`, to its last token. A doc comment of the item, `///` or `#[doc = "..."]`, and the `//!` comments inside an inline module are not in it, and `raw=true` keeps them. A comment with `//` between the attributes stays. An item of an impl, a trait or an inline module loses the indent that its lines share. The names of `symbol=` are:
+
+  - `name` is a `fn`, `struct`, `enum`, `union`, `trait`, `type`, `const`, `static`, `macro_rules!` macro or inline `mod` of the top level of the file, and `a::b` is such an item of the inline modules `a` and `a::b`: a name starts at the root of the file. A `mod name;` with no body is the line of the declaration.
+  - `Type::name` is an associated `fn`, `const` or `type` of an impl of `Type`, with or without a trait, and `Trait::name` is an item of the `trait` definition. In a module, `a::Type::name` and `a::Trait::name`.
+  - `<Type as Trait>::name` is an item of an impl of `Trait` for `Type`.
+  - `impl Type` and `impl Trait for Type` are an impl block with its items. A negative impl is `impl !Trait for Type`. An impl block in an inline module has the same name as at the top level.
+  - `crate`, with `raw=true`, is the `//!` comments and `#![doc]` attributes of the file, which are the crate doc in `lib.rs` and the module doc in another file, as `symbol=package raw=true` is for Go. With no `raw=true` it is an error, and so is a file with no such comment.
+
+A type and a trait are written as in the file, or with no generic arguments, and a trait also by its last segment alone: `impl Display for Port` selects `impl std::fmt::Display for Port<u8>`, and `Port::new` selects the `new` of `impl<T> Port<T>`. Spaces do not matter. A field and an enum variant have no name. A name that selects more than one item is an error that lists each item with its line and its `#[cfg]`. This is a name in two impls, two items with different `#[cfg]`, or two impls of one trait for the same type with different generic arguments. Where the items have different full spellings, such as `<Port<u8> as Shape>::area`, the error lists them and one is the `symbol=`. Items that have the same spelling, such as `fn f` under `#[cfg(unix)]` and under `#[cfg(windows)]`, are an error that suggests `region=`. A name of no item is an error that lists the names of the file.
+<!-- /docgen:doc -->
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust module=. page=docs/guide-code-symbol.md -->
+#### Before
+
+```
+# The port
+
+<!-- docgen:code file=loose/symbols.rs symbol=Port -->
+<!-- /docgen:code -->
+
+A method, with its doc comment:
+
+<!-- docgen:code file=loose/symbols.rs symbol=Port::new raw=true -->
+<!-- /docgen:code -->
+
+A trait impl, and the file doc:
+
+<!-- docgen:code file=loose/symbols.rs symbol="impl Display for Port" -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=loose/symbols.rs symbol=crate raw=true -->
+<!-- /docgen:code -->
+```
+
+#### After
+
+````
+# The port
+
+<!-- docgen:code file=loose/symbols.rs symbol=Port -->
+```rust
+#[derive(Debug)]
+pub struct Port<T> {
+    /// The number.
+    number: T,
+}
+```
+<!-- /docgen:code -->
+
+A method, with its doc comment:
+
+<!-- docgen:code file=loose/symbols.rs symbol=Port::new raw=true -->
+```rust
+/// Makes a port.
+#[inline]
+pub const fn new(number: T) -> Self {
+    Port { number }
+}
+```
+<!-- /docgen:code -->
+
+A trait impl, and the file doc:
+
+<!-- docgen:code file=loose/symbols.rs symbol="impl Display for Port" -->
+```rust
+impl std::fmt::Display for Port<u8> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.number)
+    }
+}
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=loose/symbols.rs symbol=crate raw=true -->
+```rust
+//! A file with no crate.
+//! It holds one of each item.
 ```
 <!-- /docgen:code -->
 ````
