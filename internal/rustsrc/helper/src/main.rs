@@ -118,7 +118,11 @@ impl Reader {
     fn module(&mut self, place: &Place, head: Head, items: &[syn::Item], text: &str) {
         let mut out = Vec::new();
         let mut uses = Vec::new();
+        let mut defaults = Vec::new();
         for item in items {
+            if let syn::Item::Impl(i) = item {
+                defaults.extend(default_impl(i));
+            }
             self.item(place, item, text, &mut out, &mut uses);
         }
         self.modules.push(json!({
@@ -131,6 +135,7 @@ impl Reader {
             "insert": head.insert,
             "items": out,
             "uses": uses,
+            "default_impls": defaults,
         }));
     }
 
@@ -503,8 +508,8 @@ impl Reader {
                 if !conf.is_empty() {
                     m.insert("configulator".into(), conf.into());
                 }
-                if let Some(r) = serde_rename(&f.attrs) {
-                    m.insert("serde_rename".into(), r.into());
+                if let Some(v) = serde_json_of(&f.attrs) {
+                    m.insert("serde".into(), v);
                 }
                 Value::Object(m)
             })
@@ -542,6 +547,9 @@ fn type_attrs(v: &mut Map<String, Value>, attrs: &[syn::Attribute]) {
     let conf = configulator_attrs(attrs);
     if !conf.is_empty() {
         v.insert("configulator".into(), conf.into());
+    }
+    if let Some(s) = serde_json_of(attrs) {
+        v.insert("serde".into(), s);
     }
 }
 
@@ -668,23 +676,131 @@ fn configulator_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
         .collect()
 }
 
-fn serde_rename(attrs: &[syn::Attribute]) -> Option<String> {
+/// What the `#[serde(...)]` attributes of an item or field say that docgen
+/// reads.
+#[derive(Default)]
+struct SerdeAttrs {
+    rename: Option<String>,
+    rename_all: Option<String>,
+    default: Option<String>,
+    skip: bool,
+    flatten: bool,
+    any: bool,
+}
+
+/// Reads the string of `name = "..."`, or of `name(deserialize = "...")`.
+fn serde_string(meta: &syn::meta::ParseNestedMeta) -> syn::Result<Option<String>> {
+    if meta.input.peek(syn::Token![=]) {
+        let s: syn::LitStr = meta.value()?.parse()?;
+        return Ok(Some(s.value()));
+    }
     let mut out = None;
+    meta.parse_nested_meta(|inner| {
+        if inner.path.is_ident("deserialize") {
+            let s: syn::LitStr = inner.value()?.parse()?;
+            out = Some(s.value());
+        } else {
+            serde_skip(&inner)?;
+        }
+        Ok(())
+    })?;
+    Ok(out)
+}
+
+/// Reads past the value of a serde argument that docgen does not use.
+fn serde_skip(meta: &syn::meta::ParseNestedMeta) -> syn::Result<()> {
+    if meta.input.peek(syn::Token![=]) {
+        meta.value()?.parse::<syn::Expr>()?;
+    } else if meta.input.peek(syn::token::Paren) {
+        let content;
+        syn::parenthesized!(content in meta.input);
+        content.parse::<proc_macro2::TokenStream>()?;
+    }
+    Ok(())
+}
+
+fn serde_attrs(attrs: &[syn::Attribute]) -> SerdeAttrs {
+    let mut out = SerdeAttrs::default();
     for a in attrs.iter().filter(|a| a.path().is_ident("serde")) {
+        out.any = true;
         let _ = a.parse_nested_meta(|meta| {
             if meta.path.is_ident("rename") {
-                if let Ok(v) = meta.value() {
-                    if let Ok(s) = v.parse::<syn::LitStr>() {
-                        out = Some(s.value());
-                    }
+                if let Some(s) = serde_string(&meta)? {
+                    out.rename = Some(s);
                 }
-            } else if let Ok(v) = meta.value() {
-                let _ = v.parse::<syn::Expr>();
+            } else if meta.path.is_ident("rename_all") {
+                if let Some(s) = serde_string(&meta)? {
+                    out.rename_all = Some(s);
+                }
+            } else if meta.path.is_ident("default") {
+                if meta.input.peek(syn::Token![=]) {
+                    let s: syn::LitStr = meta.value()?.parse()?;
+                    out.default = Some(s.value());
+                } else {
+                    out.default = Some(String::new());
+                }
+            } else if meta.path.is_ident("skip") || meta.path.is_ident("skip_deserializing") {
+                out.skip = true;
+            } else if meta.path.is_ident("flatten") {
+                out.flatten = true;
+            } else {
+                serde_skip(&meta)?;
             }
             Ok(())
         });
     }
     out
+}
+
+/// The serde attributes of an item or field as JSON, and None when it has
+/// no `#[serde]`.
+fn serde_json_of(attrs: &[syn::Attribute]) -> Option<Value> {
+    let s = serde_attrs(attrs);
+    if !s.any {
+        return None;
+    }
+    Some(json!({
+        "rename": s.rename,
+        "rename_all": s.rename_all,
+        "default": s.default,
+        "skip": s.skip,
+        "flatten": s.flatten,
+    }))
+}
+
+/// The `impl Default for Type` of a one-segment type with no generics, with
+/// the fields that its `default` fn sets in a struct literal as its tail
+/// expression, as written.
+fn default_impl(i: &syn::ItemImpl) -> Option<Value> {
+    let (_, path, _) = i.trait_.as_ref()?;
+    if path.segments.last()?.ident != "Default" || !i.generics.params.is_empty() {
+        return None;
+    }
+    let syn::Type::Path(tp) = &*i.self_ty else {
+        return None;
+    };
+    if tp.qself.is_some() {
+        return None;
+    }
+    let ty = tp.path.segments.last()?.ident.to_string();
+    let mut fields = Map::new();
+    for ii in &i.items {
+        let syn::ImplItem::Fn(f) = ii else {
+            continue;
+        };
+        if f.sig.ident != "default" || f.block.stmts.len() != 1 {
+            continue;
+        }
+        let syn::Stmt::Expr(syn::Expr::Struct(lit), None) = &f.block.stmts[0] else {
+            continue;
+        };
+        for fv in &lit.fields {
+            if let (syn::Member::Named(id), Some(_)) = (&fv.member, &fv.colon_token) {
+                fields.insert(id.unraw_string(), src(&fv.expr).into());
+            }
+        }
+    }
+    Some(json!({ "type": ty, "fields": fields, "cfg": cfgs(&i.attrs) }))
 }
 
 /// Each name that a `use` brings into the module: the name, the path it

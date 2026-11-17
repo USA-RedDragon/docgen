@@ -35,7 +35,9 @@ type Module struct {
 	Insert int     `json:"insert"`
 	Items  []*Item `json:"items"`
 	Uses   []Use   `json:"uses"`
-	parent *Module
+	// DefaultImpls holds the impl Default blocks of the module.
+	DefaultImpls []DefaultImpl `json:"default_impls"`
+	parent       *Module
 }
 
 // The kinds of an item.
@@ -80,6 +82,30 @@ type Item struct {
 	// Configulator holds the text in each #[configulator(...)] of the item.
 	Configulator []string `json:"configulator"`
 	Inline       bool     `json:"inline"`
+	// Serde holds the serde attributes of a struct or enum, and is nil with
+	// no #[serde].
+	Serde *Serde `json:"serde"`
+}
+
+// A Serde holds the serde attributes that docgen reads. Rename is the
+// deserialize name of a field, and RenameAll the case of the fields of a
+// struct. Default is nil with no default, "" for #[serde(default)] and the
+// path of #[serde(default = "path")].
+type Serde struct {
+	Rename    string  `json:"rename"`
+	RenameAll string  `json:"rename_all"`
+	Default   *string `json:"default"`
+	Skip      bool    `json:"skip"`
+	Flatten   bool    `json:"flatten"`
+}
+
+// A DefaultImpl is an impl Default for a type. Fields holds the expression
+// as written of each field that the tail struct literal of its default fn
+// sets.
+type DefaultImpl struct {
+	Type   string            `json:"type"`
+	Fields map[string]string `json:"fields"`
+	Cfg    []string          `json:"cfg"`
 }
 
 // A Field is a field of a struct or of an enum variant. A tuple field has its
@@ -94,7 +120,7 @@ type Field struct {
 	Backtrace    bool     `json:"backtrace"`
 	Cfg          []string `json:"cfg"`
 	Configulator []string `json:"configulator"`
-	SerdeRename  string   `json:"serde_rename"`
+	Serde        *Serde   `json:"serde"`
 }
 
 // A Variant is a variant of an enum.
