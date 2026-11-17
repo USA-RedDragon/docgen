@@ -238,7 +238,7 @@ impl Reader {
                 out.push(Value::Object(v));
             }
             syn::Item::Fn(f) => {
-                let v = self.base(
+                let mut v = self.base(
                     "fn",
                     &f.sig.ident.to_string(),
                     &f.vis,
@@ -246,6 +246,7 @@ impl Reader {
                     item.span(),
                     file,
                 );
+                v.insert("ret".into(), ret_text(&f.sig).into());
                 out.push(Value::Object(v));
             }
             syn::Item::Trait(t) => {
@@ -323,14 +324,18 @@ impl Reader {
                     v.insert("expr".into(), src(&c.expr).into());
                     v
                 }
-                syn::ImplItem::Fn(f) => self.base(
-                    "fn",
-                    &format!("{ty}::{}", f.sig.ident),
-                    &f.vis,
-                    &f.attrs,
-                    ii.span(),
-                    file,
-                ),
+                syn::ImplItem::Fn(f) => {
+                    let mut v = self.base(
+                        "fn",
+                        &format!("{ty}::{}", f.sig.ident),
+                        &f.vis,
+                        &f.attrs,
+                        ii.span(),
+                        file,
+                    );
+                    v.insert("ret".into(), ret_text(&f.sig).into());
+                    v
+                }
                 _ => continue,
             };
             if !impl_cfg.is_empty() {
@@ -557,6 +562,14 @@ fn span_json(span: Span, file: &Path) -> Value {
         "start": span.byte_range().start,
         "end": span.byte_range().end,
     })
+}
+
+/// The return type of a signature as written, and "" for none.
+fn ret_text(sig: &syn::Signature) -> String {
+    match &sig.output {
+        syn::ReturnType::Default => String::new(),
+        syn::ReturnType::Type(_, ty) => src(&**ty),
+    }
 }
 
 fn vis_text(vis: &syn::Visibility) -> String {

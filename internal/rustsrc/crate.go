@@ -46,6 +46,10 @@ const (
 	KindEnum   = "enum"
 	KindFn     = "fn"
 	KindMod    = "mod"
+	KindUnion  = "union"
+	KindTrait  = "trait"
+	KindType   = "type"
+	KindMacro  = "macro"
 )
 
 // An Item is an item of a module. An associated const or fn of an inherent
@@ -62,8 +66,10 @@ type Item struct {
 	// Type is the type of a const, static or type alias, as written.
 	Type string `json:"type"`
 	// Expr is the value of a const or static, as written.
-	Expr     string `json:"expr"`
-	Mut      bool   `json:"mut"`
+	Expr string `json:"expr"`
+	Mut  bool   `json:"mut"`
+	// Ret is the return type of a fn as written, and empty when it has none.
+	Ret      string `json:"ret"`
 	Generics bool   `json:"generics"`
 	// Style is named, tuple or unit for a struct.
 	Style    string     `json:"style"`
