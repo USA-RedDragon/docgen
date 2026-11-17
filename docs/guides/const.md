@@ -172,4 +172,50 @@ const RETRIES: u32 = 3;
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+### Feature-gated code
+
+A const behind `#[cfg(feature = "...")]` has a value only in a build with that feature. Set the features of the build with the `features` setting, or with `features=` on the marker:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/feat-gate/src/lib.rs lines=4-19 -->
+````rust
+pub const BASE: u32 = 8;
+
+/// The size with the `big` feature.
+///
+/// ```
+/// assert_eq!(feat_gate::BIG, 1024);
+/// ```
+#[cfg(feature = "big")]
+pub const BIG: u32 = 1024;
+
+/// Items of the `extra` feature.
+#[cfg(feature = "extra")]
+pub mod extra {
+    /// The level with the `extra` feature.
+    pub const LEVEL: u8 = 3;
+}
+````
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-const-features.md -->
+#### Before
+
+```
+- Always: <!-- docgen:const crate=feat-gate name=BASE --><!-- /docgen:const -->
+- With `big`: <!-- docgen:const crate=feat-gate name=BIG features=big --><!-- /docgen:const -->
+- With `extra`: <!-- docgen:const crate=feat-gate name=extra::LEVEL features=extra --><!-- /docgen:const -->
+```
+
+#### After
+
+```
+- Always: <!-- docgen:const crate=feat-gate name=BASE -->`8`<!-- /docgen:const -->
+- With `big`: <!-- docgen:const crate=feat-gate name=BIG features=big -->`1024`<!-- /docgen:const -->
+- With `extra`: <!-- docgen:const crate=feat-gate name=extra::LEVEL features=extra -->`3`<!-- /docgen:const -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+With a feature off, the marker is an error that names the `#[cfg]`, so the page cannot show a value that the build does not have. `features=` replaces the list of the `features` setting for that marker. See [Cargo features](../reference/markers.md#cargo-features).
+
 For the rules of `crate=` and `name=`, see [Rust crates](../reference/markers.md#rust-crates).

@@ -16,14 +16,20 @@ Arguments:
   directory  the directory to scan (default the repository, or docs: in .docgen.yaml)
 
 Flags:
+  -all-features
+    	enable every feature of each crate that a cargo command builds
   -config string
     	config file (default ".docgen.yaml")
   -diff
     	with check, print a unified diff of each stale page and generated file
+  -features string
+    	comma-separated Cargo features of each cargo command, as feature or crate/feature
   -jobs int
     	-p of each go command; 0 leaves it to go
   -module string
     	directory of the Go module, relative to the repository root (default ".")
+  -no-default-features
+    	leave the default feature of each crate off in each cargo command
   -tags string
     	comma-separated build tags of each go command and package load
 ```

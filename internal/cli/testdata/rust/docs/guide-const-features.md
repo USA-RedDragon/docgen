@@ -1,0 +1,3 @@
+- Always: <!-- docgen:const crate=feat-gate name=BASE --><!-- /docgen:const -->
+- With `big`: <!-- docgen:const crate=feat-gate name=BIG features=big --><!-- /docgen:const -->
+- With `extra`: <!-- docgen:const crate=feat-gate name=extra::LEVEL features=extra --><!-- /docgen:const -->

@@ -89,6 +89,31 @@ A key that a crate sets to `workspace = true`, such as `version.workspace = true
 
 `field=features` with `crate=` is a table of the features in name order. Default has `yes` for a feature that the `default` feature enables. A crate with no features is an error.
 
+When the `features` settings or `features=` on the marker enable something, the table has an Enabled column with `yes` for each feature that a cargo command of the marker enables, with the features that those enable in the same crate:
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-features-table.md -->
+#### Before
+
+```
+<!-- docgen:cargo field=features crate=feat-gate features=big nodefaultfeatures=true -->
+<!-- /docgen:cargo -->
+```
+
+#### After
+
+```
+<!-- docgen:cargo field=features crate=feat-gate features=big nodefaultfeatures=true -->
+| Feature | Default | Enabled | Enables |
+|---|---|---|---|
+| `big` |  | yes | `small` |
+| `extra` |  |  |  |
+| `small` | yes | yes |  |
+<!-- /docgen:cargo -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
 ## The crates of a workspace
 
 <!-- site:editor -->
@@ -110,6 +135,7 @@ A key that a crate sets to `workspace = true`, such as `version.workspace = true
 | `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` |
 | `core-a` | `crates/core-a` | lib | 0.1.0 |  |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
+| `feat-gate` | `crates/feat-gate` | lib | 0.1.0 |  |
 | `limits` | `crates/limits` | lib | 0.1.0 |  |
 | `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
 | `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  |

@@ -35,12 +35,13 @@
 //	module: v2
 //	tags: integration,linux
 //	jobs: 4
+//	features: serde,core-a/strict
 //	vars:
 //	  version: v1.2.3
 //
 // The `DOCGEN_` variables, such as `DOCGEN_DOCS`, override the file,
-// and the directory argument and the flags `-module`, `-tags` and `-jobs` override
-// both. The argument is relative to the working directory. `-config` names
+// and the directory argument and the flags `-module`, `-tags`, `-jobs`, `-features`,
+// `-all-features` and `-no-default-features` override both. The argument is relative to the working directory. `-config` names
 // another file, with the extension .yaml or .yml. An unknown key is an error.
 //
 //   - `tags` applies to each go command, each package load and the build
@@ -54,6 +55,12 @@
 //     the outermost value counts.
 //   - `print` applies to a marker with no `print=`: `go`, the default, `raw` or
 //     `config`. With `raw`, a marker with no `print=` runs no code.
+//   - `features` is a list of Cargo features, separated by commas or white space, that
+//     each cargo command of a Rust marker enables. An entry is a feature, such as
+//     `serde`, or `crate/feature`, such as `core-a/strict`. See Rust crates.
+//   - `all-features` and `no-default-features` are `true` or `false`, and the
+//     defaults are `false`. They add `--all-features` and `--no-default-features`
+//     to each cargo command.
 //   - `vars` holds the values of the `docgen:var` and `docgen:text` markers. Only
 //     the file sets it. A key has letters, digits, `_` and `-`.
 //
@@ -75,9 +82,9 @@
 //	docgen:output cmd=<dir>
 //	docgen:output exec="<command>"
 //	docgen:output test=<pkg>.<ExampleName>
-//	docgen:output crate=<package> example=<name> [args="<args>"]
-//	docgen:output crate=<package> bin=<name> [args="<args>"]
-//	docgen:output crate=<package> doctest=<path::item>
+//	docgen:output crate=<package> example=<name> [args="<args>"] [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
+//	docgen:output crate=<package> bin=<name> [args="<args>"] [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
+//	docgen:output crate=<package> doctest=<path::item> [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
 //
 // The arguments:
 //
@@ -321,7 +328,7 @@
 // For a Rust crate, `type=` is a struct with `#[derive(Config)]` of
 // [configulator-rs]:
 //
-//	docgen:configulator crate=<package> type=<path> [env=<prefix>] [envsep=<separator>] [flagsep=<separator>]
+//	docgen:configulator crate=<package> type=<path> [env=<prefix>] [envsep=<separator>] [flagsep=<separator>] [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
 //
 // The table is the one that `configulator --markdown` of configulator-cli
 // prints, with no heading. docgen gets it from the markdown function of
@@ -382,7 +389,7 @@
 // For a Rust crate, `crate=` takes the place of `pkg=`, and `name=` is a path
 // from the crate root (see Rust crates):
 //
-//	docgen:const crate=<package> name=<path> [print=<display|debug|raw|name|spec>] [code=false]
+//	docgen:const crate=<package> name=<path> [print=<display|debug|raw|name|spec>] [code=false] [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
 //
 // `name=` is a `const`, a `static` that is not `mut`, or an associated const of
 // an inherent impl, such as `limits::Port::HTTP`. Private items work too. The
@@ -501,7 +508,7 @@
 // crate. A value goes inline in a sentence.
 //
 //	docgen:cargo field=<key> [crate=<package>] [file=<repo path>] [code=false]
-//	docgen:cargo field=features crate=<package>
+//	docgen:cargo field=features crate=<package> [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
 //
 // `field=` is a dotted key path in the TOML file, such as `package.rust-version`,
 // `workspace.package.version` or `dependencies.clap.version`. The file is the
@@ -530,7 +537,13 @@
 // order, with the column Default for the ones that the `default` feature enables
 // and the column Enables for the items of each, such as other features and `dep:`
 // items. A package with no features is an error. `field=features` needs `crate=`,
-// and has no `file=` and no `code=`.
+// and has no `file=` and no `code=`. When the `features` settings or the
+// `features=`, `allfeatures=` or `nodefaultfeatures=` of the marker set anything,
+// the table has the column Enabled between Default and Enables, with `yes` for
+// each feature that the cargo commands of the marker enable: the listed ones,
+// the default feature unless `nodefaultfeatures=true`, every feature with
+// `allfeatures=true`, and the features of the same package that each of those
+// enables. See Rust crates for the arguments.
 //
 // # docgen:crates
 //
@@ -559,7 +572,7 @@
 // The usage of a command.
 //
 //	docgen:usage cmd=<dir> [args="<args>"]
-//	docgen:usage crate=<package> [bin=<name>] [args="<args>"]
+//	docgen:usage crate=<package> [bin=<name>] [args="<args>"] [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
 //
 // docgen builds the command in that directory, relative to the repository root,
 // and runs it with `-h`. With `args=`, the arguments are that value, split on spaces, such as
@@ -625,7 +638,9 @@
 // writes the page before and after it under the headings Before and After. `page`
 // and `module` are relative to `root`. The update reads the `.docgen.yaml` of `root`
 // for `docs`, `print` and `vars`, and uses the `jobs`, `tags` and `depth` of the
-// outer run. The update always fills `page`, also outside `docs`. `GOWORK` applies only when its file is in `root`. Markers with one
+// outer run. The `features` settings of the outer run do not apply to a nested
+// run, since the crates of its workspace are not those of the outer run, but the
+// markers of its pages can set `features=`. The update always fills `page`, also outside `docs`. `GOWORK` applies only when its file is in `root`. Markers with one
 // `root` and `module` use one copy and one update. An error of the update is an
 // error of the marker, and a region that the update excerpts counts as used.
 // Pages under `root` are not part of the outer run or its checks, unless `root`
@@ -683,6 +698,60 @@
 // The added module allows all lints, so a `#![deny(warnings)]` stays. The crate
 // must build in test mode with its dev-dependencies. When the code of one value
 // does not compile, a second run prints the other values.
+//
+// # Cargo features
+//
+// The `features`, `all-features` and `no-default-features` settings choose the
+// Cargo features of each cargo command that builds a crate for a marker: the
+// build of a binary or example for `docgen:output` and `docgen:usage`, `cargo
+// test --doc` for a doctest, and the value test of `docgen:const` and
+// `docgen:configulator`. The setting is for the workspace as a whole, so it
+// applies to each crate that has what it names, and cargo gets the flags of the
+// crate of the command, with `--package`:
+//
+//   - A `features` entry that is a feature, such as `serde`, enables it in each
+//     crate that has a feature of that name, and in no other. An entry
+//     `crate/feature`, such as `core-a/strict`, enables it in `crate` alone.
+//     A feature of a dependency, such as `serde/derive`, is not a valid entry; the
+//     crate that depends on it has a feature that turns it on.
+//   - `all-features` passes `--all-features` and `no-default-features` passes
+//     `--no-default-features`, to each command.
+//   - An entry that no crate has as a feature, a crate that is not in the
+//     workspace, and a feature that the crate does not have, are errors that list
+//     the crates or the features. A name has letters, digits, `_`, `-`, `+` and
+//     dots. The error of a command that cargo rejects, such as a build of an
+//     example with a `required-features` that the setting does not enable, is the
+//     message of cargo.
+//
+// A marker that runs cargo can set its own with `features=`, which is a list in
+// the form of the setting and replaces the list of the setting, and
+// `allfeatures=` and `nodefaultfeatures=`, which are `true` or `false` and replace
+// the setting of the same name. An argument that the marker does not set keeps
+// the setting. `docgen:const`, `docgen:configulator`, `docgen:usage` with
+// `crate=`, `docgen:output` with `crate=` and `docgen:cargo field=features` take
+// the three. `docgen:doc`, `docgen:errors` and `docgen:crates` run no cargo
+// command that builds, so `features=` on them is an error, and a `docgen:const`
+// with `print=raw` reads the source and ignores the features. docgen builds each
+// binary and example once for each set of features, and runs one value test and
+// one doctest run for each crate and set of features, so markers with the same
+// features share their work. A nested `docgen:docgen` run does not use the
+// settings of the outer run; its markers can set `features=`.
+//
+// What a feature does not change: the helper that reads the module tree reads
+// each module and item regardless of its `#[cfg]`, so `docgen:doc`,
+// `docgen:errors` and `print=raw` show an item behind a feature that is off.
+// `cargo metadata` runs with `--no-deps` and lists all features of a crate
+// whatever is enabled, so `docgen:crates` and the features table are the same for
+// every setting. A value is different: it comes from the value test, which builds
+// the crate with the features of the marker, so a const behind
+// `#[cfg(feature = "big")]` has a value only when `big` is enabled. With it off,
+// the value is an error: for a const in a module that the feature gates, the test
+// printed no value for it, and for a const that the feature gates in a module
+// that is built, the test code does not compile because rustc cannot find the
+// item. Both errors name the `#[cfg]` and end with a hint to enable the feature
+// with the `features` setting or `features=`. A doctest of an item that a feature gates is
+// not run with the feature off, so it is the error that the crate has no doctest
+// for the item.
 //
 // # Marker rules
 //
