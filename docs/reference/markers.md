@@ -1565,6 +1565,18 @@ The `print` setting applies to a Rust marker with no `print=` when it is `raw`, 
   - A value with no code that compiles, such as a type with no `Display` and no `Debug` impl, or a spec that the type cannot use, such as `{:x}` for a string. The error holds the message of rustc.
   - An item in a module with a `#[cfg]` that is false in the test build.
   - `print=name` when no other const, or two other consts, have the value.
+
+For a C file, `file=` takes the place of `pkg=`, and `name=` is an object-like `#define`:
+
+	docgen:const file=<path> name=<DEFINE> [code=false]
+
+`file=` is a `.c` or `.h` file, relative to the repository root and inside it, as for `docgen:code`. The value is the replacement list of the `#define` as the source writes it, and docgen never evaluates it: `#define X (1 << 3)` is `(1 << 3)`. Whitespace around the text is gone, each backslash and line ending of a continuation is one space, and comments are gone, so `#define PORT 4001 /* default */` is `4001`. The text of a string or character literal stays as it is. The `#define` is found as `docgen:code symbol=` finds it. The value is a code span, or with `code=false` the text with no backticks. It needs no cargo and no Go toolchain, so it works with none. These are errors of the C form:
+
+  - `file=` that is not a `.c` or `.h` file, or with `pkg=` or `crate=`.
+  - `print=`, which does not apply since the text is as written.
+  - A `name=` that is not an identifier, or that no `#define` has. The error lists the names of the `#define`s of the file.
+  - A name with more than one `#define`, such as one in each branch of an `#ifdef`. The error lists the lines.
+  - A function-like macro, such as `#define F(x) ...`, and a `#define` with no replacement text, such as `#define FLAG`.
 <!-- /docgen:doc -->
 
 #### A value as Go prints it
@@ -2316,22 +2328,22 @@ A value that is not one of the lists, a glob that is not valid, a crate outside 
 
 ```
 <!-- docgen:crates -->
-| Crate | Path | Kind | Version | Depends on |
-|---|---|---|---|---|
-| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core` |
-| `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` |
-| `cfg-app` | `crates/cfg-app` | lib | 0.1.0 |  |
-| `core-a` | `crates/core-a` | lib | 0.1.0 |  |
-| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
-| `err-store` | `crates/err-store` | lib | 0.4.2 |  |
-| `feat-gate` | `crates/feat-gate` | lib | 0.1.0 |  |
-| `limits` | `crates/limits` | lib | 0.1.0 |  |
-| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
-| `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  |
-| `states-door` | `crates/states-door` | lib | 0.1.0 |  |
-| `states-lamp` | `crates/states-lamp` | lib | 0.1.0 |  |
-| `states-odd` | `crates/states-odd` | lib | 0.1.0 |  |
-| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
+| Crate | Path | Kind | Version | Depends on | Description |
+|---|---|---|---|---|---|
+| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core` |  |
+| `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` | Core of the cargo marker fixture |
+| `cfg-app` | `crates/cfg-app` | lib | 0.1.0 |  | Config structs for the docgen:config tests. |
+| `core-a` | `crates/core-a` | lib | 0.1.0 |  | The core of the fixture app. |
+| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  | A fixture workspace |
+| `err-store` | `crates/err-store` | lib | 0.4.2 |  | A store that returns errors, for the Returned by column and docs.rs links. |
+| `feat-gate` | `crates/feat-gate` | lib | 0.1.0 |  | Limits that depend on the Cargo features of the crate. |
+| `limits` | `crates/limits` | lib | 0.1.0 |  | Limits of the fixture. |
+| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  | Helpers to run and to test. |
+| `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  | A crate whose doctest fails. |
+| `states-door` | `crates/states-door` | lib | 0.1.0 |  | A door whose state is the variant of an enum, for docgen:states. |
+| `states-lamp` | `crates/states-lamp` | lib | 0.1.0 |  | A lamp with a timer, for docgen:states. |
+| `states-odd` | `crates/states-odd` | lib | 0.1.0 |  | Machines that docgen:states records in part or not at all. |
+| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |  |
 <!-- /docgen:crates -->
 ```
 <!-- /docgen:docgen -->
@@ -2352,12 +2364,12 @@ A value that is not one of the lists, a glob that is not valid, a crate outside 
 
 ```
 <!-- docgen:crates kind=bin deps=all -->
-| Crate | Path | Kind | Version | Depends on |
-|---|---|---|---|---|
-| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core`, `limits` (dev) |
-| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
-| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
-| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
+| Crate | Path | Kind | Version | Depends on | Description |
+|---|---|---|---|---|---|
+| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core`, `limits` (dev) |  |
+| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  | A fixture workspace |
+| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  | Helpers to run and to test. |
+| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |  |
 <!-- /docgen:crates -->
 ```
 <!-- /docgen:docgen -->

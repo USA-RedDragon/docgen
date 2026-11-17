@@ -592,6 +592,31 @@
 //   - An item in a module with a `#[cfg]` that is false in the test build.
 //   - `print=name` when no other const, or two other consts, have the value.
 //
+// For a C file, `file=` takes the place of `pkg=`, and `name=` is an
+// object-like `#define`:
+//
+//	docgen:const file=<path> name=<DEFINE> [code=false]
+//
+// `file=` is a `.c` or `.h` file, relative to the repository root and inside it,
+// as for `docgen:code`. The value is the replacement list of the `#define` as the
+// source writes it, and docgen never evaluates it: `#define X (1 << 3)` is `(1 << 3)`.
+// Whitespace around the text is gone, each backslash and line ending of a
+// continuation is one space, and comments are gone, so
+// `#define PORT 4001 /* default */` is `4001`. The text of a string or character
+// literal stays as it is. The `#define` is found as `docgen:code symbol=` finds it. The
+// value is a code span, or with `code=false` the text with no backticks. It needs
+// no cargo and no Go toolchain, so it works with none. These are errors of the C
+// form:
+//
+//   - `file=` that is not a `.c` or `.h` file, or with `pkg=` or `crate=`.
+//   - `print=`, which does not apply since the text is as written.
+//   - A `name=` that is not an identifier, or that no `#define` has. The error
+//     lists the names of the `#define`s of the file.
+//   - A name with more than one `#define`, such as one in each branch of an
+//     `#ifdef`. The error lists the lines.
+//   - A function-like macro, such as `#define F(x) ...`, and a `#define` with
+//     no replacement text, such as `#define FLAG`.
+//
 // # docgen:errors
 //
 // A table of the errors named in the doc comments of the constructors and

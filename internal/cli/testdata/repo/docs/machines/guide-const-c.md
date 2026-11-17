@@ -1,0 +1,4 @@
+- Port: <!-- docgen:const file=native/limits.h name=LAMP_PORT --><!-- /docgen:const -->
+- Flags: <!-- docgen:const file=native/limits.h name=LAMP_FLAGS --><!-- /docgen:const -->
+- Name: <!-- docgen:const file=native/limits.h name=LAMP_NAME --><!-- /docgen:const -->
+- Mask: <!-- docgen:const file=native/limits.h name=LAMP_MASK code=false --><!-- /docgen:const -->

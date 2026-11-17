@@ -94,18 +94,23 @@ func (j job) source(path string) ([]byte, error) {
 	return excerpt.Source(b), nil
 }
 
-// A langHandler is a marker kind with a Go form and a Rust form. Bind picks the
-// Rust form for a marker with crate=, and the Go form for any other.
+// A langHandler is a marker kind with a Go form and a Rust form, and for some
+// kinds a C form. Bind picks the Rust form for a marker with crate=, the C form
+// for one with file= when the kind has a C form, and the Go form for any other.
 type langHandler struct {
 	handler
 	goH   handler
 	rustH handler
+	cH    handler
 }
 
 func (h *langHandler) Bind(a *marker.Args) {
 	h.handler = h.goH
 	if _, ok := a.Optional(argCrate); ok {
 		h.handler = h.rustH
+	}
+	if _, ok := a.Optional(argFile); ok && h.cH != nil {
+		h.handler = h.cH
 	}
 	h.handler.Bind(a)
 }
@@ -123,7 +128,7 @@ func newHandler(kind string) handler {
 	case "config":
 		return &langHandler{goH: &configHandler{}, rustH: &rustConfigHandler{}}
 	case "const":
-		return &langHandler{goH: &constHandler{}, rustH: &rustConstHandler{}}
+		return &langHandler{goH: &constHandler{}, rustH: &rustConstHandler{}, cH: &cConstHandler{}}
 	case "errors":
 		return &langHandler{goH: &errorsHandler{}, rustH: &rustErrorsHandler{}}
 	case "doc":

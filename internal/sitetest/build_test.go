@@ -996,8 +996,8 @@ func TestConstGuideEditorBlock(t *testing.T) {
 	block := editorBlock(t, got)
 	line := strconv.Itoa(strings.Count(before, "\n") + 1)
 	contains(t, block, `data-root="repo"`, `data-path="v2/machine/machine.go"`, `data-line="`+line+`"`, `data-path="docs/machines/guide-const.md"`)
-	if n := strings.Count(got, `class="editor"`); n != 5 {
-		t.Errorf("%d editor blocks, want 5", n)
+	if n := strings.Count(got, `class="editor"`); n != 6 {
+		t.Errorf("%d editor blocks, want 6", n)
 	}
 }
 

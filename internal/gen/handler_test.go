@@ -48,6 +48,15 @@ func TestHandlerArgErrors(t *testing.T) {
 		{"configulator pkg=a type=T run=1", "line 1: docgen:configulator has no argument run="},
 		{"const name=N", "line 1: docgen:const: pkg= is required"},
 		{"const pkg=a", "line 1: docgen:const: name= is required"},
+		{"const file=a.h", "line 1: docgen:const: name= is required"},
+		{"const file=a.h name=N extra=1", "line 1: docgen:const has no argument extra="},
+		{"const file=a.txt name=N", "line 1: docgen:const file= is not a .c or .h file"},
+		{"const file=a name=N", "line 1: docgen:const file= is not a .c or .h file"},
+		{"const file=a.h name=N pkg=p", "line 1: docgen:const has both file= and pkg=; file= is for C, pkg= for Go and crate= for Rust"},
+		{"const file=a.h name=N crate=c", "line 1: docgen:const has both file= and crate=; file= is for C, pkg= for Go and crate= for Rust"},
+		{"const file=a.h name=N print=raw", "line 1: docgen:const print= does not apply to a C #define; the text is as written"},
+		{"const file=a.h name=N code=true", "line 1: docgen:const code= can only be false"},
+		{`const file="" name=N`, "line 1: docgen:const: file= is required"},
 		{"const pkg=a name=N extra=1", "line 1: docgen:const has no argument extra="},
 		{"doc", "line 1: docgen:doc: pkg= is required"},
 		{"doc pkg=a type=T", "line 1: docgen:doc has no argument type="},
@@ -130,6 +139,8 @@ func TestHandlerArgs(t *testing.T) {
 		"errors pkg=a type=T",
 		"configulator pkg=a type=T env=E envsep=S flagsep=F",
 		"const pkg=a name=N",
+		"const file=a.h name=N",
+		"const file=native/a.c name=N code=false",
 		"doc pkg=a name=N section=S",
 		"gomod field=go file=a",
 		"usage cmd=a",
@@ -157,10 +168,11 @@ func TestHandlerArgs(t *testing.T) {
 func TestInlineKinds(t *testing.T) {
 	t.Parallel()
 	for tag, want := range map[string]string{
-		"const pkg=a name=N": "x",
-		"gomod field=go":     "x",
-		"var name=a":         "x",
-		"doc pkg=a":          "\nx\n",
+		"const pkg=a name=N":    "x",
+		"const file=a.h name=N": "x",
+		"gomod field=go":        "x",
+		"var name=a":            "x",
+		"doc pkg=a":             "\nx\n",
 	} {
 		kind, _, _ := strings.Cut(tag, " ")
 		pg := newPage("p.md", "p.md", "<!-- docgen:"+tag+" -->\n<!-- /docgen:"+kind+" -->\n")

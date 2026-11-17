@@ -223,3 +223,44 @@ pub mod extra {
 With a feature off, the marker is an error that names the `#[cfg]`, so the page cannot show a value that the build does not have. `features=` replaces the list of the `features` setting for that marker. See [Cargo features](../reference/markers.md#cargo-features).
 
 For the rules of `crate=` and `name=`, see [Rust crates](../reference/markers.md#rust-crates).
+
+## C
+
+For a `#define` in a C file, give the file with `file=` and the name with `name=`. The value is the replacement text as written, and docgen does not evaluate it:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/native/limits.h -->
+```c
+#define LAMP_PORT 4001
+#define LAMP_FLAGS (1 << 3)
+#define LAMP_NAME "lamp" /* shown on the label */
+
+#define LAMP_MASK \
+	(LAMP_FLAGS | \
+	 0x10)
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-const-c.md -->
+#### Before
+
+```
+- Port: <!-- docgen:const file=native/limits.h name=LAMP_PORT --><!-- /docgen:const -->
+- Flags: <!-- docgen:const file=native/limits.h name=LAMP_FLAGS --><!-- /docgen:const -->
+- Name: <!-- docgen:const file=native/limits.h name=LAMP_NAME --><!-- /docgen:const -->
+- Mask: <!-- docgen:const file=native/limits.h name=LAMP_MASK code=false --><!-- /docgen:const -->
+```
+
+#### After
+
+```
+- Port: <!-- docgen:const file=native/limits.h name=LAMP_PORT -->`4001`<!-- /docgen:const -->
+- Flags: <!-- docgen:const file=native/limits.h name=LAMP_FLAGS -->`(1 << 3)`<!-- /docgen:const -->
+- Name: <!-- docgen:const file=native/limits.h name=LAMP_NAME -->`"lamp"`<!-- /docgen:const -->
+- Mask: <!-- docgen:const file=native/limits.h name=LAMP_MASK code=false -->(LAMP_FLAGS | 0x10)<!-- /docgen:const -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+A comment is not part of the value, and a `#define` that continues on the next lines is one line of text with a single space for each line ending. With `code=false`, the value has no backticks. A function-like macro, a `#define` with no text, a name with more than one `#define` and `print=` are errors.
+
+For all options, see [`docgen:const`](../reference/markers.md#docgenconst).

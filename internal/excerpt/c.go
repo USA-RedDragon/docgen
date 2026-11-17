@@ -52,11 +52,16 @@ func cExcerpt(src []byte, sym string) (string, error) {
 	case 1:
 		return strings.Join(lines[spans[0].first:spans[0].last+1], "\n"), nil
 	}
-	var where []string
+	return "", cAmbiguous(sym, spans)
+}
+
+// cAmbiguous returns the error for a name that has the definitions spans.
+func cAmbiguous(sym string, spans []cSpan) error {
+	where := make([]string, 0, len(spans))
 	for _, s := range spans {
 		where = append(where, fmt.Sprintf("%s at line %d", s.what, s.first+1))
 	}
-	return "", fmt.Errorf("%s has more than one definition in the C file: %s", sym, strings.Join(where, ", "))
+	return fmt.Errorf("%s has more than one definition in the C file: %s", sym, strings.Join(where, ", "))
 }
 
 func cBareSpans(lines, codeLines []string, code, sym string) ([]cSpan, error) {
