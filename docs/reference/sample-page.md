@@ -1,6 +1,6 @@
 # Sample page
 
-A page with most marker kinds: its empty markers, the same page after `docgen update -module v2`, and how that page renders. It is the test fixture of docgen, so the tests compare this output with the result of each change.
+A page with most marker kinds of a Go module: its empty markers, the same page after `docgen update -module v2`, and how that page renders. It is the test fixture of docgen, so the tests compare this output with the result of each change. For the same with a Cargo workspace, see [Rust sample page](#rust-sample-page).
 
 <!-- site:large -->
 <!-- site:editor -->
@@ -427,3 +427,126 @@ func main() {
 ````
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
+
+## Rust sample page
+
+A page with Rust markers over the Cargo workspace in `internal/cli/testdata/rust`, before and after `docgen update`. Each marker has `crate=` in place of `pkg=`.
+
+<!-- site:large -->
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/sample.md -->
+#### Before
+
+```
+# Limits and lamp
+
+The most jobs at once is <!-- docgen:const crate=core-a name=limits::MAX_JOBS --><!-- /docgen:const -->, and the version is <!-- docgen:cargo field=workspace.package.version --><!-- /docgen:cargo -->.
+
+<!-- docgen:doc crate=core-a name=limits::check_jobs -->
+<!-- /docgen:doc -->
+
+<!-- docgen:errors crate=core-a type=errors::Error -->
+<!-- /docgen:errors -->
+
+<!-- docgen:config crate=cfg-app type=guide::Listener -->
+<!-- /docgen:config -->
+
+<!-- docgen:states crate=states-lamp type=Lamp -->
+<!-- /docgen:states -->
+
+<!-- docgen:output crate=run-c doctest=shapes::area -->
+<!-- /docgen:output -->
+
+<!-- docgen:usage crate=cargo-b-cli bin=demo -->
+<!-- /docgen:usage -->
+```
+
+#### After
+
+````
+# Limits and lamp
+
+The most jobs at once is <!-- docgen:const crate=core-a name=limits::MAX_JOBS -->`8`<!-- /docgen:const -->, and the version is <!-- docgen:cargo field=workspace.package.version -->`0.3.0`<!-- /docgen:cargo -->.
+
+<!-- docgen:doc crate=core-a name=limits::check_jobs -->
+Checks that jobs is between 1 and `MAX_JOBS`.
+
+```rust
+assert_eq!(check_jobs(2), Ok(2));
+```
+<!-- /docgen:doc -->
+
+<!-- docgen:errors crate=core-a type=errors::Error -->
+| Error | Returned by | Message | Source | Meaning |
+|---|---|---|---|---|
+| `Error::Read` |  | `read {path}: {source}` | `std::io::Error` | A file could not be read. |
+| `Error::Number` |  | `line {line}: bad number` | `ParseIntError` | A number in the config is not valid. |
+| `Error::Limit` |  | the message of `crate::limits::LimitError` | `crate::limits::LimitError`, with From | The job count is out of range. |
+| `Error::NoJobs` |  | `no jobs` |  | The app has no jobs \| none at all. |
+<!-- /docgen:errors -->
+
+<!-- docgen:config crate=cfg-app type=guide::Listener -->
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `host` | `String` | `"localhost".to_string()` (localhost) | The host to listen on. |
+| `port` | `u16` | `LISTEN_PORT` (8000) | The port to listen on. |
+| `request-timeout` | `Duration` | `Duration::from_millis(1500)` (1.5s) | How long a request can take. 0 means no limit. |
+| `headers` | `Vec<String>` | `Default::default()` ([]) | Extra response headers. |
+| `retries` | `u32` | `default_retries()` (3) | How many times a failed request runs again. |
+<!-- /docgen:config -->
+
+<!-- docgen:states crate=states-lamp type=Lamp -->
+States of `Lamp`, from `Lamp::state`:
+
+| State | Meaning | Seen in tests |
+|---|---|---|
+| `LampState::Off` | Gives no light. | yes, first state |
+| `LampState::On` | Gives light until the wait ends. | yes |
+| `LampState::Broken` | Never gives light again. | yes |
+
+Transitions seen in tests:
+
+| From | Method call | To |
+|---|---|---|
+| Off | `start` | On |
+| Off | `smash` | Broken |
+| On | `stop`, `tick` | Off |
+
+![Transitions of Lamp](states/states-lamp-lamp.svg)
+
+Not recorded (returns a borrow): name_mut.
+<!-- /docgen:states -->
+
+<!-- docgen:output crate=run-c doctest=shapes::area -->
+```rust
+use run_c::shapes::area;
+
+assert_eq!(area(3, 4), 12);
+```
+
+```rust
+assert_eq!(run_c::shapes::area(5, 5), 25);
+```
+<!-- /docgen:output -->
+
+<!-- docgen:usage crate=cargo-b-cli bin=demo -->
+```text
+Inspect the demo workspace
+
+Usage: demo [OPTIONS] <COMMAND>
+
+Commands:
+  show   Print the jobs
+  label  Print the jobs with a prefix
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -j, --jobs <JOBS>  How many jobs to run [default: 1]
+  -h, --help         Print help
+  -V, --version      Print version
+```
+<!-- /docgen:usage -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
