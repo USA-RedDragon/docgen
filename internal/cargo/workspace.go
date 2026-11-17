@@ -56,6 +56,27 @@ type Package struct {
 	// Registries are the registries named by publish in the manifest: nil when
 	// publish is not set, and empty for publish = false.
 	Registries []string
+	// Metadata is the package.metadata table of the manifest, with the values
+	// of TOML or of JSON: nil when there is none. Workspace inheritance does
+	// not apply to it.
+	Metadata map[string]any
+}
+
+// MetadataValue returns the value at the key path under package.metadata, and
+// whether there is one. A path that goes through a value that is not a table
+// has none.
+func (p *Package) MetadataValue(path []string) (any, bool) {
+	var cur any = p.Metadata
+	for _, k := range path {
+		table, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		if cur, ok = table[k]; !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 // CratesIO is the name that publish uses for crates.io.
@@ -152,6 +173,7 @@ type metaPackage struct {
 	Features     map[string][]string `json:"features"`
 	Dependencies []metaDep           `json:"dependencies"`
 	Publish      []string            `json:"publish"`
+	Metadata     map[string]any      `json:"metadata"`
 }
 
 type metaTarget struct {
@@ -184,6 +206,7 @@ func parseMetadata(b []byte) (*Workspace, error) {
 			Dir:          filepath.Dir(mp.ManifestPath),
 			Features:     mp.Features,
 			Registries:   mp.Publish,
+			Metadata:     mp.Metadata,
 		}
 		for _, t := range mp.Targets {
 			p.Targets = append(p.Targets, Target{Name: t.Name, Kind: targetKind(t.Kind), Path: t.SrcPath, Edition: t.Edition})

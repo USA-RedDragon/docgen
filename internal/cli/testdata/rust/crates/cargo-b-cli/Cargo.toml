@@ -15,3 +15,8 @@ clap = { workspace = true }
 
 [dev-dependencies]
 limits = { workspace = true }
+
+[package.metadata.fixture]
+owner = "tools"
+stable = false
+level = 1.5

@@ -77,6 +77,8 @@ func TestHandlerArgErrors(t *testing.T) {
 		{"crates kind=exe", "line 1: docgen:crates kind= is not lib, proc-macro, bin"},
 		{"crates deps=all,dev", "line 1: docgen:crates deps= is not normal, dev, build, all"},
 		{"crates match=[", "line 1: docgen:crates match= is not a glob: syntax error in pattern"},
+		{"crates columns=owner", "line 1: docgen:crates columns= key \"owner\" is not metadata.<key>[.<key>...], with keys of letters, digits, - and _"},
+		{`crates columns=""`, "line 1: docgen:crates: columns= is empty"},
 		{"crates x=1", "line 1: docgen:crates has no argument x="},
 		{`crates kind=""`, "line 1: docgen:crates: kind= is empty"},
 		{"usage crate=a cmd=b", "line 1: docgen:usage has both cmd= and crate=; use one"},

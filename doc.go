@@ -889,6 +889,7 @@
 // A table of the crates of a Cargo workspace.
 //
 //	docgen:crates [kind=<lib|proc-macro|bin>] [deps=<normal|dev|build|all>] [match=<glob>]
+//	              [columns=<metadata.key>[,<metadata.key>...]]
 //
 // Each row is a crate: its name, its path relative to the repository root, its
 // kind (`lib`, `proc-macro` or `bin`, and `lib, bin` for a crate that has both),
@@ -912,6 +913,20 @@
 //     `dev`, `build`, or `all`. With `all`, a dev or build dependency has its kind
 //     in parentheses.
 //   - `match=` is a glob, as in Go's `path.Match`, for the names of the crates.
+//   - `columns=` adds a column after Description for each key of the table
+//     `[package.metadata]` of the `Cargo.toml` of a crate, in the order given. Each
+//     key is a dotted path written as `metadata.<key>[.<key>...]`, so
+//     `metadata.docs.tier` is `package.metadata.docs.tier`. The full
+//     `package.metadata.` form is not accepted. A key is bare TOML: letters, digits,
+//     `-` and `_`, so a quoted key and a key with a dot in it are not possible. The
+//     header of the column is the last key, `tier` for that one. A crate with no such
+//     key has an empty cell. A string, boolean, number or date has its text, a number
+//     as TOML writes it, and an array of those has its items joined by `, `. A table,
+//     or an array with a table or an array in it, is an error that names the crate
+//     and the key, and so is a bad key. Workspace inheritance does not apply to
+//     metadata: `[workspace.metadata]` is not read, and `owner.workspace = true` is a
+//     table, so an error. It works with no cargo too, since docgen reads the
+//     key from the `Cargo.toml` of the crate, as `cargo metadata` does.
 //
 // A value that is not one of the lists, a glob that is not valid, a crate outside
 // the repository, no crate that matches and a missing `Cargo.toml` in the module

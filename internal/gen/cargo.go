@@ -208,9 +208,10 @@ func featureTable(pkg *cargo.Package, feats *cargo.Features) (string, []outFile,
 // Cargo workspace with their path, kind, version, the crates of the workspace
 // that they depend on and their description.
 type cratesHandler struct {
-	kind  string
-	deps  string
-	match string
+	kind    string
+	deps    string
+	match   string
+	columns []metaKey
 }
 
 const (
@@ -228,7 +229,7 @@ func (h *cratesHandler) Bind(a *marker.Args) {
 	h.kind, _ = a.Optional("kind")
 	h.deps, _ = a.Optional("deps")
 	h.match, _ = a.Optional("match")
-	a.NonEmpty("kind", "deps", "match")
+	a.NonEmpty("kind", "deps", "match", argColumns)
 	if h.kind != "" && !slices.Contains(crateKinds(), h.kind) {
 		a.Fail("kind= is not " + strings.Join(crateKinds(), ", "))
 	}
@@ -240,6 +241,12 @@ func (h *cratesHandler) Bind(a *marker.Args) {
 	}
 	if _, err := path.Match(h.match, ""); err != nil {
 		a.Fail("match= is not a glob: " + err.Error())
+	}
+	if list, ok := a.Optional(argColumns); ok && list != "" {
+		var err error
+		if h.columns, err = parseMetaKeys(list); err != nil {
+			a.Fail(err.Error())
+		}
 	}
 }
 
@@ -253,7 +260,11 @@ func (h *cratesHandler) fill(ctx context.Context, j job) (string, []outFile, err
 		return "", nil, err
 	}
 	var b strings.Builder
-	b.WriteString("| Crate | Path | Kind | Version | Depends on | Description |\n|---|---|---|---|---|---|\n")
+	b.WriteString("| Crate | Path | Kind | Version | Depends on | Description |")
+	for _, k := range h.columns {
+		b.WriteString(" " + markdown.Cell(k.header()) + " |")
+	}
+	b.WriteString("\n|---|---|---|---|---|---|" + strings.Repeat("---|", len(h.columns)) + "\n")
 	rows := 0
 	for _, p := range ws.Packages {
 		kinds := packageKinds(p)
@@ -269,7 +280,15 @@ func (h *cratesHandler) fill(ctx context.Context, j job) (string, []outFile, err
 		if err != nil || !filepath.IsLocal(rel) && rel != "." {
 			return "", nil, fmt.Errorf("crate %s is outside the repository", p.Name)
 		}
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", markdown.CodeSpan(p.Name), markdown.CodeSpan(filepath.ToSlash(rel)), strings.Join(kinds, ", "), markdown.Cell(p.Version), h.dependencies(p), markdown.Cell(crateDescription(p)))
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |", markdown.CodeSpan(p.Name), markdown.CodeSpan(filepath.ToSlash(rel)), strings.Join(kinds, ", "), markdown.Cell(p.Version), h.dependencies(p), markdown.Cell(crateDescription(p)))
+		for _, k := range h.columns {
+			cell, err := k.cell(p)
+			if err != nil {
+				return "", nil, err
+			}
+			b.WriteString(" " + cell + " |")
+		}
+		b.WriteString("\n")
 		rows++
 	}
 	if rows == 0 {

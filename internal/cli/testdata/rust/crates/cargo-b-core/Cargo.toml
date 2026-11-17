@@ -15,3 +15,12 @@ checked = ["dep:limits", "strict"]
 
 [dependencies]
 limits = { workspace = true, optional = true }
+
+[package.metadata.fixture]
+owner = "platform"
+stable = true
+level = 3
+tags = ["core", "config"]
+
+[package.metadata.fixture.docs]
+tier = "gold"

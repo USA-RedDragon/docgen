@@ -207,6 +207,8 @@ func (r *manifestReader) readPackage(dir string) (*Package, []rawDep, error) {
 	}
 	p.Features = features(m, optional)
 	p.Registries = r.registries(m)
+	pkg, _ := m.Doc[keyPackage].(map[string]any)
+	p.Metadata, _ = pkg["metadata"].(map[string]any)
 	return p, deps, nil
 }
 

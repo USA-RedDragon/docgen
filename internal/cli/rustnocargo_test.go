@@ -20,6 +20,7 @@ func helperOnlyGuides() []string {
 		"guide-code-symbol.md",
 		"guide-crates.md",
 		"guide-crates-filter.md",
+		"guide-crates-columns.md",
 		"guide-doc.md",
 		"guide-doc-crate.md",
 		"guide-errors.md",

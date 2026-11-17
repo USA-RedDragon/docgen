@@ -2,6 +2,7 @@ package cargo
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -25,11 +26,13 @@ func writeTree(t *testing.T, dir string, files map[string]string) {
 
 // normalized returns a copy of w with the targets and the local dependencies
 // of each package sorted, since cargo metadata keeps the order of the
-// manifest.
+// manifest. Metadata is dropped: TOML and JSON type its numbers and dates
+// differently, so TestReadWorkspaceMetadata compares it.
 func normalized(w *Workspace) []Package {
 	out := make([]Package, len(w.Packages))
 	for i, p := range w.Packages {
 		out[i] = *p
+		out[i].Metadata = nil
 		out[i].Targets = slices.Clone(p.Targets)
 		slices.SortFunc(out[i].Targets, func(a, b Target) int {
 			return strings.Compare(a.Kind+"\x00"+a.Name, b.Kind+"\x00"+b.Name)
@@ -242,5 +245,68 @@ func TestReadWorkspaceErrors(t *testing.T) {
 				t.Fatalf("error %v, want one with %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestReadWorkspaceMetadata(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		"Cargo.toml": "[workspace]\nmembers = [\"a\", \"b\"]\n\n[workspace.package]\nversion = \"1.0.0\"\n\n[workspace.metadata.x]\nk = \"workspace\"\n",
+		"a/Cargo.toml": `[package]
+name = "a"
+version.workspace = true
+
+[package.metadata.x]
+k = "v"
+n = 2
+tags = ["p", "q"]
+
+[package.metadata.x.deep]
+leaf = true
+`,
+		"a/src/lib.rs": "",
+		"b/Cargo.toml": "[package]\nname = \"b\"\nversion.workspace = true\n",
+		"b/src/lib.rs": "",
+	})
+	check := func(t *testing.T, ws *Workspace) {
+		t.Helper()
+		a, err := ws.Package("a")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for path, want := range map[string]any{"x.k": "v", "x.deep.leaf": true} {
+			if got, ok := a.MetadataValue(strings.Split(path, ".")); !ok || got != want {
+				t.Errorf("a %s = %v, %v, want %v", path, got, ok, want)
+			}
+		}
+		got, ok := a.MetadataValue([]string{"x", "tags"})
+		if tags, isList := got.([]any); !ok || !isList || len(tags) != 2 {
+			t.Errorf("a x.tags = %v, %v, want two items", got, ok)
+		}
+		for _, path := range []string{"x.none", "y", "x.k.deeper"} {
+			if got, ok := a.MetadataValue(strings.Split(path, ".")); ok {
+				t.Errorf("a %s = %v, want none", path, got)
+			}
+		}
+		b, err := ws.Package("b")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := b.MetadataValue([]string{"x", "k"}); ok {
+			t.Errorf("b x.k = %v, want none: the workspace table is not inherited", got)
+		}
+	}
+	got, err := ReadWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(t, got)
+	if _, err := exec.LookPath("cargo"); err == nil {
+		want, err := newRunner(t).Open(t.Context(), dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(t, want)
 	}
 }

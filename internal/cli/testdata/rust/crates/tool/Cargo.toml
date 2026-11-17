@@ -10,3 +10,6 @@ limits = { path = "../limits" }
 [[bin]]
 name = "tool"
 path = "src/main.rs"
+
+[package.metadata.fixture]
+owner = "tools"

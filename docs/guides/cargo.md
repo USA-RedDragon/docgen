@@ -177,4 +177,40 @@ Each row is a crate with its path, kind, version, the crates of the workspace th
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+To show a key of `[package.metadata]`, such as an owner or a support tier, add a column for it with `columns=`. Write each key as `metadata.` and the dotted path, and docgen adds a column after Description, headed with the last key. A crate without the key has an empty cell, an array of strings is joined with commas, and a table is an error. `[workspace.metadata]` is not inherited.
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/cargo-b-core/Cargo.toml symbol=package.metadata.fixture -->
+```toml
+[package.metadata.fixture]
+owner = "platform"
+stable = true
+level = 3
+tags = ["core", "config"]
+
+[package.metadata.fixture.docs]
+tier = "gold"
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-crates-columns.md -->
+#### Before
+
+```
+<!-- docgen:crates match=cargo-b-* columns=metadata.fixture.owner,metadata.fixture.stable,metadata.fixture.level,metadata.fixture.tags,metadata.fixture.docs.tier -->
+<!-- /docgen:crates -->
+```
+
+#### After
+
+```
+<!-- docgen:crates match=cargo-b-* columns=metadata.fixture.owner,metadata.fixture.stable,metadata.fixture.level,metadata.fixture.tags,metadata.fixture.docs.tier -->
+| Crate | Path | Kind | Version | Depends on | Description | owner | stable | level | tags | tier |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core` |  | tools | false | 1.5 |  |  |
+| `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` | Core of the cargo marker fixture | platform | true | 3 | core, config | gold |
+<!-- /docgen:crates -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
 For details, see [`docgen:cargo`](../reference/markers.md#docgencargo) and [`docgen:crates`](../reference/markers.md#docgencrates).
