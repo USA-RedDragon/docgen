@@ -181,25 +181,25 @@ const RETRIES: u32 = 3;
 A const behind `#[cfg(feature = "...")]` has a value only in a build with that feature. Set the features of the build with the `features` setting, or with `features=` on the marker:
 
 <!-- site:editor -->
-<!-- docgen:code file=internal/cli/testdata/rust/crates/feat-gate/src/lib.rs lines=4-19 -->
-````rust
+<!-- docgen:code file=internal/cli/testdata/rust/crates/feat-gate/src/lib.rs symbol=BASE -->
+```rust
 pub const BASE: u32 = 8;
-
-/// The size with the `big` feature.
-///
-/// ```
-/// assert_eq!(feat_gate::BIG, 1024);
-/// ```
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/feat-gate/src/lib.rs symbol=BIG -->
+```rust
 #[cfg(feature = "big")]
 pub const BIG: u32 = 1024;
-
-/// Items of the `extra` feature.
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/feat-gate/src/lib.rs symbol=extra -->
+```rust
 #[cfg(feature = "extra")]
 pub mod extra {
     /// The level with the `extra` feature.
     pub const LEVEL: u8 = 3;
 }
-````
+```
 <!-- /docgen:code -->
 <!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-const-features.md -->
 #### Before
