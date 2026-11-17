@@ -2,3 +2,4 @@
 artifacts/
 /dist/
 /playground/test/node_modules/
+/internal/rustsrc/helper/target/
