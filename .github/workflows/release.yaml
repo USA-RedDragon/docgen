@@ -70,6 +70,11 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      # The Rust helper of docgen in the playground is a wasm32-wasip1 build,
+      # made with the Rust toolchain of the runner.
+      - name: Add the Rust target wasm32-wasip1
+        run: rustup target add wasm32-wasip1
+
       - name: Build the playground
         env:
           PLAYGROUND_VERSION: ${{ github.ref_name }}

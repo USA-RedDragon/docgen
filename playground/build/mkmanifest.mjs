@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { check, NAMES } from "./checkmanifest.mjs";
+import { check, NAMES, OPTIONAL_NAMES } from "./checkmanifest.mjs";
 
 const [out, work, base, go, version, commit, ...items] = process.argv.slice(2);
 fs.mkdirSync(path.join(out, "assets", "zstd"), { recursive: true });
@@ -31,6 +31,6 @@ for (const it of items) {
   files.set(name, { name, kind, url, encoding: zstd ? "zstd" : "identity", size: data.length, sent: fs.statSync(path.join(out, url)).size, sha256 });
 }
 for (const n of NAMES) if (!files.has(n)) throw new Error(`no ${n} asset`);
-const list = NAMES.map(n => files.get(n));
+const list = [...NAMES, ...OPTIONAL_NAMES.filter(n => files.has(n))].map(n => files.get(n));
 fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify({ go, docgen: { version, commit }, files: list }, null, 1) + "\n");
 for (const f of list) console.log(`${f.name.padEnd(8)} ${String(f.size).padStart(9)} ${String(f.sent).padStart(9)} ${f.url}`);

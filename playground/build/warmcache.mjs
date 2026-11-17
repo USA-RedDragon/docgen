@@ -1,7 +1,8 @@
 // Runs commands of the playground under Node, with the kernel of the page and one worker_threads
 // Worker for each process, and writes the GOCACHE that they fill as a bundle.
-// Usage: node warmcache.mjs BINDIR WASM_EXEC OUT BUNDLE... -- STEP...
-//   BINDIR holds <tool>.wasm for go, compile, link, asm, vet, docgen and bb.
+// Usage: node warmcache.mjs BINDIR WASM_EXEC WASI_SHIM OUT BUNDLE... -- STEP...
+//   BINDIR holds <tool>.wasm for go, compile, link, asm, vet, docgen and bb, and rshelper.wasm, the
+//   Rust helper, when the build has it. WASI_SHIM is the bundle wasi-shim.js, which runs the helper.
 //   A step is "exec|DIR|ARGV0 ARG..." or "sh|DIR|shell command". The environment variable EXTRA
 //   adds variables to the environment of each step, as JSON.
 // When a step ends with a status other than its expected status (exit 0, or "!" before the step
@@ -14,11 +15,13 @@ const web = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "we
 const { createSession, loadBundle, dumpTree, describe } = await import(path.join(web, "session.mjs"));
 const args = process.argv.slice(2);
 const separator = args.indexOf("--");
-const [binDir, wasmExec, out, ...bundles] = args.slice(0, separator);
+const [binDir, wasmExec, wasiShim, out, ...bundles] = args.slice(0, separator);
 const steps = args.slice(separator + 1);
 
 function makeWorker() {
-  const worker = new Worker(path.join(web, "proc.mjs"), { workerData: { wasmExec: path.resolve(wasmExec) } });
+  const worker = new Worker(path.join(web, "proc.mjs"), {
+    workerData: { wasmExec: path.resolve(wasmExec), wasiShim: path.resolve(wasiShim) },
+  });
   const handle = { post: message => worker.postMessage(message), terminate: () => worker.terminate(), onmessage: null };
   worker.on("message", message => handle.onmessage && handle.onmessage(message));
   worker.on("error", error => console.error("worker error", error));
@@ -26,7 +29,8 @@ function makeWorker() {
 }
 
 const loadTool = async name => WebAssembly.compile(fs.readFileSync(path.join(binDir, name + ".wasm")));
-const session = createSession({ loadTool, makeWorker });
+const rustHelper = fs.existsSync(path.join(binDir, "rshelper.wasm"));
+const session = createSession({ loadTool, makeWorker, rustHelper });
 for (const bundle of bundles) {
   const count = loadBundle(session.fsys, new Uint8Array(fs.readFileSync(bundle)));
   console.log(`loaded ${bundle}: ${count} files`);

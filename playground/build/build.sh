@@ -3,11 +3,17 @@
 #
 #   build.sh all OUT           The whole playground: the Go toolchain, the bb
 #                              shell and commands, the GOROOT
-#                              and GOCACHE bundles, docgen.wasm and the page.
-#   build.sh preview BASE OUT  docgen.wasm and the page of this checkout, with
-#                              the toolchain of BASE, an earlier output of
-#                              build.sh all. The Go version is the one of BASE.
+#                              and GOCACHE bundles, docgen.wasm, the Rust
+#                              helper and the page.
+#   build.sh preview BASE OUT  docgen.wasm, the Rust helper and the page of
+#                              this checkout, with the toolchain of BASE, an
+#                              earlier output of build.sh all. The Go version
+#                              is the one of BASE.
 #   build.sh gover             Print the Go version of go.mod, such as go1.27.0.
+#
+# The Rust helper (internal/rustsrc/helper) needs cargo and the Rust target
+# wasm32-wasip1 (rustup target add wasm32-wasip1). build.sh all stops without
+# them. A preview without them keeps the helper of BASE, if it has one.
 #
 # OUT is a directory that the playground page serves from. The release
 # workflow runs "all" on a v* tag, and cloudflare.sh runs "preview" for
@@ -121,6 +127,18 @@ else
 fi
 python3 -I "$here/mkoverlay.py" "$goroot" "$work/ov"
 
+# have_rust is 1 when cargo can build for wasm32-wasip1.
+have_rust=0
+if command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1 &&
+	[ -d "$(rustc --print target-libdir --target wasm32-wasip1 2>/dev/null)" ]; then
+	have_rust=1
+elif [ "$mode" = all ]; then
+	echo "build.sh: the Rust helper needs cargo and the Rust target wasm32-wasip1; install Rust and run rustup target add wasm32-wasip1" >&2
+	exit 1
+else
+	echo "build.sh: no cargo with the target wasm32-wasip1, so the preview keeps the Rust helper of $base" >&2
+fi
+
 wasm() {
 	GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" "$@"
 }
@@ -132,24 +150,32 @@ npm_ci() {
 	(cd "$work/npm-$1" && npm ci --ignore-scripts --no-audit --no-fund --loglevel=error --fetch-timeout=60000 --fetch-retries=2)
 }
 
-# wasm_opt writes the wasm-opt -Os output of $1 to $2. The Go builds are
-# reproducible, so $work/opt-cache keeps each output by the SHA-256 of its
-# input and of package-lock.json, and a second build in the same work
-# directory skips wasm-opt. The pull request workflow keeps opt-cache with
-# actions/cache. build_toolchain moves the cache to opt-cache.old first and
-# removes what this build does not use, so the cache does not grow.
+# wasm_opt writes the wasm-opt -Os output of $1 to $2, with the wasm-opt
+# flags that follow. The builds are reproducible, so $work/opt-cache keeps
+# each output by the SHA-256 of its input, of the flags and of
+# package-lock.json, and a second build in the same work directory skips
+# wasm-opt. The pull request workflow keeps opt-cache with actions/cache.
+# build_toolchain moves the cache to opt-cache.old first and removes what
+# this build does not use, so the cache does not grow.
 wasm_opt() {
-	key=$(cat "$1" "$here/package-lock.json" | sha256sum | cut -d ' ' -f 1)
+	in=$1
+	to=$2
+	shift 2
+	key=$({ cat "$in" "$here/package-lock.json" && echo "$@"; } | sha256sum | cut -d ' ' -f 1)
 	mkdir -p "$work/opt-cache"
 	if [ -f "$work/opt-cache.old/$key.wasm" ]; then
 		mv "$work/opt-cache.old/$key.wasm" "$work/opt-cache/$key.wasm"
 	fi
 	if [ ! -f "$work/opt-cache/$key.wasm" ]; then
-		"$work/npm-build/node_modules/.bin/wasm-opt" --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int -Os "$1" -o "$work/opt-cache/$key.tmp"
+		"$work/npm-build/node_modules/.bin/wasm-opt" "$@" -Os "$in" -o "$work/opt-cache/$key.tmp"
 		mv "$work/opt-cache/$key.tmp" "$work/opt-cache/$key.wasm"
 	fi
-	cp "$work/opt-cache/$key.wasm" "$2"
+	cp "$work/opt-cache/$key.wasm" "$to"
 }
+
+# The wasm-opt flags of the Go tools: the features of Go's wasm output, which
+# has no target features section.
+go_opt_flags="--enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int"
 
 # wait_all waits for each PID in $pids and stops when one failed.
 wait_all() {
@@ -164,14 +190,40 @@ wait_all() {
 	fi
 }
 
-# Page: the editor bundle, the scripts and the patched wasm_exec.js.
+# Page: the editor bundle, the WASI shim bundle, the scripts and the patched
+# wasm_exec.js.
 build_page() {
 	npm_ci web "$pg/web"
-	cp "$pg/web/editor.entry.js" "$work/npm-web/"
+	cp "$pg/web/editor.entry.js" "$pg/web/wasi.entry.js" "$work/npm-web/"
 	(cd "$work/npm-web" && node_modules/.bin/esbuild editor.entry.js --bundle --format=esm --minify --log-level=warning \
 		--banner:js="/* CodeMirror 6 and markdown-it 15 with their dependencies; see licenses/editor-bundle.txt. */" \
 		--metafile="$work/editor-meta.json" --outfile="$work/editor-bundle.js")
 	node "$here/notices.mjs" npm "$work/editor-meta.json" "$work/npm-web/node_modules" >"$work/licenses/editor-bundle.txt"
+	(cd "$work/npm-web" && node_modules/.bin/esbuild wasi.entry.js --bundle --format=esm --minify --log-level=warning \
+		--banner:js="/* @bjorn3/browser_wasi_shim; see licenses/wasi-shim.txt. */" \
+		--metafile="$work/wasi-meta.json" --outfile="$work/wasi-shim.js")
+	node "$here/notices.mjs" npm "$work/wasi-meta.json" "$work/npm-web/node_modules" >"$work/licenses/wasi-shim.txt"
+}
+
+# wait_page waits for build_page, which runs in the background, once.
+wait_page() {
+	if [ -n "$page_pid" ]; then
+		wait "$page_pid"
+		page_pid=
+	fi
+}
+
+# rshelper_cargo builds the Rust helper of docgen for wasm32-wasip1 and
+# writes the license notices of its crates and of the Rust standard library.
+# The target directory stays in the work directory, so a second build is
+# fast.
+rshelper_cargo() {
+	helper=$root/internal/rustsrc/helper
+	cargo build --release --locked --quiet --target wasm32-wasip1 \
+		--manifest-path "$helper/Cargo.toml" --target-dir "$work/rshelper-target"
+	cp "$work/rshelper-target/wasm32-wasip1/release/docgen-rs-helper.wasm" "$work/rshelper.wasm"
+	cargo metadata --format-version 1 --locked --filter-platform wasm32-wasip1 --manifest-path "$helper/Cargo.toml" |
+		node "$here/notices.mjs" cargo "$(rustc --print sysroot)" >"$work/licenses/rshelper.txt"
 }
 
 # go_notices writes the license notices of the modules of the js/wasm build of
@@ -215,6 +267,8 @@ build_toolchain() {
 	pids="$pids $!"
 	npm_ci build "$here" &
 	pids="$pids $!"
+	rshelper_cargo &
+	pids="$pids $!"
 	wait_all
 
 	rm -rf "$work/opt-cache.old"
@@ -222,12 +276,19 @@ build_toolchain() {
 		mv "$work/opt-cache" "$work/opt-cache.old"
 	fi
 	for t in go compile link asm vet bb; do
-		wasm_opt "$work/bin/$t.wasm" "$work/raw/$t.wasm" &
+		# shellcheck disable=SC2086
+		wasm_opt "$work/bin/$t.wasm" "$work/raw/$t.wasm" $go_opt_flags &
 		pids="$pids $!"
 	done
+	wasm_opt "$work/rshelper.wasm" "$work/raw/rshelper.wasm" &
+	pids="$pids $!"
 	wait_all
 	rm -rf "$work/opt-cache.old"
+}
 
+# build_bundles writes the GOROOT, sample and GOCACHE bundles. The GOCACHE
+# runs need the tools, docgen, the Rust helper and the WASI shim bundle.
+build_bundles() {
 	# The GOROOT bundle holds the source of each standard package that the
 	# sample imports, with its tests.
 	for m in "$pg"/testdata/*/; do
@@ -239,8 +300,8 @@ build_toolchain() {
 	# The GOCACHE bundle: the cache of the usual runs on the sample, made with
 	# the same tools under Node.
 	cp "$work/raw/docgen.wasm" "$work/raw/go.wasm" "$work/raw/compile.wasm" "$work/raw/link.wasm" \
-		"$work/raw/asm.wasm" "$work/raw/vet.wasm" "$work/raw/bb.wasm" "$work/bin/"
-	EXTRA='{"GOFLAGS":"-p=4"}' node "$here/warmcache.mjs" "$work/bin" "$work/ov/wasm_exec.js" "$work/raw/gocache.bin" \
+		"$work/raw/asm.wasm" "$work/raw/vet.wasm" "$work/raw/bb.wasm" "$work/raw/rshelper.wasm" "$work/bin/"
+	EXTRA='{"GOFLAGS":"-p=4"}' node "$here/warmcache.mjs" "$work/bin" "$work/ov/wasm_exec.js" "$work/wasi-shim.js" "$work/raw/gocache.bin" \
 		"$work/raw/root.bin" "$work/raw/sample.bin" -- \
 		'exec|/work/dg|/usr/local/bin/docgen check' \
 		'!sh|/work/loop|go test -timeout 2s .' \
@@ -257,21 +318,32 @@ if [ "$mode" = all ]; then
 	page_pid=$!
 	build_docgen
 	build_toolchain
-	wait "$page_pid"
-	items="go:tool:wasm docgen:tool:wasm bb:tool:wasm compile:tool:wasm link:tool:wasm asm:tool:wasm vet:tool:wasm root:bundle:bin gocache:bundle:bin sample:bundle:bin"
+	wait_page
+	build_bundles
+	items="go:tool:wasm docgen:tool:wasm bb:tool:wasm compile:tool:wasm link:tool:wasm asm:tool:wasm vet:tool:wasm rshelper:tool:wasm root:bundle:bin gocache:bundle:bin sample:bundle:bin"
 else
 	build_page &
 	page_pid=$!
 	build_docgen
-	wait "$page_pid"
 	items="docgen:tool:wasm"
+	if [ "$have_rust" = 1 ]; then
+		pids=
+		npm_ci build "$here" &
+		pids="$pids $!"
+		rshelper_cargo &
+		pids="$pids $!"
+		wait_all
+		wasm_opt "$work/rshelper.wasm" "$work/raw/rshelper.wasm"
+		items="$items rshelper:tool:wasm"
+	fi
+	wait_page
 fi
 
 rm -rf "$out"
 mkdir -p "$out"
 cp "$pg/web/index.html" "$pg/web/playground.mjs" "$pg/web/explorer.mjs" "$pg/web/session.mjs" "$pg/web/kernel.mjs" \
 	"$pg/web/abi.mjs" "$pg/web/paths.mjs" "$pg/web/bundle.mjs" "$pg/web/dom.mjs" \
-	"$pg/web/proc.mjs" "$work/ov/wasm_exec.js" "$work/editor-bundle.js" "$out/"
+	"$pg/web/proc.mjs" "$pg/web/wasiproc.mjs" "$work/ov/wasm_exec.js" "$work/editor-bundle.js" "$work/wasi-shim.js" "$out/"
 if [ "$have_zstd" = 1 ]; then
 	pids=
 	for it in $items; do
@@ -282,7 +354,8 @@ if [ "$have_zstd" = 1 ]; then
 	wait_all
 fi
 
-# The licenses of Go (the tools), bb, docgen and the editor bundle.
+# The licenses of Go (the tools), bb, docgen, the Rust helper, the editor
+# bundle and the WASI shim bundle.
 mkdir -p "$out/licenses"
 if [ "$mode" = all ]; then
 	cp "$goroot/LICENSE" "$out/licenses/go.txt"
@@ -290,7 +363,12 @@ if [ "$mode" = all ]; then
 else
 	cp "$base/licenses/go.txt" "$base/licenses/bb.txt" "$out/licenses/"
 fi
-cp "$work/licenses/docgen.txt" "$work/licenses/editor-bundle.txt" "$out/licenses/"
+if [ "$have_rust" = 1 ]; then
+	cp "$work/licenses/rshelper.txt" "$out/licenses/"
+elif [ -f "$base/licenses/rshelper.txt" ]; then
+	cp "$base/licenses/rshelper.txt" "$out/licenses/"
+fi
+cp "$work/licenses/docgen.txt" "$work/licenses/editor-bundle.txt" "$work/licenses/wasi-shim.txt" "$out/licenses/"
 # shellcheck disable=SC2086
 node "$here/mkmanifest.mjs" "$out" "$work" "${base:-}" "$gover" "$version" "$commit" $items
 # Cloudflare Pages serves no file over 25 MiB.

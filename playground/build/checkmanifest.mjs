@@ -1,5 +1,6 @@
 // Checks DIR/manifest.json of a playground from a download before any of its values becomes a
-// path: the Go version has the form go1.27.0; each url is assets/zstd/ and a plain file name
+// path: the Go version has the form go1.27.0; each asset of NAMES is there, and each other asset is
+// one of OPTIONAL_NAMES; each url is assets/zstd/ and a plain file name
 // that ends in .zst for an asset with the encoding zstd, or assets/ and a plain file name for
 // the encoding identity; and each asset is a regular file in DIR with the size of the manifest.
 // Usage: node checkmanifest.mjs DIR. It prints the Go version, or a message and exit 1.
@@ -10,6 +11,11 @@ import { fileURLToPath } from "node:url";
 export const URL_FORM = { zstd: /^assets\/zstd\/[A-Za-z0-9][A-Za-z0-9._-]*\.zst$/, identity: /^assets\/[A-Za-z0-9][A-Za-z0-9._-]*$/ };
 export const GO_FORM = /^go[0-9]+\.[0-9]+(\.[0-9]+)?$/;
 export const NAMES = ["go", "docgen", "bb", "compile", "link", "asm", "vet", "root", "gocache", "sample"];
+/**
+ * The assets that a playground can have. rshelper, the Rust helper, needs a Rust toolchain to build,
+ * and a playground without it has no Rust markers that read a crate.
+ */
+export const OPTIONAL_NAMES = ["rshelper"];
 
 /** check returns the manifest of dir, or throws an Error with the first problem. */
 export function check(dir) {
@@ -19,7 +25,7 @@ export function check(dir) {
   const names = m.files.map(f => f && f.name);
   for (const n of NAMES) if (!names.includes(n)) throw new Error(`no ${n} asset`);
   for (const f of m.files) {
-    if (!NAMES.includes(f.name) || !/^[0-9a-f]{64}$/.test(f.sha256) || !Number.isSafeInteger(f.size) || !Number.isSafeInteger(f.sent) || !Object.hasOwn(URL_FORM, f.encoding)) throw new Error(`the entry of ${JSON.stringify(f && f.name)} is not valid`);
+    if (!(NAMES.includes(f.name) || OPTIONAL_NAMES.includes(f.name)) || !/^[0-9a-f]{64}$/.test(f.sha256) || !Number.isSafeInteger(f.size) || !Number.isSafeInteger(f.sent) || !Object.hasOwn(URL_FORM, f.encoding)) throw new Error(`the entry of ${JSON.stringify(f && f.name)} is not valid`);
     if (typeof f.url !== "string" || !URL_FORM[f.encoding].test(f.url) || f.url.includes("..")) throw new Error(`the url ${JSON.stringify(f.url)} does not have the form of the encoding ${f.encoding}`);
     const st = fs.lstatSync(path.join(dir, f.url), { throwIfNoEntry: false });
     if (!st || !st.isFile()) throw new Error(`${f.url} is not a regular file`);
