@@ -141,6 +141,9 @@ When the `features` settings or `features=` on the marker enable something, the 
 | `limits` | `crates/limits` | lib | 0.1.0 |  |
 | `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
 | `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  |
+| `states-door` | `crates/states-door` | lib | 0.1.0 |  |
+| `states-lamp` | `crates/states-lamp` | lib | 0.1.0 |  |
+| `states-odd` | `crates/states-odd` | lib | 0.1.0 |  |
 | `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
 <!-- /docgen:crates -->
 ```
