@@ -14,7 +14,7 @@ import (
 // executable. The build goes into the target directory of the session. flags
 // are more cargo flags, such as the Args of Features.
 func (r *Runner) Build(ctx context.Context, dir, pkg, kind, name string, flags ...string) (string, error) {
-	args := append([]string{"build", "--locked", "--package", pkg, "--" + kind, name, "--message-format", "json-render-diagnostics"}, flags...)
+	args := append([]string{keyBuild, "--locked", "--package", pkg, "--" + kind, name, "--message-format", "json-render-diagnostics"}, flags...)
 	out, errOut, err := r.Run(ctx, dir, args...)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

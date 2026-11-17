@@ -168,7 +168,7 @@ func parseMetadata(b []byte) (*Workspace, error) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		return nil, fmt.Errorf("cargo metadata: %w", err)
 	}
-	w := &Workspace{Root: m.WorkspaceRoot, byName: map[string]*Package{}}
+	var pkgs []*Package
 	for _, mp := range m.Packages {
 		p := &Package{
 			Name:         mp.Name,
@@ -183,10 +183,9 @@ func parseMetadata(b []byte) (*Workspace, error) {
 		for _, t := range mp.Targets {
 			p.Targets = append(p.Targets, Target{Name: t.Name, Kind: targetKind(t.Kind), Path: t.SrcPath, Edition: t.Edition})
 		}
-		w.Packages = append(w.Packages, p)
-		w.byName[p.Name] = p
+		pkgs = append(pkgs, p)
 	}
-	slices.SortFunc(w.Packages, func(a, b *Package) int { return strings.Compare(a.Name, b.Name) })
+	w := newWorkspace(m.WorkspaceRoot, pkgs)
 	for _, mp := range m.Packages {
 		p := w.byName[mp.Name]
 		for _, d := range mp.Dependencies {
