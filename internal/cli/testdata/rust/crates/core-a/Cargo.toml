@@ -1,0 +1,9 @@
+[package]
+name = "core-a"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+configulator-rs = "=0.5.0"
+thiserror = "2"
