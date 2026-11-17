@@ -1,5 +1,6 @@
-// A session of the playground: a memfs with the Go toolchain, docgen and the bb shell and commands, and
-// a kernel that runs them. The page and the Node scripts of the build both use it.
+// A session of the playground: a memfs with the Go toolchain, docgen, the bb shell and commands and the
+// Rust helper of docgen, and a kernel that runs them. The page and the Node scripts of the build both
+// use it.
 import { Kernel, MemFS } from "./kernel.mjs";
 import { KILLED, SIGNAL_NAMES } from "./abi.mjs";
 import { encodeBundle, decodeBundle } from "./bundle.mjs";
@@ -36,6 +37,11 @@ const BB_COMMANDS = [
   "touch",
   "date",
 ];
+/**
+ * The path of the Rust helper of docgen, the wasm32-wasip1 build of internal/rustsrc/helper. docgen
+ * runs it in place of a cargo build of the helper, through DOCGEN_RUST_HELPER.
+ */
+export const RUST_HELPER = "/usr/local/bin/docgen-rs-helper";
 /** The content of each program file in the memfs. The kernel runs the tool of its path instead. */
 const PLACEHOLDER = new TextEncoder().encode("\0asm placeholder; the kernel maps this path to a module\n");
 const ENV = {
@@ -85,13 +91,19 @@ export function describe(code) {
 
 /**
  * createSession returns a new session: {fsys, kernel, start, exec}. loadTool(name) returns a Promise of
- * the WebAssembly.Module of go, compile, link, asm, vet, docgen or bb. makeWorker and limitMs go to
- * the Kernel.
+ * the WebAssembly.Module of go, compile, link, asm, vet, docgen or bb, and with rustHelper set also of
+ * rshelper, the Rust helper, which then is at RUST_HELPER and in DOCGEN_RUST_HELPER. makeWorker and
+ * limitMs go to the Kernel.
  */
-export function createSession({ loadTool, makeWorker, limitMs = 0 }) {
+export function createSession({ loadTool, makeWorker, limitMs = 0, rustHelper = false }) {
   const fsys = new MemFS();
   const tools = {};
   const toolOfPath = { "/goroot/bin/go": "go", "/usr/local/bin/docgen": "docgen" };
+  const env = { ...ENV };
+  if (rustHelper) {
+    toolOfPath[RUST_HELPER] = "rshelper";
+    env.DOCGEN_RUST_HELPER = RUST_HELPER;
+  }
   for (const tool of TOOLS) toolOfPath[`${TOOL_DIR}/${tool}`] = tool;
   for (const command of BB_COMMANDS) toolOfPath[`/bin/${command}`] = "bb";
   const loadModule = async (path, entry) => {
@@ -111,7 +123,7 @@ export function createSession({ loadTool, makeWorker, limitMs = 0 }) {
    */
   function start(argv0, argv, cwd, extraEnv = {}, onOut = () => {}, onErr = () => {}) {
     const startedAt = performance.now();
-    const proc = kernel.run(argv0, argv, { ...ENV, ...extraEnv }, cwd, onOut, onErr);
+    const proc = kernel.run(argv0, argv, { ...env, ...extraEnv }, cwd, onOut, onErr);
     const done = proc.done.then(code => ({ code, ms: performance.now() - startedAt, reason: proc.reason }));
     return { proc, done };
   }

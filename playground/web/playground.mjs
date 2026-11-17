@@ -241,6 +241,7 @@ function makeSession(tools) {
   const limitSeconds = +(query.get("limit") || 0);
   session = createSession({
     loadTool: name => tools[name],
+    rustHelper: Boolean(tools.rshelper),
     limitMs: limitSeconds * 1000,
     makeWorker: () => {
       const worker = idleWorkers.length ? idleWorkers.shift() : newWorker();

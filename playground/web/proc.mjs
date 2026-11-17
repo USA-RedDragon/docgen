@@ -1,6 +1,6 @@
-// The Worker of one process: it runs a Go js/wasm program. The fs, process and spawn calls of the
-// program go to the kernel on the main thread as synchronous calls (see callKernel). The module runs
-// as a browser module Worker and as a Node worker_threads Worker.
+// The Worker of one process: it runs a Go js/wasm program, or a WASI program with wasiproc.mjs. The
+// fs, process and spawn calls of the program go to the kernel on the main thread as synchronous calls
+// (see callKernel). The module runs as a browser module Worker and as a Node worker_threads Worker.
 import {
   S_IFMT,
   S_IFDIR,
@@ -13,6 +13,7 @@ import {
   MESSAGE,
 } from "./abi.mjs";
 import { normalizePath } from "./paths.mjs";
+import { isWasi, runWasi } from "./wasiproc.mjs";
 
 const textDecoder = new TextDecoder();
 /** The descriptors of the GOROOT image start here, far above the descriptors of the kernel. */
@@ -20,6 +21,8 @@ const FIRST_LOCAL_DESCRIPTOR = 1 << 20;
 
 let postToKernel = null;
 let wasmExecLoaded = null;
+/** loadWasiShim returns a Promise of the module of wasi-shim.js, the WASI shim bundle. */
+let loadWasiShim = null;
 let callState = null;
 let callBytes = null;
 let nextCallId = 1;
@@ -40,12 +43,13 @@ const localDescriptors = new Map();
 
 /**
  * callKernel sends the call name with args and data to the kernel and blocks until the reply. It
- * returns {result, data}, or {pendingId} for a call that completes later with a COMPLETE message. It
- * throws an Error with the errno code of a failed call.
+ * returns {result, data}, or {pendingId} for a call that completes later with a COMPLETE message. With
+ * block set, the kernel replies only when the call completes, so there is no pendingId. It throws an
+ * Error with the errno code of a failed call.
  */
-function callKernel(name, args, data) {
+function callKernel(name, args, data, block = false) {
   Atomics.store(callState, CALL_BUFFER.STATE, 0);
-  postToKernel({ type: MESSAGE.CALL, id: nextCallId++, name, args, data });
+  postToKernel({ type: MESSAGE.CALL, id: nextCallId++, name, args, data, block });
   // The syscalls of Go are synchronous, so the Worker blocks until the kernel writes the reply and
   // sets the state to 1. The kernel runs on the main thread, which cannot block, so only the Worker
   // waits.
@@ -259,6 +263,23 @@ const goGlobal = new Proxy(globalThis, {
   get: (target, key) => (key in goGlobals ? goGlobals[key] : Reflect.get(target, key)),
 });
 
+/** startWasi runs the WASI program of a START message, then posts EXIT or CRASH to the kernel. */
+async function startWasi(message) {
+  let memoryBytes = 0;
+  try {
+    const result = await runWasi(await loadWasiShim(), {
+      module: message.module,
+      argv: message.argv,
+      env: message.env,
+      call: callKernel,
+    });
+    memoryBytes = result.memoryBytes;
+    postToKernel({ type: MESSAGE.EXIT, code: result.code, memoryBytes });
+  } catch (error) {
+    postToKernel({ type: MESSAGE.CRASH, text: String((error && error.stack) || error), memoryBytes });
+  }
+}
+
 /** start runs the program of a START message, then posts EXIT or CRASH to the kernel. */
 async function start(message) {
   callState = new Int32Array(message.buffer, 0, 4);
@@ -270,6 +291,7 @@ async function start(message) {
     gorootIndex = new Map(message.goroot.index);
     gorootData = new Uint8Array(message.goroot.buffer);
   }
+  if (isWasi(message.module)) return startWasi(message);
   let exitCode = 0;
   let instance = null;
   try {
@@ -314,8 +336,13 @@ if (typeof globalThis.WorkerGlobalScope === "undefined") {
   postToKernel = message => parentPort.postMessage(message);
   parentPort.on("message", handleMessage);
   wasmExecLoaded = import(pathToFileURL(workerData.wasmExec).href);
+  loadWasiShim = () => {
+    if (!workerData.wasiShim) return Promise.reject(new Error("no wasiShim in the workerData of the Worker"));
+    return import(pathToFileURL(workerData.wasiShim).href);
+  };
 } else {
   postToKernel = message => self.postMessage(message);
   self.onmessage = event => handleMessage(event.data);
   wasmExecLoaded = import("./wasm_exec.js");
+  loadWasiShim = () => import("./wasi-shim.js");
 }

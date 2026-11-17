@@ -1,9 +1,10 @@
 {
   "name": "docgen-playground-web",
   "private": true,
-  "description": "The editor bundle of the docgen playground page: CodeMirror 6 and markdown-it.",
+  "description": "The browser bundles of the docgen playground page: CodeMirror 6 and markdown-it for the editor, and @bjorn3/browser_wasi_shim for WASI processes.",
   "license": "MIT",
   "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2",
     "@codemirror/autocomplete": "6.20.4",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-cpp": "6.0.3",

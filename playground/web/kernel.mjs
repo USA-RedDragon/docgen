@@ -3,7 +3,9 @@
 // (proc.mjs) and calls the kernel synchronously: it posts a CALL message and blocks with Atomics.wait
 // until the kernel writes the reply into a SharedArrayBuffer. A call that must block, such as a pipe
 // read with no data or a wait for a child, gets a pending reply and completes later with a COMPLETE
-// message. The kernel terminates the Worker of a process when the process exits or is killed.
+// message, or, for a call with block set, gets its reply only when it completes: a WASI process
+// (wasiproc.mjs) has no event loop that could take the COMPLETE message. The kernel terminates the
+// Worker of a process when the process exits or is killed.
 import {
   S_IFREG,
   S_IFDIR,
@@ -785,7 +787,8 @@ export class Kernel {
       if (message.type === MESSAGE.CALL) {
         const complete = (result, data) => {
           if (process.exited || !process.worker) return;
-          process.worker.post({ type: MESSAGE.COMPLETE, id: message.id, result, data: data && data.slice() });
+          if (message.block) reply({ result }, data);
+          else process.worker.post({ type: MESSAGE.COMPLETE, id: message.id, result, data: data && data.slice() });
         };
         let outcome;
         try {
@@ -794,8 +797,9 @@ export class Kernel {
           reply({ errno: error.code || ERRNO.EIO, message: String(error.message) });
           return;
         }
-        if (outcome === PENDING) reply({ pendingId: message.id });
-        else reply({ result: outcome.result }, outcome.data);
+        if (outcome === PENDING) {
+          if (!message.block) reply({ pendingId: message.id });
+        } else reply({ result: outcome.result }, outcome.data);
       } else if (message.type === MESSAGE.EXIT) {
         this.finish(process, message.code, message.memoryBytes);
       } else if (message.type === MESSAGE.CRASH) {

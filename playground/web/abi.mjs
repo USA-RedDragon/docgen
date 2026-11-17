@@ -123,7 +123,8 @@ export const CALL_BUFFER = Object.freeze({
 
 /**
  * The types of the messages between the kernel and a Worker. START, COMPLETE: kernel to Worker. CALL,
- * EXIT, CRASH: Worker to kernel.
+ * EXIT, CRASH: Worker to kernel. A CALL with block set gets its reply only when the call completes,
+ * never a pending reply and a COMPLETE message.
  */
 export const MESSAGE = Object.freeze({
   START: "start",
