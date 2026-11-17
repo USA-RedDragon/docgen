@@ -329,6 +329,9 @@ func runStates(ctx context.Context, r *cargo.Runner, root, work string, t *State
 	}
 	scrub := func(s string) string { return strings.ReplaceAll(s, work, root) }
 	diags := diagnostics(errOut)
+	if err := forbidError(t.Package, work, diags); err != nil {
+		return false, errors.New(scrub(err.Error()))
+	}
 	var other []string
 	var moved []*hook
 	for _, d := range diags {

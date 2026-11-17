@@ -9,3 +9,4 @@ path = "src/lib.rs"
 
 [features]
 fail = []
+forbid = []

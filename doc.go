@@ -743,6 +743,10 @@
 //   - A type with no pub method to record and none under Not recorded.
 //   - Tests that do not build with the hook, other than in a recorded method,
 //     with the errors of rustc.
+//   - A crate that forbids a lint that the hook allows, such as
+//     `#![forbid(missing_docs)]`, with the attribute and the lint. A forbid
+//     admits no allow, so no method with the hook builds; `#![deny(...)]`
+//     keeps the lint an error and admits it.
 //   - A test that fails, with the failures that the test binary prints.
 //   - Tests that record no transition of a machine with no method under Not
 //     recorded.

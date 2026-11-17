@@ -1,4 +1,5 @@
 //! Machines that docgen:states records in part or not at all.
+#![cfg_attr(feature = "forbid", forbid(missing_docs))]
 
 /// A mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

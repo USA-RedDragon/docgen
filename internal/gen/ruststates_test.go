@@ -75,6 +75,9 @@ func TestRustStatesErrors(t *testing.T) {
 		{"crate=states-odd type=Still", "Still has no pub method with &mut self"},
 		{"crate=states-odd type=Mode::Idle", "crate states-odd has no item Mode::Idle"},
 		{"crate=states-odd type=Worker features=fail", "the tests of crate states-odd failed with the state hook:\nfailures:"},
+		{"crate=states-odd type=Worker features=forbid", "crate states-odd forbids a lint that the state hook allows in the code that it adds, and a forbid admits no allow, so no method with the hook builds:\n" +
+			`  - #![cfg_attr(feature = "forbid", forbid(missing_docs))] at crates/states-odd/src/lib.rs:2 forbids missing_docs` + "\n" +
+			"Use deny in place of forbid, such as #![deny(missing_docs)]"},
 		{"crate=states-door type=Door run=nomatch", "the tests of crate states-door recorded no transition of Door"},
 		{"crate=states-door type=Door features=nope", "nope"},
 		{"crate=nope type=Door", "nope"},
@@ -89,7 +92,7 @@ func TestRustStatesErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		if !strings.Contains(err.Error(), c.want) {
-			t.Errorf("%s: error lacks %q", c.tag, c.want)
+			t.Errorf("%s: error lacks %q\n%v", c.tag, c.want, err)
 		}
 	}
 	if strings.Contains(err.Error(), "the worker fails") && !strings.Contains(err.Error(), "panicked at crates/states-odd/src/lib.rs") {
