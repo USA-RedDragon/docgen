@@ -50,6 +50,19 @@ type Package struct {
 	// LocalDeps are the dependencies on other packages of the workspace, in the
 	// order of the manifest.
 	LocalDeps []Dependency
+	// Registries are the registries named by publish in the manifest: nil when
+	// publish is not set, and empty for publish = false.
+	Registries []string
+}
+
+// CratesIO is the name that publish uses for crates.io.
+const CratesIO = "crates-io"
+
+// Published reports whether the manifest allows a publish to crates.io, which
+// is where docs.rs builds the docs: publish is not set, or lists crates-io. It
+// does not know whether the version was published.
+func (p *Package) Published() bool {
+	return p.Registries == nil || slices.Contains(p.Registries, CratesIO)
 }
 
 // Target returns the target of kind with the name, or nil.
@@ -134,6 +147,7 @@ type metaPackage struct {
 	Targets      []metaTarget        `json:"targets"`
 	Features     map[string][]string `json:"features"`
 	Dependencies []metaDep           `json:"dependencies"`
+	Publish      []string            `json:"publish"`
 }
 
 type metaTarget struct {
@@ -164,6 +178,7 @@ func parseMetadata(b []byte) (*Workspace, error) {
 			ManifestPath: mp.ManifestPath,
 			Dir:          filepath.Dir(mp.ManifestPath),
 			Features:     mp.Features,
+			Registries:   mp.Publish,
 		}
 		for _, t := range mp.Targets {
 			p.Targets = append(p.Targets, Target{Name: t.Name, Kind: targetKind(t.Kind), Path: t.SrcPath, Edition: t.Edition})

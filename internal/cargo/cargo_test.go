@@ -273,3 +273,24 @@ func TestCancel(t *testing.T) {
 		t.Error("no error after cancel")
 	}
 }
+
+func TestPublished(t *testing.T) {
+	const meta = `{"workspace_root": "/w", "packages": [
+		{"name": "open", "version": "1.0.0", "manifest_path": "/w/open/Cargo.toml", "publish": null},
+		{"name": "closed", "version": "1.0.0", "manifest_path": "/w/closed/Cargo.toml", "publish": []},
+		{"name": "other", "version": "1.0.0", "manifest_path": "/w/other/Cargo.toml", "publish": ["internal"]},
+		{"name": "both", "version": "1.0.0", "manifest_path": "/w/both/Cargo.toml", "publish": ["internal", "crates-io"]}]}`
+	ws, err := parseMetadata([]byte(meta))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{"open": true, "closed": false, "other": false, "both": true} {
+		p, err := ws.Package(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := p.Published(); got != want {
+			t.Errorf("%s: Published() = %v, want %v", name, got, want)
+		}
+	}
+}
