@@ -48,6 +48,14 @@ To release, set `version` in [.docgen.yaml](../../.docgen.yaml) to the new tag, 
 
 `golangci-lint run ./...` uses [.golangci.yaml](../../.golangci.yaml).
 
+## Rust checks
+
+The Rust helper in `internal/rustsrc/helper` and the fixture in `internal/cli/testdata/rust` have their own checks in [rust-static-checks.yaml](../../.github/workflows/rust-static-checks.yaml): `cargo fmt --check` and `cargo clippy --locked --all-targets -- -D warnings` on the helper, `cargo check --locked` on the helper with Rust 1.71, which is its `rust-version`, and `cargo metadata --locked` on the fixture. `--locked` fails when `Cargo.lock` needs a change, so each lock file in the repository is the one that builds.
+
+[Renovate](../../.github/renovate.json) updates the Cargo dependencies of both. For the helper it keeps the version ranges of `Cargo.toml` and changes `Cargo.lock` only, so the update stays within Rust 1.71. The fixture updates go in a separate group that does not merge by itself, because the golden files of the tests depend on them.
+
+The action has the inputs `rust-toolchain` and `rust-cache`; the `rust` job of [action.yaml](../../.github/workflows/action.yaml) runs them. To change the helper cache key, see `rust` in [action/install.sh](../../action/install.sh).
+
 ## Docs site
 
 The site of this repository is a private build, and is not a feature of docgen. `docs/site/build.sh` builds it into `artifacts/docs-site` with pandoc, and `internal/sitetest` tests the script. `docs/nav.md` gives the order of the pages. The headings of a page are in a closed `<details>` under the item of the page in the navigation, so they work with no JavaScript, and `localStorage` keeps the open or closed state when it is available.
