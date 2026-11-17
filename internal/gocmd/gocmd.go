@@ -2,15 +2,15 @@
 package gocmd
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/USA-RedDragon/docgen/internal/proc"
 )
 
 // The limits of one go command or built program.
@@ -22,7 +22,7 @@ const (
 	// RecordTimeout limits a run of the tests of a package with the state hook.
 	RecordTimeout = 20 * time.Minute
 	// WaitDelay limits the wait for a process after its context ends.
-	WaitDelay = 5 * time.Second
+	WaitDelay = proc.WaitDelay
 )
 
 // goEnv returns the environment of the process with the jobs and tags of a run
@@ -99,29 +99,13 @@ func goflagsTags(s string) []string {
 }
 
 // Run runs go with args in dir and returns its standard output and standard
-// error. When ctx ends, Run sends an interrupt to the process group of the go
-// command, and kills a process that is alive after WaitDelay. When the output
-// stays open after go exits, Run returns after at most WaitDelay with no error.
+// error. The process rules are those of proc.Run.
 func Run(ctx context.Context, dir string, env []string, args ...string) (string, string, error) {
-	cmd := exec.CommandContext(ctx, "go", args...)
-	cmd.Dir = dir
-	cmd.Env = env
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	err := RunGroup(ctx, cmd)
-	return out.String(), errb.String(), err
+	return proc.Run(ctx, dir, env, "go", args...)
 }
 
-// RunGroup runs cmd in a process group of its own, with the rules of Run. cmd
-// comes from exec.CommandContext with ctx.
+// RunGroup runs cmd in a process group of its own, with the rules of proc.Run.
+// cmd comes from exec.CommandContext with ctx.
 func RunGroup(ctx context.Context, cmd *exec.Cmd) error {
-	cmd.WaitDelay = WaitDelay
-	isolate(cmd)
-	err := cmd.Run()
-	if ctx.Err() != nil {
-		killGroup(cmd)
-	} else if errors.Is(err, exec.ErrWaitDelay) {
-		err = nil
-	}
-	return err
+	return proc.RunGroup(ctx, cmd)
 }

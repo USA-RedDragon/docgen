@@ -1,6 +1,6 @@
 //go:build unix
 
-package gocmd
+package proc
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ import (
 )
 
 // isolate starts cmd in a process group of its own and makes the end of its
-// context interrupt that group. A signal to the go command alone does not stop
+// context interrupt that group. A signal to the tool alone does not stop
 // the program that it runs, and the output pipes of that program stay open.
 func isolate(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

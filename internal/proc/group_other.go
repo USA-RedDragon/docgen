@@ -1,6 +1,6 @@
 //go:build !unix
 
-package gocmd
+package proc
 
 import "os/exec"
 
