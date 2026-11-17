@@ -298,6 +298,9 @@ func insertTests(text string, ins []*insertion) string {
 // more without the requests whose code does not compile. Each request gets its
 // Text or its Err. The error is of the copy.
 func RunValues(ctx context.Context, r *cargo.Runner, root, work string, targets []*Target) error {
+	if err := r.Check(); err != nil {
+		return err
+	}
 	if err := copyWorkspace(ctx, root, work); err != nil {
 		return err
 	}

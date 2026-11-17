@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -52,8 +53,26 @@ func (r *Runner) environ() []string {
 	return r.Environ
 }
 
-// ErrNotFound is the error of a missing cargo command.
-var ErrNotFound = errors.New("cargo is not on PATH; install a Rust toolchain from https://rustup.rs")
+// ErrNotFound is the error of a missing cargo command. A marker error starts
+// with the marker, so the text says what the marker needs.
+var ErrNotFound = errors.New(notFoundText(runtime.GOOS))
+
+// notFoundText returns the text of ErrNotFound on the system goos. docgen on
+// js/wasm runs in the playground, which has no Rust toolchain.
+func notFoundText(goos string) string {
+	if goos == "js" {
+		return "this marker needs cargo, and the playground has no Rust toolchain; run docgen on a computer with Rust installed for it"
+	}
+	return "this marker needs cargo, which is not on PATH; install a Rust toolchain from https://rustup.rs"
+}
+
+// Check returns ErrNotFound when the cargo of r is not on PATH.
+func (r *Runner) Check() error {
+	if _, err := exec.LookPath(r.cargo()); err != nil {
+		return ErrNotFound
+	}
+	return nil
+}
 
 // Env returns the environment of a cargo command of the session, followed by
 // extra: the environment of the process with the target directory of the
@@ -83,8 +102,8 @@ func (r *Runner) Env(extra ...string) ([]string, error) {
 // error. A cargo that is not on PATH gives ErrNotFound. A build command should
 // pass --locked, so that it cannot change Cargo.lock; see LockedError.
 func (r *Runner) Run(ctx context.Context, dir string, args ...string) (string, string, error) {
-	if _, err := exec.LookPath(r.cargo()); err != nil {
-		return "", "", ErrNotFound
+	if err := r.Check(); err != nil {
+		return "", "", err
 	}
 	return r.Exec(ctx, dir, r.cargo(), args...)
 }
