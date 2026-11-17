@@ -496,12 +496,40 @@
 //	docgen:errors crate=<package> type=<path>
 //
 // The table has a row for each variant of the enum, or one row for the struct.
-// The columns are the error, its `#[error(...)]` message as the source writes it,
-// its source and the first sentence of its doc. The message of
+// The columns are the error, Returned by, its `#[error(...)]` message as the
+// source writes it, its source and the first sentence of its doc. The message of
 // `#[error(transparent)]` is the message of its one field. The source is a field
 // with `#[from]` (marked "with From"), `#[source]`, or the name `source`. Unlike
-// the Go table, the rows come from the type and not from doc comments, and the
-// table has no Returned by column. These are errors of the Rust form:
+// the Go table, the rows come from the type and not from doc comments. The
+// error links to docs.rs when the crate does (see Rust links).
+//
+// Returned by lists the functions and the methods of the crate that name the
+// error in the `# Errors` section of their doc comment, sorted by path and
+// written as rustdoc reaches them, such as `store::Store::get` or `repair`. A
+// row that no function names has an empty cell. The return type alone names
+// nothing, and a function that is not listed for an error is not claimed to
+// avoid it. A function counts when it is `pub` and reachable from outside the
+// crate, through public modules or a `pub use`, and has no `#[cfg]` of its
+// own or of a module above it. It is a free function or a method or an
+// associated function of an inherent impl whose type has a one-segment path.
+// Methods of trait impls and trait items are not read. The `# Errors` section is
+// the text below the heading with the text `Errors` at any level, up to the
+// next heading of the same or a higher level, as for `section=`. It names an
+// error in a code span, a link, or a reference definition, and not in a code
+// block. A name counts when it is:
+//
+//   - `Enum::Variant`, with any path before `Enum` that leads to the enum when
+//     read in the module of the function, as in `crate::errors::Error::NotFound`.
+//     A path to another type of the same name is not a match.
+//   - `Self::Variant`, in a method of an impl of the enum.
+//   - `Variant` alone, when the return type of the function has a path that
+//     leads to the enum, such as `Result<T, Error>`. A return type of an alias
+//     such as `Result<T>` has no such path, so the section must write
+//     `Error::Variant`.
+//   - For a struct, a path that leads to the struct.
+//
+// Naming the enum with no variant lists the function for no row. Only the
+// crate of `crate=` is searched. These are errors of the Rust form:
 //
 //   - `type=` that names no item, or an item that is not an enum or a struct.
 //   - A type with no `#[derive(Error)]` or `#[derive(thiserror::Error)]`.
@@ -545,12 +573,17 @@
 //   - A heading moves down two levels, so `#` is `###` and `##` is `####`.
 //   - A code block with no language, or with only rustdoc words such as
 //     `no_run`, is a `rust` block, with no hidden `# ` lines.
-//   - An intra-doc link, such as `[Config]` or `[text](crate::Config)`, is its
-//     text, and a reference definition of one is removed.
+//   - An intra-doc link, such as `[Config]` or `[text](crate::Config)`, is a link
+//     to docs.rs when the crate has docs there and the path leads to a public
+//     item (see Rust links), and is its text otherwise. A reference definition
+//     of one is removed. A reference definition outside the section counts.
 //
 // `section=` is the text below the heading with that text, with no backticks, up
 // to the next heading of the same or a higher level. A name with no doc, no such
 // heading and a heading with no text are errors, as for Go.
+//
+// Go links the names of a doc comment to pkg.go.dev with no setting to turn that
+// off, and Rust links to docs.rs the same way.
 //
 // # docgen:gomod
 //
@@ -757,6 +790,54 @@
 // The added module allows all lints, so a `#![deny(warnings)]` stays. The crate
 // must build in test mode with its dev-dependencies. When the code of one value
 // does not compile, a second run prints the other values.
+//
+// # Rust links
+//
+// Go output links names to pkg.go.dev, and Rust output links them to docs.rs, in
+// the Error column of the table of `docgen:errors` and in the intra-doc links of
+// `docgen:doc`. Nothing is fetched: a URL is built from the manifest and the
+// source, and no setting turns links off, as for Go. A crate has links when:
+//
+//   - Its `Cargo.toml` allows a publish to crates.io: `publish` is not set, or
+//     it lists `crates-io`. `publish = false` or a list of other registries has
+//     none, and the text of a link stays text, so the docs of a private crate
+//     have no dead links. docgen does not check crates.io, so a crate that
+//     has never been published has links that do not work yet.
+//   - It has a library, since docs.rs builds the library.
+//
+// The URL is `https://docs.rs/<package>/latest/<library>/<path>`, with the
+// package name and the name of the library target, which has `_` for `-`. The
+// version is `latest`, as Go links go to the latest version on pkg.go.dev, so a
+// version that is not on docs.rs yet does not give a dead link.
+// The path is the module path and the page of the item:
+//
+//   - A module is `<module>/index.html`, and the crate root is `index.html`.
+//   - `struct.Name.html`, `enum.Name.html`, `union.Name.html`,
+//     `trait.Name.html`, `type.Name.html`, `fn.name.html`,
+//     `constant.NAME.html` for a const, `static.NAME.html` and
+//     `macro.name.html`. A macro with `#[macro_export]` is at the crate root,
+//     wherever it is defined. Generics change nothing: `struct Config<T>` is
+//     `struct.Config.html`.
+//   - A variant of an enum is the page of the enum with `#variant.Name`. A pub
+//     field of a struct is `#structfield.name`, a pub method or associated fn of
+//     an inherent impl is `#method.name` and a pub associated const is
+//     `#associatedconstant.NAME`, on the page of the type.
+//
+// A link needs a public item: it is `pub`, it has no `#[cfg]` of its own or of
+// a module above it, and each module on its path is `pub`. The page is where
+// rustdoc puts the item: the module that defines it when it is public. When it
+// is in a private module, the page is at the shortest `pub use` from a public
+// module, under the name that the `pub use` gives, with a glob `pub use` too.
+// An item that is not public, whose module has a `#[cfg]`, or that no `pub use`
+// shows, has no link, and neither has an item that is a trait item.
+//
+// An intra-doc link resolves in the module of the item that the doc belongs to,
+// and for the doc of a module in that module and then in its parent, as `///` on
+// the `mod` line is in the parent. The path may start with `crate::`, `self::`
+// or `super::`, or with a name in scope that a `use` brought in. A
+// disambiguator such as `struct@`, a `()` after a fn and a `!` after a macro are
+// removed. A path into another crate, including another package of the
+// workspace, or `Self`, is not resolved, and the link is its text.
 //
 // # Cargo features
 //

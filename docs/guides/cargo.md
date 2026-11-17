@@ -135,6 +135,7 @@ When the `features` settings or `features=` on the marker enable something, the 
 | `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` |
 | `core-a` | `crates/core-a` | lib | 0.1.0 |  |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
+| `err-store` | `crates/err-store` | lib | 0.4.2 |  |
 | `feat-gate` | `crates/feat-gate` | lib | 0.1.0 |  |
 | `limits` | `crates/limits` | lib | 0.1.0 |  |
 | `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |

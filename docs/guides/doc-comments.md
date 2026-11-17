@@ -148,7 +148,7 @@ assert_eq!(check_jobs(2), Ok(2));
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-With no `name=`, the marker shows the crate doc. Headings move down two levels, code blocks with no language are `rust` blocks with no hidden lines, and an intra-doc link is its text:
+With no `name=`, the marker shows the crate doc. Headings move down two levels, code blocks with no language are `rust` blocks with no hidden lines, and an intra-doc link is its text, or a docs.rs link for a published crate (see below):
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/lib.rs symbol=crate raw=true -->
@@ -198,3 +198,50 @@ Networking.
 ```
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
+
+A crate that is published to crates.io, which means no `publish = false` in its `Cargo.toml`, has its intra-doc links turned into docs.rs links when they lead to a public item. docgen builds the URL from the name, the version and the path of the item, and does not fetch it. Links to private items, items of other crates and `Self` stay text.
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/err-store/src/store.rs symbol=Store::open raw=true -->
+```rust
+/// Opens the store at `path`.
+///
+/// # Errors
+///
+/// Fails with [`Error::Locked`] when another process holds the lock.
+pub fn open(path: &str) -> Result<Self> {
+    let _ = path;
+    Err(Error::Locked)
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-doc-links.md -->
+#### Before
+
+```
+<!-- docgen:doc crate=err-store name=store::Store::open -->
+<!-- /docgen:doc -->
+
+<!-- docgen:doc crate=err-store name=store::Store::CAPACITY -->
+<!-- /docgen:doc -->
+```
+
+#### After
+
+```
+<!-- docgen:doc crate=err-store name=store::Store::open -->
+Opens the store at `path`.
+
+### Errors
+
+Fails with [`Error::Locked`](https://docs.rs/err-store/latest/err_store/error/enum.Error.html#variant.Locked) when another process holds the lock.
+<!-- /docgen:doc -->
+
+<!-- docgen:doc crate=err-store name=store::Store::CAPACITY -->
+The most values that a store holds, as [`MAX_KEYS`](https://docs.rs/err-store/latest/err_store/constant.MAX_KEYS.html) says.
+<!-- /docgen:doc -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+For the URL of each kind of item, see [Rust links](../reference/markers.md#rust-links).

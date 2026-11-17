@@ -1616,7 +1616,16 @@ For a Rust crate, `type=` is an enum or a struct that derives `Error` of [thiser
 
 	docgen:errors crate=<package> type=<path>
 
-The table has a row for each variant of the enum, or one row for the struct. The columns are the error, its `#[error(...)]` message as the source writes it, its source and the first sentence of its doc. The message of `#[error(transparent)]` is the message of its one field. The source is a field with `#[from]` (marked "with From"), `#[source]`, or the name `source`. Unlike the Go table, the rows come from the type and not from doc comments, and the table has no Returned by column. These are errors of the Rust form:
+The table has a row for each variant of the enum, or one row for the struct. The columns are the error, Returned by, its `#[error(...)]` message as the source writes it, its source and the first sentence of its doc. The message of `#[error(transparent)]` is the message of its one field. The source is a field with `#[from]` (marked "with From"), `#[source]`, or the name `source`. Unlike the Go table, the rows come from the type and not from doc comments. The error links to docs.rs when the crate does (see Rust links).
+
+Returned by lists the functions and the methods of the crate that name the error in the `# Errors` section of their doc comment, sorted by path and written as rustdoc reaches them, such as `store::Store::get` or `repair`. A row that no function names has an empty cell. The return type alone names nothing, and a function that is not listed for an error is not claimed to avoid it. A function counts when it is `pub` and reachable from outside the crate, through public modules or a `pub use`, and has no `#[cfg]` of its own or of a module above it. It is a free function or a method or an associated function of an inherent impl whose type has a one-segment path. Methods of trait impls and trait items are not read. The `# Errors` section is the text below the heading with the text `Errors` at any level, up to the next heading of the same or a higher level, as for `section=`. It names an error in a code span, a link, or a reference definition, and not in a code block. A name counts when it is:
+
+  - `Enum::Variant`, with any path before `Enum` that leads to the enum when read in the module of the function, as in `crate::errors::Error::NotFound`. A path to another type of the same name is not a match.
+  - `Self::Variant`, in a method of an impl of the enum.
+  - `Variant` alone, when the return type of the function has a path that leads to the enum, such as `Result<T, Error>`. A return type of an alias such as `Result<T>` has no such path, so the section must write `Error::Variant`.
+  - For a struct, a path that leads to the struct.
+
+Naming the enum with no variant lists the function for no row. Only the crate of `crate=` is searched. These are errors of the Rust form:
 
   - `type=` that names no item, or an item that is not an enum or a struct.
   - A type with no `#[derive(Error)]` or `#[derive(thiserror::Error)]`.
@@ -1938,9 +1947,11 @@ With no `name=`, it is the crate doc: the `//!` comments of the crate root. `nam
 
   - A heading moves down two levels, so `#` is `###` and `##` is `####`.
   - A code block with no language, or with only rustdoc words such as `no_run`, is a `rust` block, with no hidden `# ` lines.
-  - An intra-doc link, such as `[Config]` or `[text](crate::Config)`, is its text, and a reference definition of one is removed.
+  - An intra-doc link, such as `[Config]` or `[text](crate::Config)`, is a link to docs.rs when the crate has docs there and the path leads to a public item (see Rust links), and is its text otherwise. A reference definition of one is removed. A reference definition outside the section counts.
 
 `section=` is the text below the heading with that text, with no backticks, up to the next heading of the same or a higher level. A name with no doc, no such heading and a heading with no text are errors, as for Go.
+
+Go links the names of a doc comment to pkg.go.dev with no setting to turn that off, and Rust links to docs.rs the same way.
 <!-- /docgen:doc -->
 
 #### The doc comment of one declaration, with `name=`
@@ -2218,6 +2229,7 @@ A value that is not one of the lists, a glob that is not valid, a crate outside 
 | `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` |
 | `core-a` | `crates/core-a` | lib | 0.1.0 |  |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
+| `err-store` | `crates/err-store` | lib | 0.4.2 |  |
 | `feat-gate` | `crates/feat-gate` | lib | 0.1.0 |  |
 | `limits` | `crates/limits` | lib | 0.1.0 |  |
 | `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
@@ -2572,6 +2584,25 @@ The `features`, `all-features` and `no-default-features` settings choose the Car
 A marker that runs cargo can set its own with `features=`, which is a list in the form of the setting and replaces the list of the setting, and `allfeatures=` and `nodefaultfeatures=`, which are `true` or `false` and replace the setting of the same name. An argument that the marker does not set keeps the setting. `docgen:const`, `docgen:configulator`, `docgen:usage` with `crate=`, `docgen:output` with `crate=` and `docgen:cargo field=features` take the three. `docgen:doc`, `docgen:errors` and `docgen:crates` run no cargo command that builds, so `features=` on them is an error, and a `docgen:const` with `print=raw` reads the source and ignores the features. docgen builds each binary and example once for each set of features, and runs one value test and one doctest run for each crate and set of features, so markers with the same features share their work. A nested `docgen:docgen` run does not use the settings of the outer run; its markers can set `features=`.
 
 What a feature does not change: the helper that reads the module tree reads each module and item regardless of its `#[cfg]`, so `docgen:doc`, `docgen:errors` and `print=raw` show an item behind a feature that is off. `cargo metadata` runs with `--no-deps` and lists all features of a crate whatever is enabled, so `docgen:crates` and the features table are the same for every setting. A value is different: it comes from the value test, which builds the crate with the features of the marker, so a const behind `#[cfg(feature = "big")]` has a value only when `big` is enabled. With it off, the value is an error: for a const in a module that the feature gates, the test printed no value for it, and for a const that the feature gates in a module that is built, the test code does not compile because rustc cannot find the item. Both errors name the `#[cfg]` and end with a hint to enable the feature with the `features` setting or `features=`. A doctest of an item that a feature gates is not run with the feature off, so it is the error that the crate has no doctest for the item.
+<!-- /docgen:doc -->
+
+## Rust links
+
+<!-- docgen:doc pkg=. section="Rust links" -->
+Go output links names to pkg.go.dev, and Rust output links them to docs.rs, in the Error column of the table of `docgen:errors` and in the intra-doc links of `docgen:doc`. Nothing is fetched: a URL is built from the manifest and the source, and no setting turns links off, as for Go. A crate has links when:
+
+  - Its `Cargo.toml` allows a publish to crates.io: `publish` is not set, or it lists `crates-io`. `publish = false` or a list of other registries has none, and the text of a link stays text, so the docs of a private crate have no dead links. docgen does not check crates.io, so a crate that has never been published has links that do not work yet.
+  - It has a library, since docs.rs builds the library.
+
+The URL is `[https://docs.rs/](https://docs.rs/)<package>/latest/<library>/<path>`, with the package name and the name of the library target, which has `_` for `-`. The version is `latest`, as Go links go to the latest version on pkg.go.dev, so a version that is not on docs.rs yet does not give a dead link. The path is the module path and the page of the item:
+
+  - A module is `<module>/index.html`, and the crate root is `index.html`.
+  - `struct.Name.html`, `enum.Name.html`, `union.Name.html`, `trait.Name.html`, `type.Name.html`, `fn.name.html`, `constant.NAME.html` for a const, `static.NAME.html` and `macro.name.html`. A macro with `#[macro_export]` is at the crate root, wherever it is defined. Generics change nothing: `struct Config<T>` is `struct.Config.html`.
+  - A variant of an enum is the page of the enum with `#variant.Name`. A pub field of a struct is `#structfield.name`, a pub method or associated fn of an inherent impl is `#method.name` and a pub associated const is `#associatedconstant.NAME`, on the page of the type.
+
+A link needs a public item: it is `pub`, it has no `#[cfg]` of its own or of a module above it, and each module on its path is `pub`. The page is where rustdoc puts the item: the module that defines it when it is public. When it is in a private module, the page is at the shortest `pub use` from a public module, under the name that the `pub use` gives, with a glob `pub use` too. An item that is not public, whose module has a `#[cfg]`, or that no `pub use` shows, has no link, and neither has an item that is a trait item.
+
+An intra-doc link resolves in the module of the item that the doc belongs to, and for the doc of a module in that module and then in its parent, as `///` on the `mod` line is in the parent. The path may start with `crate::`, `self::` or `super::`, or with a name in scope that a `use` brought in. A disambiguator such as `struct@`, a `()` after a fn and a `!` after a macro are removed. A path into another crate, including another package of the workspace, or `Self`, is not resolved, and the link is its text.
 <!-- /docgen:doc -->
 
 ## Marker rules

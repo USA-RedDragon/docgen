@@ -102,7 +102,7 @@ For details, see [`docgen:errors`](../reference/markers.md#docgenerrors).
 
 ## Rust
 
-For a Rust crate, `type=` names an enum or a struct that derives `thiserror::Error`. The table has a row for each variant, with its message and its source:
+For a Rust crate, `type=` names an enum or a struct that derives `thiserror::Error`. The table has a row for each variant, with the functions that return it, its message and its source:
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/errors.rs -->
@@ -149,13 +149,54 @@ pub enum Error {
 
 ```
 <!-- docgen:errors crate=core-a type=errors::Error -->
-| Error | Message | Source | Meaning |
-|---|---|---|---|
-| `Error::Read` | `read {path}: {source}` | `std::io::Error` | A file could not be read. |
-| `Error::Number` | `line {line}: bad number` | `ParseIntError` | A number in the config is not valid. |
-| `Error::Limit` | the message of `crate::limits::LimitError` | `crate::limits::LimitError`, with From | The job count is out of range. |
-| `Error::NoJobs` | `no jobs` |  | The app has no jobs \| none at all. |
+| Error | Returned by | Message | Source | Meaning |
+|---|---|---|---|---|
+| `Error::Read` |  | `read {path}: {source}` | `std::io::Error` | A file could not be read. |
+| `Error::Number` |  | `line {line}: bad number` | `ParseIntError` | A number in the config is not valid. |
+| `Error::Limit` |  | the message of `crate::limits::LimitError` | `crate::limits::LimitError`, with From | The job count is out of range. |
+| `Error::NoJobs` |  | `no jobs` |  | The app has no jobs \| none at all. |
 <!-- /docgen:errors -->
 ```
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
+
+A function returns an error when the `# Errors` section of its doc comment names it, as `Error::Locked` or with a path before `Error`. A bare variant name counts when the return type of the function has `Error`, as `Result<&T, Error>` does. A crate that is published to crates.io also links each error to docs.rs, so the error and its function names are in the table as rustdoc shows them:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/err-store/src/store.rs symbol=Store::open raw=true -->
+```rust
+/// Opens the store at `path`.
+///
+/// # Errors
+///
+/// Fails with [`Error::Locked`] when another process holds the lock.
+pub fn open(path: &str) -> Result<Self> {
+    let _ = path;
+    Err(Error::Locked)
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-errors-store.md -->
+#### Before
+
+```
+<!-- docgen:errors crate=err-store type=error::Error -->
+<!-- /docgen:errors -->
+```
+
+#### After
+
+```
+<!-- docgen:errors crate=err-store type=error::Error -->
+| Error | Returned by | Message | Source | Meaning |
+|---|---|---|---|---|
+| [`Error::NotFound`](https://docs.rs/err-store/latest/err_store/error/enum.Error.html#variant.NotFound) | `store::Store::get`, `store::Store::remove`, `store::count` | `key not found: {0}` |  | The key is not in the store. |
+| [`Error::Locked`](https://docs.rs/err-store/latest/err_store/error/enum.Error.html#variant.Locked) | `store::Store::open`, `store::Store::remove`, `store::count` | `store is locked` |  | Another process holds the lock of the store. |
+| [`Error::Corrupt`](https://docs.rs/err-store/latest/err_store/error/enum.Error.html#variant.Corrupt) | `error::Error::from_code`, `repair` | `corrupt data` |  | The data on disk is corrupt. |
+| [`Error::Full`](https://docs.rs/err-store/latest/err_store/error/enum.Error.html#variant.Full) |  | `store is full` |  | The store is full. |
+<!-- /docgen:errors -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+A `Cargo.toml` with `publish = false` has no links, so the Error column is plain text. For the rules of Returned by and of the links, see [`docgen:errors`](../reference/markers.md#docgenerrors) and [Rust links](../reference/markers.md#rust-links).
