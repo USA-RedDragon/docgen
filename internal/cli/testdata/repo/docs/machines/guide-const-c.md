@@ -1,4 +1,7 @@
 - Port: <!-- docgen:const file=native/limits.h name=LAMP_PORT --><!-- /docgen:const -->
 - Flags: <!-- docgen:const file=native/limits.h name=LAMP_FLAGS --><!-- /docgen:const -->
+- Retries: <!-- docgen:const file=native/limits.h name=LAMP_RETRIES print=value --><!-- /docgen:const -->
+- Buffer: <!-- docgen:const file=native/limits.h name=LAMP_BUFFER --><!-- /docgen:const -->
+- Buffer size: <!-- docgen:const file=native/limits.h name=LAMP_BUFFER print=value --><!-- /docgen:const -->
 - Name: <!-- docgen:const file=native/limits.h name=LAMP_NAME --><!-- /docgen:const -->
 - Mask: <!-- docgen:const file=native/limits.h name=LAMP_MASK code=false --><!-- /docgen:const -->

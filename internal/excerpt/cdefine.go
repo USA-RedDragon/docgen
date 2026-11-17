@@ -107,3 +107,55 @@ func cStripComments(s string) string {
 	}
 	return b.String()
 }
+
+var cIntegerLiteral = regexp.MustCompile(`^(0[xX][0-9a-fA-F]+(?:'[0-9a-fA-F]+)*|0[bB][01]+(?:'[01]+)*|[0-9]+(?:'[0-9]+)*)([a-zA-Z]*)$`)
+
+// CIntegerValue returns text, the replacement list of a #define, without the
+// suffix of its integer literal: 0x10u is 0x10. The base and the digits stay as
+// written. Text that is not exactly one integer literal is an error, and so is
+// a literal in parentheses, and a literal with a suffix that C does not have.
+// Decimal, octal, hexadecimal and binary literals work, with ' between digits.
+func CIntegerValue(text string) (string, error) {
+	m := cIntegerLiteral.FindStringSubmatch(text)
+	if m == nil {
+		return "", fmt.Errorf("the replacement text %q is not one integer literal", text)
+	}
+	digits, suffix := m[1], m[2]
+	if !cIntSuffix(suffix) {
+		return "", fmt.Errorf("the integer literal %q has the suffix %q, which C does not have", text, suffix)
+	}
+	if len(digits) > 1 && digits[0] == '0' && !strings.ContainsAny(digits[1:2], "xXbB") {
+		if strings.ContainsAny(digits, "89") {
+			return "", fmt.Errorf("the octal literal %q has a digit that is not octal", text)
+		}
+	}
+	return digits, nil
+}
+
+// cIntSuffix reports whether s is empty or an integer suffix of C: u with at
+// most one of l, ll, z and wb, in either order and in any case, but with
+// both letters of ll in one case.
+func cIntSuffix(s string) bool {
+	if strings.Contains(s, "lL") || strings.Contains(s, "Ll") {
+		return false
+	}
+	s = strings.ToLower(s)
+	var u bool
+	size := ""
+	for s != "" {
+		switch {
+		case s[0] == 'u' && !u:
+			u = true
+			s = s[1:]
+		case size == "" && strings.HasPrefix(s, "ll"):
+			size, s = "ll", s[2:]
+		case size == "" && strings.HasPrefix(s, "wb"):
+			size, s = "wb", s[2:]
+		case size == "" && (s[0] == 'l' || s[0] == 'z'):
+			size, s = s[:1], s[1:]
+		default:
+			return false
+		}
+	}
+	return true
+}

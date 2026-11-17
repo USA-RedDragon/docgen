@@ -595,7 +595,7 @@
 // For a C file, `file=` takes the place of `pkg=`, and `name=` is an
 // object-like `#define`:
 //
-//	docgen:const file=<path> name=<DEFINE> [code=false]
+//	docgen:const file=<path> name=<DEFINE> [print=value] [code=false]
 //
 // `file=` is a `.c` or `.h` file, relative to the repository root and inside it,
 // as for `docgen:code`. The value is the replacement list of the `#define` as the
@@ -605,11 +605,24 @@
 // `#define PORT 4001 /* default */` is `4001`. The text of a string or character
 // literal stays as it is. The `#define` is found as `docgen:code symbol=` finds it. The
 // value is a code span, or with `code=false` the text with no backticks. It needs
-// no cargo and no Go toolchain, so it works with none. These are errors of the C
-// form:
+// no cargo and no Go toolchain, so it works with none.
+//
+// `print=value` is the one `print=` value of the C form. It applies to a `#define`
+// whose replacement text is exactly one integer literal, and prints the literal
+// without its suffix. The literal is decimal, octal (a leading `0`), hexadecimal
+// (`0x` or `0X`) or binary (`0b` or `0B`), with `'` between digits as C23 has it.
+// The suffix is `u`, `l`, `ll`, `z` or `wb`, or `u` with one of the others in
+// either order, in any case, but `ll` in one case. The base and the digits stay as
+// written: `#define X 0x10UL` is `0x10`. A literal in parentheses, such as `(10u)`,
+// is not one integer literal. Without `print=`, the text is as written, suffix
+// included. These are errors of the C form:
 //
 //   - `file=` that is not a `.c` or `.h` file, or with `pkg=` or `crate=`.
-//   - `print=`, which does not apply since the text is as written.
+//   - `print=` with a value other than `value`, which is the one that applies.
+//   - `print=value` for text that is not one integer literal, such as `(1 << 3)`,
+//     `(10u)`, `-1`, `1.5` or a string. The error names the text. A suffix that C
+//     does not have, such as `uu`, and an octal literal with a digit 8 or 9, are
+//     errors too.
 //   - A `name=` that is not an identifier, or that no `#define` has. The error
 //     lists the names of the `#define`s of the file.
 //   - A name with more than one `#define`, such as one in each branch of an

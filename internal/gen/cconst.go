@@ -9,13 +9,17 @@ import (
 	"github.com/USA-RedDragon/docgen/internal/marker"
 )
 
+const cPrintValue = "value"
+
 // A cConstHandler is a docgen:const marker with file=: the replacement text of
 // the object-like #define name of the C file, as written and never evaluated.
+// With print=value, a single integer literal prints without its suffix.
 type cConstHandler struct {
 	noPlan
 	valueArgs
-	file string
-	name string
+	file  string
+	name  string
+	value bool
 }
 
 func (h *cConstHandler) Bind(a *marker.Args) {
@@ -29,8 +33,12 @@ func (h *cConstHandler) Bind(a *marker.Args) {
 		a.Fail("file= is not a .c or .h file")
 	}
 	h.name = a.Required(argName)
-	if _, ok := a.Optional(argPrint); ok {
-		a.Fail("print= does not apply to a C #define; the text is as written")
+	if p, ok := a.Optional(argPrint); ok {
+		a.NonEmpty(argPrint)
+		if p != cPrintValue {
+			a.Fail("print=" + p + " does not apply to a C #define; the one value is print=value, an integer literal without its suffix")
+		}
+		h.value = true
 	}
 	h.bindCode(a)
 	a.Inline()
@@ -48,6 +56,11 @@ func (h *cConstHandler) fill(_ context.Context, j job) (string, []outFile, error
 	v, err := excerpt.CDefineValue(src, h.name)
 	if err != nil {
 		return "", nil, fmt.Errorf("%s: %w", h.file, err)
+	}
+	if h.value {
+		if v, err = excerpt.CIntegerValue(v); err != nil {
+			return "", nil, fmt.Errorf("%s: %s: print=value: %w", h.file, h.name, err)
+		}
 	}
 	return h.inline(v), nil, nil
 }
