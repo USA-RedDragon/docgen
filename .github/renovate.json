@@ -9,5 +9,20 @@
     "gomodUpdateImportPaths"
   ],
   "packageRules": [
+    {
+      "description": "The Rust helper builds with Rust 1.71 from a version 3 lock file. Keep its version ranges and change only Cargo.lock, in one group.",
+      "matchManagers": ["cargo"],
+      "matchFileNames": ["internal/rustsrc/helper/**"],
+      "rangeStrategy": "update-lockfile",
+      "groupName": "rust helper"
+    },
+    {
+      "description": "The Rust fixture crates feed the golden files of the tests, so a lock file update waits for a person to read the test result.",
+      "matchManagers": ["cargo"],
+      "matchFileNames": ["internal/cli/testdata/rust/**"],
+      "rangeStrategy": "update-lockfile",
+      "groupName": "rust fixture",
+      "automerge": false
+    }
   ]
 }
