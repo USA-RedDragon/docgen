@@ -235,7 +235,7 @@ func TestObjectSymbolDispatch(t *testing.T) {
 	if got, err := RawSymbol("c.toml", []byte("[a]\nb = 1\n"), "a.b"); err != nil || got != "b = 1" {
 		t.Errorf("TOML a.b = %q, %v", got, err)
 	}
-	if Lang("c.json") != "json" || Lang("c.toml") != "toml" {
+	if Lang("c.json") != "json" || Lang("c.toml") != "toml" || Lang("m.rs") != "rust" {
 		t.Error("the fence language of JSON or TOML is wrong")
 	}
 }

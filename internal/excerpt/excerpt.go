@@ -26,6 +26,8 @@ func Lang(path string) string {
 		return "yaml"
 	case ".py":
 		return "python"
+	case ".rs":
+		return "rust"
 	case goExt, ".c", ".sh", ".yaml", ".json", ".js", ".html", ".css", ".lua", ".toml":
 		return ext[1:]
 	}
