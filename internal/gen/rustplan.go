@@ -2,6 +2,7 @@ package gen
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -47,11 +48,16 @@ func (g *Generator) cargoRunner() *cargo.Runner {
 }
 
 // cargoWorkspace returns the Cargo workspace in the module directory of g. A
-// Generator reads it once.
+// Generator reads it once, with cargo metadata, or with no cargo on PATH from
+// the manifests.
 func (g *Generator) cargoWorkspace(ctx context.Context) (*cargo.Workspace, error) {
 	g.rust.once.Do(func() {
 		fmt.Fprintln(g.log, "docgen: reading the Cargo workspace")
 		g.rust.ws, g.rust.err = g.rust.runner.Open(ctx, g.rust.dir)
+		if errors.Is(g.rust.err, cargo.ErrNotFound) {
+			fmt.Fprintln(g.log, "docgen: cargo is not on PATH, so docgen reads the Cargo workspace from its Cargo.toml files")
+			g.rust.ws, g.rust.err = cargo.ReadWorkspace(g.rust.dir)
+		}
 	})
 	return g.rust.ws, g.rust.err
 }

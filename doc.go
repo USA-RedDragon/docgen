@@ -957,8 +957,20 @@
 // workspace is an error that lists the packages, and a marker with both
 // `crate=` and `pkg=` is an error.
 //
-// These markers run `cargo` from the `PATH` and need stable Rust, and a missing
-// `cargo` is an error. Each cargo command passes `--locked`, so the
+// These markers run `cargo` from the `PATH` and need stable Rust. With no
+// `cargo` on the `PATH`, docgen reads the workspace from its `Cargo.toml`
+// files: the members, with the globs of `workspace.members` and
+// `workspace.exclude`, and of each package its fields with workspace
+// inheritance, its targets as a manifest lists them or as cargo finds them in
+// `src/lib.rs`, `src/main.rs`, `src/bin`, `examples`, `tests` and `benches`,
+// its features, and its path dependencies on other members. The markers that
+// read only the source then work, given a helper from `DOCGEN_RUST_HELPER`
+// (see below): `docgen:doc`, `docgen:errors`, `docgen:const` with
+// `print=raw`, `docgen:crates` and `docgen:cargo`, and `docgen:code
+// symbol=` in a Rust file. A marker that needs a build, the value test or a
+// doctest is an error that says it needs cargo: `docgen:const` with another
+// `print=`, `docgen:config`, `docgen:configulator`, `docgen:output` and
+// `docgen:usage` with `crate=`. Each cargo command passes `--locked`, so the
 // run never changes `Cargo.lock`, and a `Cargo.lock` that is out of date is an
 // error with the cargo command that updates it. Cargo downloads crates at the versions of
 // `Cargo.lock` and builds into the temporary directory of the run, never into
@@ -991,6 +1003,14 @@
 // the crate and the file, such as a module with a `#[cfg]` and no file, a
 // `#[doc = include_str!(...)]` whose file is missing, or a `#[doc]` value that
 // is not a string.
+//
+// The environment variable `DOCGEN_RUST_HELPER` names a helper program that
+// was built before the run, relative to the working directory, such as a
+// build of `internal/rustsrc/helper` of the same docgen version for another
+// system. docgen then runs it and checks no rustc and builds nothing, so
+// the markers that read only the source need no Rust toolchain. A path that is
+// not a regular file is an error of each marker that needs the helper. The
+// playground sets it to its `wasm32-wasip1` build of the helper.
 //
 // A value comes from the value test of the crate. docgen copies the workspace,
 // with no `target` directory, to the temporary directory of the run, adds a
