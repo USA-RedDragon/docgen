@@ -1,0 +1,17 @@
+[package]
+name = "cargo-b-cli"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.88"
+publish = false
+
+[[bin]]
+name = "demo"
+path = "src/main.rs"
+
+[dependencies]
+cargo-b-core = { path = "../cargo-b-core" }
+clap = { workspace = true }
+
+[dev-dependencies]
+limits = { workspace = true }

@@ -1,0 +1,17 @@
+[package]
+name = "cargo-b-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Core of the cargo marker fixture"
+publish = false
+
+[features]
+default = ["fast"]
+fast = []
+strict = ["fast"]
+checked = ["dep:limits", "strict"]
+
+[dependencies]
+limits = { workspace = true, optional = true }
