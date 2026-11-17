@@ -242,6 +242,28 @@ func TestAcquire(t *testing.T) {
 	}
 }
 
+func TestExec(t *testing.T) {
+	t.Parallel()
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	var held atomic.Int32
+	r := newRunner(t)
+	r.Environ = []string{"PATH=" + os.Getenv("PATH")}
+	r.Acquire = func(context.Context) (func(), error) {
+		held.Add(1)
+		return func() {}, nil
+	}
+	out, _, err := r.Exec(t.Context(), t.TempDir(), sh, "-c", "echo $CARGO_TERM_COLOR")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "never\n" || held.Load() != 1 {
+		t.Errorf("output %q, %d slots", out, held.Load())
+	}
+}
+
 func TestCancel(t *testing.T) {
 	t.Parallel()
 	needCargo(t)

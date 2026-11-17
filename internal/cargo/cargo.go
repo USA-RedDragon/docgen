@@ -27,9 +27,9 @@ type Runner struct {
 	Session *gocmd.Session
 	// Jobs is the CARGO_BUILD_JOBS value of each command. 0 leaves it to cargo.
 	Jobs int
-	// Acquire, when it is not nil, is called before each command to take one
-	// slot of the limit on concurrent commands. It returns the function that
-	// releases the slot, or an error when ctx ends first.
+	// Acquire, when it is not nil, is called before each command of Run and
+	// Exec to take one slot of the limit on concurrent commands. It returns
+	// the function that releases the slot, or an error when ctx ends first.
 	Acquire func(ctx context.Context) (release func(), err error)
 	// Cargo is the cargo command. An empty Cargo is cargo from PATH.
 	Cargo string
@@ -86,6 +86,16 @@ func (r *Runner) Run(ctx context.Context, dir string, args ...string) (string, s
 	if _, err := exec.LookPath(r.cargo()); err != nil {
 		return "", "", ErrNotFound
 	}
+	return r.Exec(ctx, dir, r.cargo(), args...)
+}
+
+// Exec runs the program name with args in dir, with the environment of Env, as
+// Run runs cargo: in one slot of Acquire and with the limit
+// gocmd.ExampleTimeout. Use it for a program that is not cargo, such as one
+// that a cargo build made. A cold build of a crate with many dependencies takes
+// longer than gocmd.ToolTimeout, so the limit of each command is that of a run
+// of a Go example.
+func (r *Runner) Exec(ctx context.Context, dir, name string, args ...string) (string, string, error) {
 	env, err := r.Env()
 	if err != nil {
 		return "", "", err
@@ -97,9 +107,9 @@ func (r *Runner) Run(ctx context.Context, dir string, args ...string) (string, s
 		}
 		defer release()
 	}
-	ctx, cancel := context.WithTimeout(ctx, gocmd.ToolTimeout)
+	ctx, cancel := context.WithTimeout(ctx, gocmd.ExampleTimeout)
 	defer cancel()
-	return proc.Run(ctx, dir, env, r.cargo(), args...)
+	return proc.Run(ctx, dir, env, name, args...)
 }
 
 // LockedError returns err with the standard error of a cargo command, and with
