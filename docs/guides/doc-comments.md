@@ -105,7 +105,7 @@ Text in backticks in a doc comment is a code span. For all options, see [`docgen
 For a Rust crate, give the package name with `crate=`, and the path of an item or module with `name=`:
 
 <!-- site:editor -->
-<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/limits.rs region=check-jobs -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/limits.rs lines=62-74 -->
 ````rust
 /// Checks that jobs is between 1 and [`MAX_JOBS`].
 ///
@@ -151,7 +151,7 @@ assert_eq!(check_jobs(2), Ok(2));
 With no `name=`, the marker shows the crate doc. Headings move down two levels, code blocks with no language are `rust` blocks with no hidden lines, and an intra-doc link is its text:
 
 <!-- site:editor -->
-<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/lib.rs region=crate-doc -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/lib.rs lines=1-14 -->
 ```rust
 //! The core of the fixture app.
 //!

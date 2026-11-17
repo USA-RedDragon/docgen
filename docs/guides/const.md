@@ -81,7 +81,7 @@ For all options, see [`docgen:const`](../reference/markers.md#docgenconst).
 For a Rust crate, give the package name with `crate=` and the path of the const or static from the crate root with `name=`:
 
 <!-- site:editor -->
-<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/limits.rs region=max-jobs -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/limits.rs lines=6-7 -->
 ```rust
 /// The most jobs that run at once.
 pub const MAX_JOBS: usize = 8;
@@ -107,7 +107,7 @@ docgen runs a test on a copy of the crate to print the value, so a value that th
 Use `print=` to choose another form:
 
 <!-- site:editor -->
-<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/limits.rs region=values -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/limits.rs lines=12-43 -->
 ```rust
 /// The name of the app.
 pub const NAME: &str = "core-a";
