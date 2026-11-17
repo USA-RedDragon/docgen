@@ -133,6 +133,7 @@ When the `features` settings or `features=` on the marker enable something, the 
 |---|---|---|---|---|
 | `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core` |
 | `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` |
+| `cfg-app` | `crates/cfg-app` | lib | 0.1.0 |  |
 | `core-a` | `crates/core-a` | lib | 0.1.0 |  |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
 | `err-store` | `crates/err-store` | lib | 0.4.2 |  |

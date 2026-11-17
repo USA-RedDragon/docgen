@@ -375,6 +375,117 @@
 //   - With `config`, a MarshalText method that returns an error or panics.
 //   - `print=name` when two constants of the type have the value.
 //
+// For a Rust crate, `crate=` takes the place of `pkg=`, and `type=` is a struct
+// from the crate root (see Rust crates):
+//
+//	docgen:config crate=<package> type=<path> [print=<display|debug|raw|name|spec>] [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
+//
+// The table has the columns Field, Type, Default and Description, as in Go. The
+// struct has named fields and no generics, and it can be private. A struct is
+// the only kind of `type=`: an alias, an enum, a tuple struct, a unit struct and
+// a generic struct are errors.
+//
+// The rows:
+//
+//   - A field is a row when it is `pub`, in source order. When the struct
+//     derives `Deserialize`, every field is a row, also a private one, since
+//     serde reads it. A field with `pub(crate)` or another restriction counts
+//     as private.
+//   - A field with `#[serde(skip)]` or `#[serde(skip_deserializing)]` has no
+//     row.
+//   - A field of a struct type, also with `#[serde(flatten)]`, is one row, as
+//     an embedded field is in Go. The fields of that struct have no rows, and
+//     its type is not read.
+//
+// The Field column holds the name that a config file uses, and in Go it is the
+// field name. That is the Rust name, unless serde renames it, in this order:
+//
+//   - `#[serde(rename = "name")]` on the field, or `rename(deserialize =
+//     "name")`, which is the name for reading a file.
+//   - `#[serde(rename_all = "case")]` on the struct, with the case
+//     `lowercase`, `UPPERCASE`, `PascalCase`, `camelCase`, `snake_case`,
+//     `SCREAMING_SNAKE_CASE`, `kebab-case` or `SCREAMING-KEBAB-CASE`. The
+//     `deserialize` form of it applies as well. Any other case is an error.
+//   - The name in the source, with no `r#`.
+//
+// A struct with no serde attribute has Rust names. docgen reads `#[serde]` on
+// the struct and its fields, not what a `#[serde(with = ...)]` function or
+// another crate does with a name.
+//
+// The Type column holds the field type as the source writes it, such as
+// `Vec<String>` or `std::time::Duration`, with no change of its path. The
+// Description column holds the doc comment of the field, joined as in Go: line
+// breaks and blank lines become spaces, and a `|` becomes `\|`. Rust has no
+// trailing comment, so a field with no doc comment has an empty description.
+//
+// The Default column holds the default of the field as the source writes it,
+// then its value in parentheses, as in Go. A default has one of these sources,
+// and the first that applies is the one:
+//
+//   - `#[serde(default = "path")]` on the field: the call `path()`. The path is
+//     read in the module of the struct, as serde reads it.
+//   - `#[serde(default)]` on the field: `Default::default()`, which is the
+//     `Default` of the field type.
+//   - `#[serde(default = "path")]` on the struct: the field of the value that
+//     `path()` returns. The source of the field is not written.
+//   - An `impl Default for Type` in any module of the crate, or `#[derive(Default)]`,
+//     which `#[serde(default)]` on the struct uses as well: the field of
+//     `Type::default()`. The source is the expression that the `default` fn
+//     sets the field to, when its body is one struct literal such as `Self {
+//     port: DEFAULT_PORT, .. }` or `Type { .. }`, and it is not written for a
+//     derive, or for a body of another form, or a field that a `..base` fills.
+//
+// So a serde attribute on a field takes the place of the `Default` of the
+// struct for that field, as it does when serde reads a file with no such key.
+// A field with none of these sources has no default. Its cell is "not
+// machine-readable; see the description" when the doc has a phrase of the Go
+// list, and else "no default". Unlike Go, Rust has no zero value to name.
+//
+// Each value comes from the value test of the crate, which calls the default
+// code, so the table holds what the code returns and not what a doc comment
+// states. The test of one marker has one call for each field, so a default with a
+// side effect runs once for each field. `print=` sets the text of the value
+// with the choices of `docgen:const` for Rust:
+//
+//   - With no `print=`, the value prints with `Display`, or else `Debug`:
+//     `localhost` for a `String`, and `1.5s` for a `Duration`. A value with
+//     neither impl, such as a struct with no derive of `Debug`, has no value
+//     and the cell holds only the source, or `Default::default()` when there is
+//     none.
+//   - `display` and `debug` use that impl, and a type with no such impl is an
+//     error that holds the message of rustc.
+//   - `raw` is the source as written, with no value and no code, for each field
+//     with a written source. A field with none prints as it does with no
+//     `print=`, so the value test still runs for it.
+//   - `name` is the path from the crate root of the one const that has the type
+//     of the field and its value, as `docgen:const` finds it, such as
+//     `server::DEFAULT_PORT`. A field with no such const has no value, and two
+//     such consts are an error.
+//   - A format spec of one value, such as `{:#x}` or `{:?}`, applies to each
+//     default, so it is an error for a field whose type cannot use it.
+//
+// The `print` setting applies as it does for `docgen:const`, and `features=`,
+// `allfeatures=` and `nodefaultfeatures=` choose the Cargo features of the
+// value test.
+//
+// A `Default` that panics is an error that holds the message of the panic and
+// the field. The other markers of the run still print their values.
+//
+// These are errors of the Rust form:
+//
+//   - `crate=` with `pkg=`.
+//   - An empty `print=`, or a value that is not `display`, `debug`, `raw`,
+//     `name` or a format spec.
+//   - A `type=` that names no item, or an item that is not a struct, a struct
+//     with tuple fields or none, and a generic struct.
+//   - A struct with no row: no `pub` field, and no derive of `Deserialize`.
+//   - A `rename_all` that is not one of the cases above.
+//   - A default with no code that compiles, such as a spec that the type cannot
+//     use, or a `#[serde(default = "path")]` whose path names nothing.
+//   - A default that panics.
+//   - A struct in a module with a `#[cfg]` that is false in the test build.
+//   - `print=name` when two consts of the type of a field have its value.
+//
 // # docgen:configulator
 //
 // The reference table of a config type of [configulator]: each key, with its
@@ -741,7 +852,7 @@
 // # Rust crates
 //
 // A marker with `crate=` is for Rust: `docgen:const`, `docgen:doc`,
-// `docgen:errors`, `docgen:configulator`, `docgen:output`, `docgen:usage` and
+// `docgen:errors`, `docgen:config`, `docgen:configulator`, `docgen:output`, `docgen:usage` and
 // `docgen:cargo`. `crate=` is the name of a package of the Cargo workspace whose
 // `Cargo.toml` is in the module directory, as `cargo metadata` reports it, and
 // `docgen:crates` reads the same workspace. A name that is not a package of the
@@ -761,8 +872,8 @@
 // than the 5 minutes of a Go build. A `jobs` value other than 0 is the
 // `CARGO_BUILD_JOBS` of each command.
 //
-// `docgen:const`, `docgen:doc`, `docgen:errors` and `docgen:configulator` read
-// the library of the package, or else its binary with the name of the package,
+// `docgen:const`, `docgen:doc`, `docgen:errors`, `docgen:config` and
+// `docgen:configulator` read the library of the package, or else its binary with the name of the package,
 // or else its one binary. `name=` and `type=` are paths from the crate root,
 // such as `limits::MAX_JOBS`, with or without `crate::`. A path can go through a
 // `use` of the crate, such as a `pub use` at the root. An associated item of an
@@ -844,8 +955,8 @@
 // The `features`, `all-features` and `no-default-features` settings choose the
 // Cargo features of each cargo command that builds a crate for a marker: the
 // build of a binary or example for `docgen:output` and `docgen:usage`, `cargo
-// test --doc` for a doctest, and the value test of `docgen:const` and
-// `docgen:configulator`. The setting is for the workspace as a whole, so it
+// test --doc` for a doctest, and the value test of `docgen:const`,
+// `docgen:config` and `docgen:configulator`. The setting is for the workspace as a whole, so it
 // applies to each crate that has what it names, and cargo gets the flags of the
 // crate of the command, with `--package`:
 //
@@ -867,11 +978,12 @@
 // the form of the setting and replaces the list of the setting, and
 // `allfeatures=` and `nodefaultfeatures=`, which are `true` or `false` and replace
 // the setting of the same name. An argument that the marker does not set keeps
-// the setting. `docgen:const`, `docgen:configulator`, `docgen:usage` with
+// the setting. `docgen:const`, `docgen:config`, `docgen:configulator`, `docgen:usage` with
 // `crate=`, `docgen:output` with `crate=` and `docgen:cargo field=features` take
 // the three. `docgen:doc`, `docgen:errors` and `docgen:crates` run no cargo
 // command that builds, so `features=` on them is an error, and a `docgen:const`
-// with `print=raw` reads the source and ignores the features. docgen builds each
+// with `print=raw` reads the source and ignores the features, as does a
+// `docgen:config` with `print=raw` when the source writes each default. docgen builds each
 // binary and example once for each set of features, and runs one value test and
 // one doctest run for each crate and set of features, so markers with the same
 // features share their work. A nested `docgen:docgen` run does not use the

@@ -218,7 +218,7 @@ func TestRustReadErrors(t *testing.T) {
 	}
 	wantIn(t, log,
 		"errors.md:1: docgen:const crate=nope name=X: crate \"nope\" is not in the Cargo workspace at ",
-		"; the crates are: cargo-b-cli, cargo-b-core, core-a, core-a-bin, err-store, feat-gate, limits, run-c, run-c-broken, tool",
+		"; the crates are: cargo-b-cli, cargo-b-core, cfg-app, core-a, core-a-bin, err-store, feat-gate, limits, run-c, run-c-broken, tool",
 		"errors.md:2: docgen:const crate=core-a name=limits::NOPE print=raw: crate core-a has no item limits::NOPE; the names in module limits are LISTEN, LimitError, MAX_JOBS,",
 		"errors.md:3: docgen:const crate=core-a name=nomod::X print=raw: crate core-a has no item nomod::X; the names in the crate root are config, errors, limits, net, never, renamed, shapes, unix",
 		"errors.md:4: docgen:const crate=core-a name=net print=raw: net is a module, not a const or static",

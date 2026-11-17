@@ -926,6 +926,61 @@ These are errors:
   - A verb that a default cannot use, such as `%d` for a string.
   - With `config`, a MarshalText method that returns an error or panics.
   - `print=name` when two constants of the type have the value.
+
+For a Rust crate, `crate=` takes the place of `pkg=`, and `type=` is a struct from the crate root (see Rust crates):
+
+	docgen:config crate=<package> type=<path> [print=<display|debug|raw|name|spec>] [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
+
+The table has the columns Field, Type, Default and Description, as in Go. The struct has named fields and no generics, and it can be private. A struct is the only kind of `type=`: an alias, an enum, a tuple struct, a unit struct and a generic struct are errors.
+
+The rows:
+
+  - A field is a row when it is `pub`, in source order. When the struct derives `Deserialize`, every field is a row, also a private one, since serde reads it. A field with `pub(crate)` or another restriction counts as private.
+  - A field with `#[serde(skip)]` or `#[serde(skip_deserializing)]` has no row.
+  - A field of a struct type, also with `#[serde(flatten)]`, is one row, as an embedded field is in Go. The fields of that struct have no rows, and its type is not read.
+
+The Field column holds the name that a config file uses, and in Go it is the field name. That is the Rust name, unless serde renames it, in this order:
+
+  - `#[serde(rename = "name")]` on the field, or `rename(deserialize = "name")`, which is the name for reading a file.
+  - `#[serde(rename_all = "case")]` on the struct, with the case `lowercase`, `UPPERCASE`, `PascalCase`, `camelCase`, `snake_case`, `SCREAMING_SNAKE_CASE`, `kebab-case` or `SCREAMING-KEBAB-CASE`. The `deserialize` form of it applies as well. Any other case is an error.
+  - The name in the source, with no `r#`.
+
+A struct with no serde attribute has Rust names. docgen reads `#[serde]` on the struct and its fields, not what a `#[serde(with = ...)]` function or another crate does with a name.
+
+The Type column holds the field type as the source writes it, such as `Vec<String>` or `std::time::Duration`, with no change of its path. The Description column holds the doc comment of the field, joined as in Go: line breaks and blank lines become spaces, and a `|` becomes `\|`. Rust has no trailing comment, so a field with no doc comment has an empty description.
+
+The Default column holds the default of the field as the source writes it, then its value in parentheses, as in Go. A default has one of these sources, and the first that applies is the one:
+
+  - `#[serde(default = "path")]` on the field: the call `path()`. The path is read in the module of the struct, as serde reads it.
+  - `#[serde(default)]` on the field: `Default::default()`, which is the `Default` of the field type.
+  - `#[serde(default = "path")]` on the struct: the field of the value that `path()` returns. The source of the field is not written.
+  - An `impl Default for Type` in any module of the crate, or `#[derive(Default)]`, which `#[serde(default)]` on the struct uses as well: the field of `Type::default()`. The source is the expression that the `default` fn sets the field to, when its body is one struct literal such as `Self { port: DEFAULT_PORT, .. }` or `Type { .. }`, and it is not written for a derive, or for a body of another form, or a field that a `..base` fills.
+
+So a serde attribute on a field takes the place of the `Default` of the struct for that field, as it does when serde reads a file with no such key. A field with none of these sources has no default. Its cell is "not machine-readable; see the description" when the doc has a phrase of the Go list, and else "no default". Unlike Go, Rust has no zero value to name.
+
+Each value comes from the value test of the crate, which calls the default code, so the table holds what the code returns and not what a doc comment states. The test of one marker has one call for each field, so a default with a side effect runs once for each field. `print=` sets the text of the value with the choices of `docgen:const` for Rust:
+
+  - With no `print=`, the value prints with `Display`, or else `Debug`: `localhost` for a `String`, and `1.5s` for a `Duration`. A value with neither impl, such as a struct with no derive of `Debug`, has no value and the cell holds only the source, or `Default::default()` when there is none.
+  - `display` and `debug` use that impl, and a type with no such impl is an error that holds the message of rustc.
+  - `raw` is the source as written, with no value and no code, for each field with a written source. A field with none prints as it does with no `print=`, so the value test still runs for it.
+  - `name` is the path from the crate root of the one const that has the type of the field and its value, as `docgen:const` finds it, such as `server::DEFAULT_PORT`. A field with no such const has no value, and two such consts are an error.
+  - A format spec of one value, such as `{:#x}` or `{:?}`, applies to each default, so it is an error for a field whose type cannot use it.
+
+The `print` setting applies as it does for `docgen:const`, and `features=`, `allfeatures=` and `nodefaultfeatures=` choose the Cargo features of the value test.
+
+A `Default` that panics is an error that holds the message of the panic and the field. The other markers of the run still print their values.
+
+These are errors of the Rust form:
+
+  - `crate=` with `pkg=`.
+  - An empty `print=`, or a value that is not `display`, `debug`, `raw`, `name` or a format spec.
+  - A `type=` that names no item, or an item that is not a struct, a struct with tuple fields or none, and a generic struct.
+  - A struct with no row: no `pub` field, and no derive of `Deserialize`.
+  - A `rename_all` that is not one of the cases above.
+  - A default with no code that compiles, such as a spec that the type cannot use, or a `#[serde(default = "path")]` whose path names nothing.
+  - A default that panics.
+  - A struct in a module with a `#[cfg]` that is false in the test build.
+  - `print=name` when two consts of the type of a field have its value.
 <!-- /docgen:doc -->
 
 #### Defaults as Go prints them
@@ -2227,6 +2282,7 @@ A value that is not one of the lists, a glob that is not valid, a crate outside 
 |---|---|---|---|---|
 | `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core` |
 | `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` |
+| `cfg-app` | `crates/cfg-app` | lib | 0.1.0 |  |
 | `core-a` | `crates/core-a` | lib | 0.1.0 |  |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
 | `err-store` | `crates/err-store` | lib | 0.4.2 |  |
@@ -2561,11 +2617,11 @@ Each box of this page comes from a marker in this form. At the default depth thi
 ## Rust crates
 
 <!-- docgen:doc pkg=. section="Rust crates" -->
-A marker with `crate=` is for Rust: `docgen:const`, `docgen:doc`, `docgen:errors`, `docgen:configulator`, `docgen:output`, `docgen:usage` and `docgen:cargo`. `crate=` is the name of a package of the Cargo workspace whose `Cargo.toml` is in the module directory, as `cargo metadata` reports it, and `docgen:crates` reads the same workspace. A name that is not a package of the workspace is an error that lists the packages, and a marker with both `crate=` and `pkg=` is an error.
+A marker with `crate=` is for Rust: `docgen:const`, `docgen:doc`, `docgen:errors`, `docgen:config`, `docgen:configulator`, `docgen:output`, `docgen:usage` and `docgen:cargo`. `crate=` is the name of a package of the Cargo workspace whose `Cargo.toml` is in the module directory, as `cargo metadata` reports it, and `docgen:crates` reads the same workspace. A name that is not a package of the workspace is an error that lists the packages, and a marker with both `crate=` and `pkg=` is an error.
 
 These markers run `cargo` from the `PATH` and need stable Rust, and a missing `cargo` is an error. Each cargo command passes `--locked`, so the run never changes `Cargo.lock`, and a `Cargo.lock` that is out of date is an error with the cargo command that updates it. Cargo downloads crates at the versions of `Cargo.lock` and builds into the temporary directory of the run, never into your `target` directory. The markers of one run read the workspace once and build each binary and example once. Each cargo command, and each program that a cargo build made, counts toward the limit on commands at once, as a go command does. Each one stops after 10 minutes, the limit of a run of a Go example, since a cold build of a crate with many dependencies can take longer than the 5 minutes of a Go build. A `jobs` value other than 0 is the `CARGO_BUILD_JOBS` of each command.
 
-`docgen:const`, `docgen:doc`, `docgen:errors` and `docgen:configulator` read the library of the package, or else its binary with the name of the package, or else its one binary. `name=` and `type=` are paths from the crate root, such as `limits::MAX_JOBS`, with or without `crate::`. A path can go through a `use` of the crate, such as a `pub use` at the root. An associated item of an inherent impl is `Type::NAME`. A path that names nothing is an error that lists the names of the nearest module.
+`docgen:const`, `docgen:doc`, `docgen:errors`, `docgen:config` and `docgen:configulator` read the library of the package, or else its binary with the name of the package, or else its one binary. `name=` and `type=` are paths from the crate root, such as `limits::MAX_JOBS`, with or without `crate::`. A path can go through a `use` of the crate, such as a `pub use` at the root. An associated item of an inherent impl is `Type::NAME`. A path that names nothing is an error that lists the names of the nearest module.
 
 docgen reads the module tree with a helper program that uses syn. Your cargo builds it once, with `cargo build --release --locked`, into `rust-helper` below docgen in the user cache directory, for each version of the helper and of rustc. Two runs at the same time each build to a new directory and rename the result, so neither reads a part of the other. The helper needs Rust 1.71 or later, and an older rustc is an error. A failed build is an error with the output of cargo. The tree follows each `mod` line: inline modules, `foo.rs` and `foo/mod.rs` files and `#[path]`. A module with a `#[cfg]` is read as any other. A file that does not parse, and a module with no file and no `#[cfg]`, are errors. What the helper skips is a warning on standard error that names the crate and the file, such as a module with a `#[cfg]` and no file, a `#[doc = include_str!(...)]` whose file is missing, or a `#[doc]` value that is not a string.
 
@@ -2575,13 +2631,13 @@ A value comes from the value test of the crate. docgen copies the workspace, wit
 ## Cargo features
 
 <!-- docgen:doc pkg=. section="Cargo features" -->
-The `features`, `all-features` and `no-default-features` settings choose the Cargo features of each cargo command that builds a crate for a marker: the build of a binary or example for `docgen:output` and `docgen:usage`, `cargo test --doc` for a doctest, and the value test of `docgen:const` and `docgen:configulator`. The setting is for the workspace as a whole, so it applies to each crate that has what it names, and cargo gets the flags of the crate of the command, with `--package`:
+The `features`, `all-features` and `no-default-features` settings choose the Cargo features of each cargo command that builds a crate for a marker: the build of a binary or example for `docgen:output` and `docgen:usage`, `cargo test --doc` for a doctest, and the value test of `docgen:const`, `docgen:config` and `docgen:configulator`. The setting is for the workspace as a whole, so it applies to each crate that has what it names, and cargo gets the flags of the crate of the command, with `--package`:
 
   - A `features` entry that is a feature, such as `serde`, enables it in each crate that has a feature of that name, and in no other. An entry `crate/feature`, such as `core-a/strict`, enables it in `crate` alone. A feature of a dependency, such as `serde/derive`, is not a valid entry; the crate that depends on it has a feature that turns it on.
   - `all-features` passes `--all-features` and `no-default-features` passes `--no-default-features`, to each command.
   - An entry that no crate has as a feature, a crate that is not in the workspace, and a feature that the crate does not have, are errors that list the crates or the features. A name has letters, digits, `_`, `-`, `+` and dots. The error of a command that cargo rejects, such as a build of an example with a `required-features` that the setting does not enable, is the message of cargo.
 
-A marker that runs cargo can set its own with `features=`, which is a list in the form of the setting and replaces the list of the setting, and `allfeatures=` and `nodefaultfeatures=`, which are `true` or `false` and replace the setting of the same name. An argument that the marker does not set keeps the setting. `docgen:const`, `docgen:configulator`, `docgen:usage` with `crate=`, `docgen:output` with `crate=` and `docgen:cargo field=features` take the three. `docgen:doc`, `docgen:errors` and `docgen:crates` run no cargo command that builds, so `features=` on them is an error, and a `docgen:const` with `print=raw` reads the source and ignores the features. docgen builds each binary and example once for each set of features, and runs one value test and one doctest run for each crate and set of features, so markers with the same features share their work. A nested `docgen:docgen` run does not use the settings of the outer run; its markers can set `features=`.
+A marker that runs cargo can set its own with `features=`, which is a list in the form of the setting and replaces the list of the setting, and `allfeatures=` and `nodefaultfeatures=`, which are `true` or `false` and replace the setting of the same name. An argument that the marker does not set keeps the setting. `docgen:const`, `docgen:config`, `docgen:configulator`, `docgen:usage` with `crate=`, `docgen:output` with `crate=` and `docgen:cargo field=features` take the three. `docgen:doc`, `docgen:errors` and `docgen:crates` run no cargo command that builds, so `features=` on them is an error, and a `docgen:const` with `print=raw` reads the source and ignores the features, as does a `docgen:config` with `print=raw` when the source writes each default. docgen builds each binary and example once for each set of features, and runs one value test and one doctest run for each crate and set of features, so markers with the same features share their work. A nested `docgen:docgen` run does not use the settings of the outer run; its markers can set `features=`.
 
 What a feature does not change: the helper that reads the module tree reads each module and item regardless of its `#[cfg]`, so `docgen:doc`, `docgen:errors` and `print=raw` show an item behind a feature that is off. `cargo metadata` runs with `--no-deps` and lists all features of a crate whatever is enabled, so `docgen:crates` and the features table are the same for every setting. A value is different: it comes from the value test, which builds the crate with the features of the marker, so a const behind `#[cfg(feature = "big")]` has a value only when `big` is enabled. With it off, the value is an error: for a const in a module that the feature gates, the test printed no value for it, and for a const that the feature gates in a module that is built, the test code does not compile because rustc cannot find the item. Both errors name the `#[cfg]` and end with a hint to enable the feature with the `features` setting or `features=`. A doctest of an item that a feature gates is not run with the feature off, so it is the error that the crate has no doctest for the item.
 <!-- /docgen:doc -->
