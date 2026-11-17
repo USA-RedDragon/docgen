@@ -148,7 +148,7 @@ func TestDanglingReferences(t *testing.T) {
 		{tag: `code file=p/p.go symbol=""`, want: "symbol= is empty", parse: true},
 		{tag: "code file=data/c.yaml symbol=jobs.nope", want: "no key jobs.nope"},
 		{tag: "code file=data/c.yaml symbol=jobs.test.steps[b]", want: "no items"},
-		{tag: "code file=data/c.c symbol=TWO", want: "no #define or function TWO"},
+		{tag: "code file=data/c.c symbol=TWO", want: "no #define, function or typedef TWO"},
 		{tag: "code file=data/c.json symbol=jobs.nope", want: "jobs in the JSON file is not an object"},
 		{tag: "code file=data/c.json symbol=jobs[b]", want: "no items jobs[b] in the JSON file"},
 		{tag: "code file=data/c.toml symbol=jobs", want: "jobs in the TOML file is an array of tables"},

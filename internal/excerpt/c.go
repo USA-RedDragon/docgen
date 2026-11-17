@@ -3,68 +3,179 @@ package excerpt
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
+
+const cTypedef = "typedef"
 
 var (
 	cPreprocessor = regexp.MustCompile(`^[ \t]*#`)
 	cExternC      = regexp.MustCompile(`\bextern\s*"\s*"\s*$`)
 )
 
-// cExcerpt returns the #define of sym, with its continuation lines, or the
-// definition of the function sym, from the first line of its declaration to
-// the line of its closing brace. A prototype is not a definition.
+// cSpan is a range of lines of a C file that holds a definition. The lines are
+// numbered from 0.
+type cSpan struct {
+	first, last int
+	what        string
+}
+
+// cExcerpt returns the lines of the definition that sym names. A bare name is
+// a #define, a function definition or a typedef. "struct Tag", "union Tag"
+// and "enum Tag" name the definition of a tagged type. A name that has more
+// than one definition is an error.
 func cExcerpt(src []byte, sym string) (string, error) {
 	lines := strings.Split(string(src), "\n")
 	codeLines := strings.Split(cCode(string(src)), "\n")
-	if first, last := cDefine(lines, codeLines, sym); first >= 0 {
-		return strings.Join(lines[first:last+1], "\n"), nil
+	code := cDropPreprocessor(codeLines)
+	fields := strings.Fields(sym)
+	var spans []cSpan
+	var err error
+	switch {
+	case len(fields) == 1 && cIdent(fields[0]) && fields[0] != cTypedef && !cTypeKeyword(fields[0]):
+		sym = fields[0]
+		spans, err = cBareSpans(lines, codeLines, code, sym)
+	case len(fields) == 2 && cTypeKeyword(fields[0]) && cIdent(fields[1]):
+		sym = fields[0] + " " + fields[1]
+		spans, err = cTagSpans(code, fields[0], fields[1])
+	default:
+		return "", fmt.Errorf("symbol=%q in a C file is a name, or struct, union or enum and a tag", sym)
 	}
-	first, last, err := cFunction(codeLines, sym)
 	if err != nil {
 		return "", err
 	}
-	return strings.Join(lines[first:last+1], "\n"), nil
+	spans = cDedupe(spans)
+	switch len(spans) {
+	case 0:
+		return "", cMissing(code, sym, fields)
+	case 1:
+		return strings.Join(lines[spans[0].first:spans[0].last+1], "\n"), nil
+	}
+	var where []string
+	for _, s := range spans {
+		where = append(where, fmt.Sprintf("%s at line %d", s.what, s.first+1))
+	}
+	return "", fmt.Errorf("%s has more than one definition in the C file: %s", sym, strings.Join(where, ", "))
 }
 
-// cDefine returns the first and the last line of the #define of sym, or -1 and
-// -1. codeLines holds lines with no comments.
-func cDefine(lines, codeLines []string, sym string) (int, int) {
+func cBareSpans(lines, codeLines []string, code, sym string) ([]cSpan, error) {
+	spans := cDefines(lines, codeLines, sym)
+	fns, err := cFunctions(code, sym)
+	if err != nil {
+		return nil, err
+	}
+	spans = append(spans, fns...)
+	for _, t := range cTypes(code) {
+		if slices.Contains(t.names, sym) {
+			if t.err != nil {
+				return nil, t.err
+			}
+			spans = append(spans, t.span)
+		}
+	}
+	return spans, nil
+}
+
+func cTagSpans(code, keyword, name string) ([]cSpan, error) {
+	var spans []cSpan
+	for _, t := range cTypes(code) {
+		if slices.Contains(t.tags, cTag{keyword, name}) {
+			if t.err != nil {
+				return nil, t.err
+			}
+			spans = append(spans, t.span)
+		}
+	}
+	return spans, nil
+}
+
+func cMissing(code, sym string, fields []string) error {
+	if len(fields) == 1 {
+		for _, t := range cTypes(code) {
+			for _, tag := range t.tags {
+				if tag.name == sym {
+					return fmt.Errorf("no #define, function or typedef %s in the C file; %s %s is a tag, so use symbol=\"%s %s\"", sym, tag.keyword, sym, tag.keyword, sym)
+				}
+			}
+		}
+		return fmt.Errorf("no #define, function or typedef %s in the C file", sym)
+	}
+	return fmt.Errorf("no definition of %s with a body in the C file", sym)
+}
+
+func cDedupe(spans []cSpan) []cSpan {
+	var out []cSpan
+	for _, s := range spans {
+		if !slices.ContainsFunc(out, func(o cSpan) bool { return o.first == s.first && o.last == s.last }) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func cTypeKeyword(w string) bool {
+	return w == "struct" || w == "union" || w == "enum"
+}
+
+func cIdent(w string) bool {
+	return w != "" && (w[0] < '0' || w[0] > '9') && identEnd(w, 0) == len(w)
+}
+
+// cDefines returns the lines of each #define of sym, with its continuation
+// lines. codeLines holds lines with no comments.
+func cDefines(lines, codeLines []string, sym string) []cSpan {
 	define := regexp.MustCompile(`^[ \t]*#[ \t]*define[ \t]+` + regexp.QuoteMeta(sym) + `(?:[ \t(]|$)`)
+	var spans []cSpan
 	for i, l := range codeLines {
 		if define.MatchString(l) {
 			j := i
 			for j < len(lines)-1 && strings.HasSuffix(lines[j], "\\") {
 				j++
 			}
-			return i, j
+			spans = append(spans, cSpan{i, j, "#define"})
 		}
 	}
-	return -1, -1
+	return spans
 }
 
-// cFunction returns the first and the last line of the definition of the
-// function sym in codeLines.
-func cFunction(codeLines []string, sym string) (int, int, error) {
-	code := cDropPreprocessor(codeLines)
-	name, brace := cFindBody(code, sym)
-	if name < 0 {
-		return 0, 0, fmt.Errorf("no #define or function %s in the C file", sym)
-	}
-	end := cBodyEnd(code, brace)
-	if end < 0 {
-		return 0, 0, fmt.Errorf("the body of function %s in the C file has no closing brace", sym)
-	}
+// cFunctions returns the lines of each definition of the function sym in
+// code, from the first line of its declaration to its closing brace.
+func cFunctions(code, sym string) ([]cSpan, error) {
 	blanked := strings.Split(code, "\n")
-	first := strings.Count(code[:name], "\n")
-	for first > 0 {
-		t := strings.TrimSpace(blanked[first-1])
+	var spans []cSpan
+	var err error
+	cWalk(code, func(i, j int) int {
+		if err != nil || code[i:j] != sym {
+			return j
+		}
+		brace := cDefinitionBrace(code, j)
+		if brace < 0 {
+			return j
+		}
+		end := cBodyEnd(code, brace)
+		if end < 0 {
+			err = fmt.Errorf("the body of function %s in the C file has no closing brace", sym)
+			return j
+		}
+		first := cFirstLine(blanked, strings.Count(code[:i], "\n"))
+		spans = append(spans, cSpan{first, strings.Count(code[:end], "\n"), "function"})
+		return end + 1
+	})
+	return spans, err
+}
+
+// cFirstLine returns the first line of the declaration that has a token on
+// line n: the lines above it that are not blank and hold no ; { or }.
+func cFirstLine(blanked []string, n int) int {
+	for n > 0 {
+		t := strings.TrimSpace(blanked[n-1])
 		if t == "" || strings.ContainsAny(t, ";{}") {
 			break
 		}
-		first--
+		n--
 	}
-	return first, strings.Count(code[:end], "\n"), nil
+	return n
 }
 
 // cCode returns src with spaces in place of comments and of the text of
@@ -127,12 +238,13 @@ func cDropPreprocessor(lines []string) string {
 	return strings.Join(out, "\n")
 }
 
-// cFindBody returns the offset of the name of the first top-level function
-// definition of sym in code and the offset of the opening brace of its body,
-// or -1 and -1. The closing brace of an extern "C" block and a closing brace
-// at column 0 leave the nesting depth at 0, so that the scan finds the
-// definitions after #ifdef branches with unbalanced braces.
-func cFindBody(code, sym string) (int, int) {
+// cWalk calls visit for each identifier of code at nesting depth 0 outside
+// parentheses, with the offsets of its start and end. When visit returns a
+// larger offset than the end, the scan resumes there. The closing brace of an
+// extern "C" block and a closing brace at column 0 leave the nesting depth at
+// 0, so that the scan finds the definitions after #ifdef branches with
+// unbalanced braces.
+func cWalk(code string, visit func(start, end int) int) {
 	depth, paren := 0, 0
 	for i := 0; i < len(code); i++ {
 		switch c := code[i]; {
@@ -151,15 +263,12 @@ func cFindBody(code, sym string) (int, int) {
 			paren = max(paren-1, 0)
 		case isIdent(c):
 			j := identEnd(code, i)
-			if depth == 0 && paren == 0 && code[i:j] == sym {
-				if brace := cDefinitionBrace(code, j); brace >= 0 {
-					return i, brace
-				}
+			if depth == 0 && paren == 0 {
+				j = max(j, visit(i, j))
 			}
 			i = j - 1
 		}
 	}
-	return -1, -1
 }
 
 // cDefinitionBrace returns the offset of the body that follows the parameter
