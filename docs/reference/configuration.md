@@ -1,6 +1,6 @@
 # Configuration
 
-The settings of `docgen`, with the key in `.docgen.yaml`, the environment variable and the flag of each.
+The settings of `docgen`, with the key in `.docgen.yaml`, the environment variable and the flag of each. The same settings apply to Go and Rust repositories: `module` is also the directory of the Cargo workspace, and `features`, `all-features` and `no-default-features` are for Rust.
 
 ## Settings
 
@@ -20,7 +20,8 @@ The settings of `docgen`, with the key in `.docgen.yaml`, the environment variab
 <!-- /docgen:configulator -->
 
 - `vars` holds the values of the [`docgen:var`](markers.md#docgenvar) and [`docgen:text`](markers.md#docgentext) markers. It is a setting of the file only. A key has letters, digits, `_` and `-`.
-- `jobs` is the `-p` of each go command, an integer up to <!-- docgen:const pkg=internal/cli name=maxJobs -->`1024`<!-- /docgen:const -->. 0 adds no `-p`. At most <!-- docgen:const pkg=internal/gen name=maxCommands -->`8`<!-- /docgen:const --> go commands run at once for any value. Use it to limit a small CI runner.
+- `module` is the directory of the Go module, and of the Cargo workspace with the `Cargo.toml` that `crate=` markers read. A repository with a workspace and no `go.mod` needs no other setting.
+- `jobs` is the `-p` of each go command, and the `CARGO_BUILD_JOBS` of each cargo command, an integer up to <!-- docgen:const pkg=internal/cli name=maxJobs -->`1024`<!-- /docgen:const -->. 0 adds no `-p`. At most <!-- docgen:const pkg=internal/gen name=maxCommands -->`8`<!-- /docgen:const --> go commands run at once for any value. Use it to limit a small CI runner.
 - `tags` holds letters, digits, `_` and `.`, separated by commas. A `-tags` in `GOFLAGS` also applies.
 - `features` is a list of Cargo features, separated by commas or white space, for each cargo command of a Rust marker. An entry is a feature, which applies to each crate that has it, or `crate/feature`, which applies to one crate. An unknown crate or feature is an error that lists the choices. `all-features` and `no-default-features` are `true` or `false`. A Rust marker can replace each of them with `features=`, `allfeatures=` or `nodefaultfeatures=`. See [Cargo features](markers.md#cargo-features).
 - `print` is the `print=` of each marker with no `print=`: `go`, `raw` or `config`. With `raw`, these markers run no code. For each value, see [`docgen:const`](markers.md#docgenconst).
@@ -29,7 +30,7 @@ The settings of `docgen`, with the key in `.docgen.yaml`, the environment variab
 
 ## Example
 
-A repository with its pages in `documentation` and its module in `v2`:
+A repository with its pages in `documentation` and its module, or its Cargo workspace, in `v2`:
 
 ```yaml
 docs: documentation
@@ -83,12 +84,14 @@ A scan skips:
 - Pages under the `root` of a `docgen:docgen` marker.
 - Anything that is not a regular file, such as a symlink.
 
-## Go environment
+## Go and Cargo environment
 
 <!-- docgen:doc pkg=. section=Environment -->
 docgen runs go with your environment, so `GOPROXY`, `GOWORK` and `GOFLAGS` work as they do for any go command. The go command downloads missing modules at the versions that `go.mod` and `go.sum` pin. Set `GOPROXY=off` to forbid the network. `jobs` adds `-p` to `GOFLAGS` and `tags` adds `-tags`, joined with the value of `go env -w GOFLAGS`.
 
 `GOTMPDIR` is a new directory for each run, below docgen in the user cache directory, so that builds are not on a tmpfs. docgen removes it at the end of the run, also after an interrupt, so a go command that the interrupt ends leaves no build directory.
 <!-- /docgen:doc -->
+
+A cargo command also runs with your environment, so `CARGO_HOME`, `RUSTUP_TOOLCHAIN` and a registry mirror work as they do for cargo. Each cargo command passes `--locked` and builds into the temporary directory of the run. See [How docgen works](../concepts/how-it-works.md#rust-pipeline).
 
 For the commands and flags, see [Command line](command.md).

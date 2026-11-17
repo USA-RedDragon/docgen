@@ -1,6 +1,6 @@
 # Command line
 
-The commands, flags and exit codes of `docgen`. For the settings, see [Configuration](configuration.md).
+The commands, flags and exit codes of `docgen`, for Go and Rust repositories. For the settings, see [Configuration](configuration.md).
 
 ## Usage
 
@@ -35,7 +35,7 @@ Flags:
 ```
 <!-- /docgen:usage -->
 
-A flag goes before the directory. The flags `-module`, `-tags` and `-jobs` override the settings of the same name, and the directory overrides `docs`. For the repository root, see [The file](configuration.md#the-file). For the scan, see [Choose what to scan](configuration.md#choose-what-to-scan).
+A flag goes before the directory. The flags `-module`, `-tags`, `-jobs`, `-features`, `-all-features` and `-no-default-features` override the settings of the same name, and the directory overrides `docs`. For the repository root, see [The file](configuration.md#the-file). For the scan, see [Choose what to scan](configuration.md#choose-what-to-scan).
 
 ## See a diff
 
@@ -59,7 +59,7 @@ A region mark with no pair, and a name twice in one file, are errors with path a
 | Code | Meaning |
 |---|---|
 | 0 | The run finished. With `check`, nothing is stale, unused or broken. |
-| 1 | With `check`, a marker is stale, a region, diagram or variable is unused, or a link is broken. With either command, a marker has an error, a test or Example that it uses failed, a setting has a value that is not valid, or a setting holds a directory or file that does not exist. An interrupt or a SIGTERM also stops the run with exit 1 and writes nothing. |
+| 1 | With `check`, a marker is stale, a region, diagram or variable is unused, or a link is broken. With either command, a marker has an error, a test, Example, doctest or cargo build that it uses failed, a setting has a value that is not valid, or a setting holds a directory or file that does not exist. An interrupt or a SIGTERM also stops the run with exit 1 and writes nothing. |
 | 2 | The command line is not valid: no command, an unknown command, an unknown flag, a flag value that does not parse, or an extra argument. |
 
 - `update` writes nothing when a marker fails.
