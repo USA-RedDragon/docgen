@@ -5,6 +5,7 @@ go 1.27.0
 require (
 	github.com/USA-RedDragon/configulator/v2 v2.5.0
 	github.com/goccy/go-yaml v1.19.2
+	github.com/pelletier/go-toml/v2 v2.4.3
 	golang.org/x/mod v0.42.0
 	golang.org/x/tools v0.52.0
 )

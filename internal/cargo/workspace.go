@@ -44,6 +44,9 @@ type Package struct {
 	// Dir is the directory of the manifest.
 	Dir     string
 	Targets []Target
+	// Features maps each feature, explicit or from an optional dependency, to
+	// the items it enables, as written in the manifest.
+	Features map[string][]string
 	// LocalDeps are the dependencies on other packages of the workspace, in the
 	// order of the manifest.
 	LocalDeps []Dependency
@@ -123,13 +126,14 @@ type metadata struct {
 }
 
 type metaPackage struct {
-	Name         string       `json:"name"`
-	Version      string       `json:"version"`
-	Edition      string       `json:"edition"`
-	RustVersion  string       `json:"rust_version"`
-	ManifestPath string       `json:"manifest_path"`
-	Targets      []metaTarget `json:"targets"`
-	Dependencies []metaDep    `json:"dependencies"`
+	Name         string              `json:"name"`
+	Version      string              `json:"version"`
+	Edition      string              `json:"edition"`
+	RustVersion  string              `json:"rust_version"`
+	ManifestPath string              `json:"manifest_path"`
+	Targets      []metaTarget        `json:"targets"`
+	Features     map[string][]string `json:"features"`
+	Dependencies []metaDep           `json:"dependencies"`
 }
 
 type metaTarget struct {
@@ -159,6 +163,7 @@ func parseMetadata(b []byte) (*Workspace, error) {
 			RustVersion:  mp.RustVersion,
 			ManifestPath: mp.ManifestPath,
 			Dir:          filepath.Dir(mp.ManifestPath),
+			Features:     mp.Features,
 		}
 		for _, t := range mp.Targets {
 			p.Targets = append(p.Targets, Target{Name: t.Name, Kind: targetKind(t.Kind), Path: t.SrcPath, Edition: t.Edition})
