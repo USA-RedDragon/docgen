@@ -2,7 +2,7 @@ internal/cargo/build.go	24	23
 internal/cargo/cargo.go	42	40
 internal/cargo/features.go	85	83
 internal/cargo/manifest.go	95	84
-internal/cargo/manifestws.go	261	246
+internal/cargo/manifestws.go	263	247
 internal/cargo/workspace.go	57	52
 internal/cli/config.go	33	33
 internal/cli/config_configulator.go	260	103
@@ -13,7 +13,8 @@ internal/cli/yaml.go	7	7
 internal/defaults/defaults.go	13	13
 internal/defaults/tracer.go	87	84
 internal/diff/diff.go	129	128
-internal/excerpt/c.go	163	158
+internal/excerpt/c.go	164	159
+internal/excerpt/cdefine.go	54	52
 internal/excerpt/ctype.go	139	129
 internal/excerpt/excerpt.go	26	24
 internal/excerpt/json.go	68	58
@@ -25,7 +26,8 @@ internal/excerpt/toml.go	279	261
 internal/excerpt/yaml.go	145	139
 internal/gen/audit.go	21	20
 internal/gen/broken.go	48	43
-internal/gen/cargo.go	195	184
+internal/gen/cargo.go	206	193
+internal/gen/cconst.go	21	21
 internal/gen/code.go	71	69
 internal/gen/config.go	39	39
 internal/gen/configtable.go	41	41
@@ -38,14 +40,14 @@ internal/gen/errors.go	20	18
 internal/gen/gen.go	74	68
 internal/gen/godoc.go	20	20
 internal/gen/gomod.go	14	14
-internal/gen/handler.go	45	45
+internal/gen/handler.go	47	47
 internal/gen/help.go	61	54
 internal/gen/marks.go	68	60
 internal/gen/modfile.go	21	20
 internal/gen/nested.go	96	89
 internal/gen/output.go	70	67
 internal/gen/plan.go	73	72
-internal/gen/pool.go	37	36
+internal/gen/pool.go	37	35
 internal/gen/print.go	21	20
 internal/gen/program.go	43	40
 internal/gen/reference.go	21	21
@@ -98,6 +100,7 @@ internal/rustsrc/helper.go	112	86
 internal/rustsrc/returns.go	83	79
 internal/rustsrc/states.go	119	107
 internal/rustsrc/statesrun.go	177	163
+internal/rustsrc/summary.go	11	11
 internal/rustsrc/symbols.go	71	65
 internal/rustsrc/values.go	250	201
 internal/states/draw.go	10	10
