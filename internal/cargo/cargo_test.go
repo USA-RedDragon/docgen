@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/USA-RedDragon/docgen/internal/gocmd"
+	"github.com/USA-RedDragon/docgen/internal/rustfixture"
 )
 
 const fixture = "../cli/testdata/rust"
@@ -65,7 +66,11 @@ func TestOpenFixture(t *testing.T) {
 	for _, p := range ws.Packages {
 		names = append(names, p.Name)
 	}
-	if want := []string{"cargo-b-cli", "cargo-b-core", "core-a", "core-a-bin", "err-store", "feat-gate", "limits", "run-c", "run-c-broken", "tool"}; !slices.Equal(names, want) {
+	want, err := rustfixture.Crates(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(names, want) {
 		t.Fatalf("packages %v, want %v", names, want)
 	}
 	limits, err := ws.Package("limits")
@@ -134,7 +139,11 @@ func TestUnknownCrate(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = ws.Package("nope")
-	if err == nil || !strings.Contains(err.Error(), `"nope"`) || !strings.Contains(err.Error(), "limits, run-c, run-c-broken, tool") {
+	crates, cerr := rustfixture.Crates(fixture)
+	if cerr != nil {
+		t.Fatal(cerr)
+	}
+	if err == nil || !strings.Contains(err.Error(), `"nope"`) || !strings.Contains(err.Error(), strings.Join(crates, ", ")) {
 		t.Errorf("error %v", err)
 	}
 }
