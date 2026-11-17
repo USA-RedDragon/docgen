@@ -31,7 +31,7 @@ jobs:
 ```
 <!-- /docgen:text -->
 
-docgen runs the go command to load the packages of your module, so set up Go before the action. The inputs:
+docgen runs the go command to load the packages of your module, so set up Go before the action. A repository with no Go code needs no Go; see [Check a Rust repository](#check-a-rust-repository). The inputs:
 
 | Input | Default | Meaning |
 |---|---|---|
@@ -42,6 +42,8 @@ docgen runs the go command to load the packages of your module, so set up Go bef
 | `jobs` | | The `-jobs` flag. |
 | `diff` | `true` | The `-diff` flag of `check`. `update` ignores it. |
 | `version` | | A docgen version, such as `v0.1.0` or `latest`. Empty uses the ref in `uses:`. |
+| `rust-toolchain` | | A Rust toolchain for [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain) to install, such as `stable`. Empty installs none. |
+| `rust-cache` | `auto` | Cache the Rust helper build and the cargo registry. `auto` caches when `rustc` is on `PATH` and a `Cargo.toml` is within three levels of the working directory. |
 | `comment` | `false` | With `true`, comment on the pull request. See [Comment on the pull request](#comment-on-the-pull-request). |
 | `token` | `github.token` | The token for the release download and the comment. |
 | `marker` | `docgen-check` | The name in the hidden HTML comment that marks the comment. |
@@ -53,6 +55,32 @@ How the action gets docgen:
 - A release tag, such as `v0.1.0` in `uses:` or in `version`, downloads the prebuilt docgen of that release with `gh`. The action checks its sha256 against the `checksums.txt` of the release, and stops on a mismatch. This takes about a second.
 - A branch or a commit SHA in `uses:` builds docgen from the code at that ref. The build is cached, so the next run with the same code does not build again. Another `version`, such as `latest`, installs with `go install`. Only these two cases use Go to get docgen.
 - When a release has no archive for the runner, or `gh` cannot download it, the action gets docgen from source with Go: a build of the tag in `uses:`, or `go install` of the `version`.
+
+## Check a Rust repository
+
+Markers with `crate=` and the crate table run `cargo`, so a Rust repository needs a Rust toolchain on the runner. The action installs none unless you set `rust-toolchain`, so add a setup step before it. A release tag needs no Go:
+
+<!-- docgen:text text="name: Docs\n\non:\n  pull_request:\n\npermissions:\n  contents: read\n\njobs:\n  docs:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v7\n      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable\n      - uses: USA-RedDragon/docgen@{version}" code=yaml -->
+```yaml
+name: Docs
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: USA-RedDragon/docgen@v0.1.0
+```
+<!-- /docgen:text -->
+
+The first run builds the helper that reads Rust code with your `cargo`, which compiles `syn`. The action caches that build, keyed by the helper source and the `rustc` version, and the cargo registry, keyed by `Cargo.lock`. docgen names the needed Rust version when `rustc` is too old. To let the action install the toolchain, use `rust-toolchain: stable` in `with:` and drop the setup step. Pin an action by commit SHA, as the Rust step does, if your policy asks for it.
 
 ## Comment on the pull request
 
