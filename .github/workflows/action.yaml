@@ -83,3 +83,22 @@ jobs:
             echo "::error::the check of a stale page with a comment has outcome $OUTCOME; want failure"
             exit 1
           fi
+
+  # Rust is installed by the action, and the cache steps run.
+  rust:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Check the docs with the action and a Rust toolchain
+        uses: ./
+        with:
+          rust-toolchain: stable
+          rust-cache: true

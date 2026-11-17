@@ -1,0 +1,57 @@
+name: Rust Static Checks
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.ref }}'
+  cancel-in-progress: true
+
+jobs:
+  helper:
+    name: helper
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: cargo fmt
+        run: cargo fmt --check
+        working-directory: internal/rustsrc/helper
+      # --locked fails when Cargo.lock needs a change, so the lock file in the
+      # repository is the one that the helper builds with.
+      - name: cargo clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: internal/rustsrc/helper
+
+  # rust-version of the helper is 1.71, and MinRust in internal/rustsrc says so.
+  msrv:
+    name: helper on Rust 1.71
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: '1.71'
+      - name: cargo check
+        run: cargo check --locked
+        working-directory: internal/rustsrc/helper
+
+  fixture:
+    name: fixture lock file
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - name: cargo metadata
+        run: cargo metadata --locked --format-version 1 >/dev/null
+        working-directory: internal/cli/testdata/rust
