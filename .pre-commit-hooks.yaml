@@ -17,3 +17,25 @@
   always_run: true
   stages: [manual]
   minimum_pre_commit_version: '3.2.0'
+
+# These two hooks run the docgen on PATH, so a repository with no Go, such as
+# a Rust-only one, needs no Go toolchain. Install a release archive instead.
+- id: docgen-check-system
+  name: docgen check
+  description: Like docgen-check, but runs the docgen on PATH, so the repository needs no Go.
+  entry: docgen check
+  language: system
+  pass_filenames: false
+  always_run: true
+  stages: [pre-commit, pre-merge-commit, pre-push, manual]
+  minimum_pre_commit_version: '3.2.0'
+
+- id: docgen-update-system
+  name: docgen update
+  description: Like docgen-update, but runs the docgen on PATH, so the repository needs no Go.
+  entry: docgen update
+  language: system
+  pass_filenames: false
+  always_run: true
+  stages: [manual]
+  minimum_pre_commit_version: '3.2.0'
