@@ -182,7 +182,7 @@ func featureTable(pkg *cargo.Package, feats *cargo.Features) (string, []outFile,
 	for _, name := range names {
 		def := ""
 		if slices.Contains(pkg.Features["default"], name) {
-			def = "yes"
+			def = cellYes
 		}
 		enables := make([]string, len(pkg.Features[name]))
 		for i, e := range pkg.Features[name] {
@@ -194,7 +194,7 @@ func featureTable(pkg *cargo.Package, feats *cargo.Features) (string, []outFile,
 		}
 		enabled := ""
 		if on[name] {
-			enabled = "yes"
+			enabled = cellYes
 		}
 		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", markdown.CodeSpan(name), def, enabled, strings.Join(enables, ", "))
 	}

@@ -20,15 +20,35 @@ type statesHandler struct {
 func (h *statesHandler) Bind(a *marker.Args) {
 	h.bindType(a)
 	h.run, _ = a.Optional("run")
-	h.diagram, _ = a.Optional("diagram")
-	a.NonEmpty("run", "diagram")
+	a.NonEmpty("run")
+	h.diagram = bindDiagram(a)
+}
+
+// bindDiagram reads diagram= of a docgen:states marker: a path relative to the
+// page that ends in .svg, or "".
+func bindDiagram(a *marker.Args) string {
+	diagram, _ := a.Optional("diagram")
+	a.NonEmpty("diagram")
 	switch {
-	case h.diagram == "":
-	case strings.HasPrefix(h.diagram, "/"):
-		a.Fail("diagram=" + h.diagram + " is not relative to the page")
-	case !strings.HasSuffix(h.diagram, ".svg"):
-		a.Fail("diagram=" + h.diagram + " does not end in .svg")
+	case diagram == "":
+	case strings.HasPrefix(diagram, "/"):
+		a.Fail("diagram=" + diagram + " is not relative to the page")
+	case !strings.HasSuffix(diagram, ".svg"):
+		a.Fail("diagram=" + diagram + " does not end in .svg")
 	}
+	return diagram
+}
+
+// isStates reports whether h is a docgen:states marker, of Go or of Rust.
+func isStates(h handler) bool {
+	if l, ok := h.(*langHandler); ok {
+		h = l.handler
+	}
+	switch h.(type) {
+	case *statesHandler, *rustStatesHandler:
+		return true
+	}
+	return false
 }
 
 func (h *statesHandler) plan(p *plan) {

@@ -119,7 +119,7 @@ func newHandler(kind string) handler {
 	case "code":
 		return &codeHandler{}
 	case "states":
-		return &statesHandler{}
+		return &langHandler{goH: &statesHandler{}, rustH: &rustStatesHandler{}}
 	case "config":
 		return &langHandler{goH: &configHandler{}, rustH: &rustConfigHandler{}}
 	case "const":

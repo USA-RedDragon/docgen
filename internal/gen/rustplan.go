@@ -119,6 +119,8 @@ type rustPlan struct {
 	batches map[string]*doctestBatch
 	// symbols holds the Rust files that docgen:code symbol= reads, by path.
 	symbols map[string]*rustSymbols
+	// states holds the machines of docgen:states.
+	states []*rustStates
 }
 
 // A rustSymbols is the result of the read of one file for docgen:code.
@@ -230,8 +232,8 @@ func targetOf(pkg *cargo.Package) (root, bin string, err error) {
 	return "", "", fmt.Errorf("crate %s has no library and no binary named %s", pkg.Name, pkg.Name)
 }
 
-// rustPrepare reads the crates of rp and prints its values. Each cargo command
-// takes a slot of g.
+// rustPrepare reads the crates of rp, prints its values and records its
+// machines. Each cargo command takes a slot of g.
 func (g *Generator) rustPrepare(ctx context.Context, rp *rustPlan) {
 	rp.read = map[string]*rustCrate{}
 	g.rustSymbols(ctx, rp)
@@ -282,7 +284,10 @@ func (g *Generator) rustPrepare(ctx context.Context, rp *rustPlan) {
 			fmt.Fprintf(g.log, "docgen: crate %s: %s\n", name, g.repoText(w))
 		}
 	}
-	g.rustValues(ctx, r, ws, rp)
+	var wg sync.WaitGroup
+	wg.Go(func() { g.rustValues(ctx, r, ws, rp) })
+	g.rustStates(ctx, r, ws, rp, &wg)
+	wg.Wait()
 }
 
 // rustSymbols reads the files of rp for docgen:code symbol= with one run of

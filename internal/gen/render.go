@@ -159,7 +159,7 @@ func (g *Generator) generated(ctx context.Context, res *prepared, pages []*page,
 	ps := &pass{texts: texts, outputs: map[string]output{}}
 	for _, pg := range pages {
 		for i, m := range pg.markers {
-			if _, ok := m.handler.(*statesHandler); !ok {
+			if !isStates(m.handler) {
 				continue
 			}
 			for _, f := range g.fillMarker(ctx, res, ps, pg, i).files {

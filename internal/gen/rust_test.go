@@ -21,6 +21,13 @@ func needCargo(t *testing.T) {
 // and runs update.
 func rustRun(t *testing.T, page string) (string, error) {
 	t.Helper()
+	root, err := rustRunRoot(t, page)
+	return read(t, root, "docs/p.md"), err
+}
+
+// rustRunRoot is rustRun, and returns the root of the copy.
+func rustRunRoot(t *testing.T, page string) (string, error) {
+	t.Helper()
 	needCargo(t)
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -35,7 +42,7 @@ func rustRun(t *testing.T, page string) (string, error) {
 	writeTree(t, root, map[string]string{"docs/p.md": page})
 	g := generator(t, root)
 	_, err = g.Run(t.Context(), filepath.Join(root, "docs"), true)
-	return read(t, root, "docs/p.md"), err
+	return root, err
 }
 
 func TestRustExample(t *testing.T) {

@@ -98,7 +98,7 @@ func writtenDiagrams(pages []*page) (map[string]bool, bool) {
 	complete := true
 	for _, pg := range pages {
 		for i, m := range pg.markers {
-			if _, ok := m.handler.(*statesHandler); !ok {
+			if !isStates(m.handler) {
 				continue
 			}
 			f := pg.filled[i]
