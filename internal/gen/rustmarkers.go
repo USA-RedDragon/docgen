@@ -20,9 +20,11 @@ type rustConstHandler struct {
 	name  string
 	rp    *rustPlan
 	value *rustValue
+	feat  featureArgs
 }
 
 func (h *rustConstHandler) Bind(a *marker.Args) {
+	h.feat.bind(a)
 	h.crate = bindCrate(a)
 	h.name = a.Required(argName)
 	h.printAs, _ = a.Optional(argPrint)
@@ -41,7 +43,7 @@ func (h *rustConstHandler) plan(p *plan) {
 		h.rp.readCrate(h.crate)
 		return
 	}
-	h.value = h.rp.value(&rustValue{crate: h.crate, name: h.name, printAs: h.printAs})
+	h.value = h.rp.value(&rustValue{crate: h.crate, name: h.name, printAs: h.printAs, feats: p.gen.features(&h.feat)})
 }
 
 func (h *rustConstHandler) fill(context.Context, job) (string, []outFile, error) {
@@ -211,9 +213,11 @@ type rustConfigulatorHandler struct {
 	typ   string
 	table rustsrc.Table
 	value *rustValue
+	feat  featureArgs
 }
 
 func (h *rustConfigulatorHandler) Bind(a *marker.Args) {
+	h.feat.bind(a)
 	h.crate = bindCrate(a)
 	h.typ = a.Required(argType)
 	h.table = rustsrc.Table{EnvSep: "_", FlagSep: "."}
@@ -229,7 +233,7 @@ func (h *rustConfigulatorHandler) Bind(a *marker.Args) {
 }
 
 func (h *rustConfigulatorHandler) plan(p *plan) {
-	h.value = p.rust().value(&rustValue{crate: h.crate, name: h.typ, table: &h.table})
+	h.value = p.rust().value(&rustValue{crate: h.crate, name: h.typ, table: &h.table, feats: p.gen.features(&h.feat)})
 }
 
 func (h *rustConfigulatorHandler) fill(context.Context, job) (string, []outFile, error) {

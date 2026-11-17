@@ -69,7 +69,7 @@ func TestFeaturesEnabled(t *testing.T) {
 	t.Parallel()
 	a := featureWorkspace().byName["a"]
 	names := func(f Features) []string {
-		var out []string
+		out := make([]string, 0, len(a.Features))
 		for n := range f.Enabled(a) {
 			out = append(out, n)
 		}

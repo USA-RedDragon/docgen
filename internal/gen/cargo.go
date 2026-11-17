@@ -25,8 +25,8 @@ type rustBuild struct {
 // cargoBuild builds the target of kind bin or example with the name of the
 // package pkg once for g, for all the markers of the run, and returns the path
 // of its executable.
-func (g *Generator) cargoBuild(ctx context.Context, ws *cargo.Workspace, pkg, kind, name string) (string, error) {
-	key := pkg + "\x00" + kind + "\x00" + name
+func (g *Generator) cargoBuild(ctx context.Context, ws *cargo.Workspace, pkg, kind, name string, feats cargo.Features) (string, error) {
+	key := pkg + "\x00" + kind + "\x00" + name + "\x00" + feats.Key()
 	g.rust.mu.Lock()
 	b := g.rust.builds[key]
 	if b == nil {
@@ -35,8 +35,12 @@ func (g *Generator) cargoBuild(ctx context.Context, ws *cargo.Workspace, pkg, ki
 	}
 	g.rust.mu.Unlock()
 	b.once.Do(func() {
+		var flags []string
+		if flags, b.err = g.featureFlags(ctx, pkg, feats); b.err != nil {
+			return
+		}
 		fmt.Fprintf(g.log, "docgen: building %s %s of %s\n", kind, name, pkg)
-		b.exe, b.err = g.rust.runner.Build(ctx, ws.Root, pkg, kind, name)
+		b.exe, b.err = g.rust.runner.Build(ctx, ws.Root, pkg, kind, name, flags...)
 	})
 	return b.exe, b.err
 }
@@ -59,6 +63,7 @@ type cargoHandler struct {
 	field string
 	crate string
 	file  string
+	feat  featureArgs
 }
 
 func (h *cargoHandler) Bind(a *marker.Args) {
@@ -76,6 +81,7 @@ func (h *cargoHandler) Bind(a *marker.Args) {
 		if h.file != "" {
 			a.Fail("field=features has no file=")
 		}
+		h.feat.bind(a)
 		return
 	}
 	h.bindCode(a)
@@ -135,16 +141,26 @@ func (h *cargoHandler) paths(ctx context.Context, j job) (string, string, error)
 }
 
 func (h *cargoHandler) features(ctx context.Context, j job) (string, []outFile, error) {
-	_, pkg, err := j.cargoPackage(ctx, h.crate)
+	ws, pkg, err := j.cargoPackage(ctx, h.crate)
 	if err != nil {
 		return "", nil, err
 	}
-	return featureTable(pkg)
+	var feats cargo.Features
+	if h.feat.count > 0 || !j.rust.features.Zero() {
+		feats = j.features(&h.feat)
+		if err := feats.Validate(ws); err != nil {
+			return "", nil, fmt.Errorf("crate %s: %w", h.crate, err)
+		}
+		return featureTable(pkg, &feats)
+	}
+	return featureTable(pkg, nil)
 }
 
 // featureTable returns the table of the features of pkg, in name order. A
-// feature is a default feature when the default feature lists it.
-func featureTable(pkg *cargo.Package) (string, []outFile, error) {
+// feature is a default feature when the default feature lists it. With feats,
+// the table has an Enabled column: yes for each feature that a command with
+// feats enables, with the features that those enable.
+func featureTable(pkg *cargo.Package, feats *cargo.Features) (string, []outFile, error) {
 	var names []string
 	for name := range pkg.Features {
 		if name != "default" {
@@ -156,7 +172,13 @@ func featureTable(pkg *cargo.Package) (string, []outFile, error) {
 	}
 	slices.Sort(names)
 	var b strings.Builder
-	b.WriteString("| Feature | Default | Enables |\n|---|---|---|\n")
+	var on map[string]bool
+	if feats == nil {
+		b.WriteString("| Feature | Default | Enables |\n|---|---|---|\n")
+	} else {
+		on = feats.Enabled(pkg)
+		b.WriteString("| Feature | Default | Enabled | Enables |\n|---|---|---|---|\n")
+	}
 	for _, name := range names {
 		def := ""
 		if slices.Contains(pkg.Features["default"], name) {
@@ -166,7 +188,15 @@ func featureTable(pkg *cargo.Package) (string, []outFile, error) {
 		for i, e := range pkg.Features[name] {
 			enables[i] = markdown.CodeSpan(e)
 		}
-		fmt.Fprintf(&b, "| %s | %s | %s |\n", markdown.CodeSpan(name), def, strings.Join(enables, ", "))
+		if on == nil {
+			fmt.Fprintf(&b, "| %s | %s | %s |\n", markdown.CodeSpan(name), def, strings.Join(enables, ", "))
+			continue
+		}
+		enabled := ""
+		if on[name] {
+			enabled = "yes"
+		}
+		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", markdown.CodeSpan(name), def, enabled, strings.Join(enables, ", "))
 	}
 	return b.String(), nil, nil
 }
@@ -288,7 +318,7 @@ func packageKinds(p *cargo.Package) []string {
 
 // rustUsageOf builds the binary bin of the crate pkg, runs it with args in a
 // slot and returns its usage as a code block.
-func (g *Generator) rustUsageOf(ctx context.Context, pkg, bin string, args []string) (string, error) {
+func (g *Generator) rustUsageOf(ctx context.Context, pkg, bin string, args []string, feats cargo.Features) (string, error) {
 	ws, p, err := g.cargoPackage(ctx, pkg)
 	if err != nil {
 		return "", err
@@ -296,7 +326,7 @@ func (g *Generator) rustUsageOf(ctx context.Context, pkg, bin string, args []str
 	if bin, err = targetName(p, kindBin, bin); err != nil {
 		return "", err
 	}
-	exe, err := g.cargoBuild(ctx, ws, pkg, kindBin, bin)
+	exe, err := g.cargoBuild(ctx, ws, pkg, kindBin, bin, feats)
 	if err != nil {
 		return "", err
 	}

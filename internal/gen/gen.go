@@ -13,6 +13,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/USA-RedDragon/docgen/internal/cargo"
 	"github.com/USA-RedDragon/docgen/internal/gocmd"
 	"github.com/USA-RedDragon/docgen/internal/gomod"
 	"github.com/USA-RedDragon/docgen/internal/goprint"
@@ -80,6 +81,9 @@ type Options struct {
 	// Settings returns the settings of the copy at root of a docgen:docgen
 	// marker. nil means a scan of the whole copy.
 	Settings func(root string) (Settings, error)
+	// Features holds the Cargo features of each cargo command that builds a
+	// crate, unless a marker sets its own.
+	Features cargo.Features
 	// RustHelperDir holds the build of the helper that reads Rust crates. ""
 	// means rust-helper in the docgen directory of the user cache.
 	RustHelperDir string
@@ -138,6 +142,7 @@ func New(root, modDir string, log io.Writer, opts Options) (*Generator, error) {
 		varsFile: opts.VarsFile,
 	}
 	g.rust = g.newRustSet(&rustsrc.Helper{CacheDir: opts.RustHelperDir})
+	g.rust.features = opts.Features
 	return g, nil
 }
 

@@ -21,6 +21,7 @@ import (
 // One cargo test runs them all.
 type doctestBatch struct {
 	crate   string
+	feats   cargo.Features
 	items   map[string]bool
 	results map[string]docResult
 }
@@ -33,13 +34,14 @@ type docResult struct {
 
 // batchOf returns the batch of crate, and adds its run to the plan when the
 // batch is new.
-func (rp *rustPlan) batchOf(p *plan, crate string) *doctestBatch {
-	if b := rp.batches[crate]; b != nil {
+func (rp *rustPlan) batchOf(p *plan, crate string, feats cargo.Features) *doctestBatch {
+	key := crate + "\x00" + feats.Key()
+	if b := rp.batches[key]; b != nil {
 		return b
 	}
-	b := &doctestBatch{crate: crate, items: map[string]bool{}, results: map[string]docResult{}}
-	rp.batches[crate] = b
-	p.cargoTool("rust-doctest\x00"+crate, func(ctx context.Context) (string, error) {
+	b := &doctestBatch{crate: crate, feats: feats, items: map[string]bool{}, results: map[string]docResult{}}
+	rp.batches[key] = b
+	p.cargoTool("rust-doctest\x00"+key, func(ctx context.Context) (string, error) {
 		b.run(ctx, p.gen)
 		return "", nil
 	})
@@ -97,6 +99,12 @@ func itemPath(item, lib string) string {
 	return item
 }
 
+// doctestArgs returns the cargo arguments that run the doctests of crate, with
+// the extra cargo flags before the arguments of the test program.
+func doctestArgs(crate string, flags []string) []string {
+	return append([]string{"test", "--locked", "--doc", "--package", crate}, flags...)
+}
+
 func (b *doctestBatch) fail(err error) {
 	for item := range b.items {
 		b.results[item] = docResult{err: err}
@@ -116,13 +124,19 @@ func (b *doctestBatch) run(ctx context.Context, g *Generator) {
 		b.fail(fmt.Errorf("crate %s has no library, so it has no doctests", b.crate))
 		return
 	}
+	flags, err := g.featureFlags(ctx, b.crate, b.feats)
+	if err != nil {
+		b.fail(err)
+		return
+	}
 	paths := map[string]string{}
 	filters := map[string]bool{}
 	for item := range b.items {
 		paths[item] = itemPath(item, strings.ReplaceAll(lib.Name, "-", "_"))
 		filters[" - "+paths[item]+" (line "] = true
 	}
-	args := append([]string{"test", "--locked", "--doc", "--package", b.crate, "--"}, sortedKeys(filters)...)
+	args := append(doctestArgs(b.crate, flags), "--")
+	args = append(args, sortedKeys(filters)...)
 	fmt.Fprintf(g.log, "docgen: running %d doctests of %s\n", len(b.items), b.crate)
 	out, errOut, runErr := g.rust.runner.Run(ctx, ws.Root, args...)
 	if errors.Is(runErr, cargo.ErrNotFound) {
@@ -148,7 +162,7 @@ func (b *doctestBatch) run(ctx context.Context, g *Generator) {
 		}
 		if len(mine) == 0 {
 			if listed == nil {
-				listed = g.listDoctests(ctx, ws, b.crate)
+				listed = g.listDoctests(ctx, ws, b.crate, flags)
 			}
 			b.results[item] = docResult{err: noDoctestError(b.crate, item, listed)}
 			continue
@@ -188,10 +202,10 @@ func (b *doctestBatch) show(ws *cargo.Workspace, item string, tests []doctest, r
 	return docResult{text: strings.Join(blocks, "\n\n")}
 }
 
-// listDoctests returns the paths of the doctests of crate, or nil when cargo
+// listDoctests returns the paths of the doctests of crate with the cargo flags flags, or nil when cargo
 // cannot list them.
-func (g *Generator) listDoctests(ctx context.Context, ws *cargo.Workspace, crate string) []string {
-	out, _, err := g.rust.runner.Run(ctx, ws.Root, "test", "--locked", "--doc", "--package", crate, "--", "--list")
+func (g *Generator) listDoctests(ctx context.Context, ws *cargo.Workspace, crate string, flags []string) []string {
+	out, _, err := g.rust.runner.Run(ctx, ws.Root, append(doctestArgs(crate, flags), "--", "--list")...)
 	if err != nil {
 		return nil
 	}

@@ -21,6 +21,10 @@ type copyFile struct {
 	Jobs   any               `yaml:"jobs"`
 	Tags   any               `yaml:"tags"`
 	Depth  any               `yaml:"depth"`
+
+	Features          any `yaml:"features"`
+	AllFeatures       any `yaml:"all-features"`
+	NoDefaultFeatures any `yaml:"no-default-features"`
 }
 
 func ignoreOrigin(string, configulator.Layer, string) {}

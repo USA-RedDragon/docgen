@@ -25,6 +25,8 @@ const (
 	PrintName    = "name"
 )
 
+var featurePredicate = regexp.MustCompile(`\bfeature\s*=\s*"`)
+
 var formatSpec = regexp.MustCompile(`^\{:[^{}"\\]*\}$`)
 
 // CheckPrint returns an error for a print= value of a Rust marker that is not
@@ -85,7 +87,9 @@ type Request struct {
 type Target struct {
 	Package string
 	// Bin is the name of a binary target, and "" for the library.
-	Bin      string
+	Bin string
+	// Flags are cargo flags for the test, such as --features.
+	Flags    []string
 	Requests []*Request
 }
 
@@ -320,6 +324,7 @@ func runTarget(ctx context.Context, r *cargo.Runner, root, work string, t *Targe
 		what = "the binary " + t.Bin + " of crate " + t.Package
 	}
 	args := append([]string{"test", "--locked", "--manifest-path", filepath.Join(work, "Cargo.toml"), "-p", t.Package}, which...)
+	args = append(args, t.Flags...)
 	args = append(args, "--", testName, "--nocapture", "--test-threads=1")
 	out, errOut, err := r.Run(ctx, work, args...)
 	for _, m := range valueLine.FindAllStringSubmatch(out, -1) {
@@ -354,7 +359,7 @@ func runTarget(ctx context.Context, r *cargo.Runner, root, work string, t *Targe
 		line, _ := strconv.Atoi(m[2])
 		for _, req := range ownersOf(pending, work, m[1], line) {
 			if req.Err == nil {
-				req.Err = fmt.Errorf("the value test of %s does not compile for %s:\n%s", what, req.Name, scrub(d))
+				req.Err = fmt.Errorf("the value test of %s does not compile for %s:\n%s%s", what, req.Name, scrub(d), featureHint(req.Cfg, "\n"))
 				failed++
 			}
 		}
@@ -382,7 +387,16 @@ func cfgNote(cfg []string) string {
 	if len(cfg) == 0 {
 		return ""
 	}
-	return "; it is in #[cfg(" + strings.Join(cfg, ")], #[cfg(") + ")], which is false in the test build"
+	return "; it is in #[cfg(" + strings.Join(cfg, ")], #[cfg(") + ")], which is false in the test build" + featureHint(cfg, "; ")
+}
+
+// featureHint returns sep and what to do when a predicate of cfg is a feature,
+// and "" otherwise.
+func featureHint(cfg []string, sep string) string {
+	if !slices.ContainsFunc(cfg, featurePredicate.MatchString) {
+		return ""
+	}
+	return sep + "enable the feature with the features setting or features= of the marker"
 }
 
 // withoutProgress returns the standard error of cargo with no progress lines,

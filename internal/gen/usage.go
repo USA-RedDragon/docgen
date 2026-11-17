@@ -21,6 +21,7 @@ type usageHandler struct {
 	bin   string
 	args  []string
 	run   *toolRun
+	feat  featureArgs
 }
 
 func (h *usageHandler) Bind(a *marker.Args) {
@@ -34,6 +35,8 @@ func (h *usageHandler) Bind(a *marker.Args) {
 		h.cmd = a.Required(argCmd)
 	} else if _, ok := a.Optional(argCmd); ok {
 		a.Fail("has both cmd= and crate=; use one")
+	} else {
+		h.feat.bind(a)
 	}
 	h.args = []string{"-h"}
 	value, ok := a.Optional("args")
@@ -49,10 +52,11 @@ func (h *usageHandler) Bind(a *marker.Args) {
 
 func (h *usageHandler) plan(p *plan) {
 	if h.crate != "" {
-		key := "usage crate " + h.crate + "\x00" + h.bin + "\x00" + strings.Join(h.args, "\x00")
+		feats := p.gen.features(&h.feat)
+		key := "usage crate " + h.crate + "\x00" + h.bin + "\x00" + feats.Key() + "\x00" + strings.Join(h.args, "\x00")
 		p.rust()
 		h.run = p.cargoTool(key, func(ctx context.Context) (string, error) {
-			return p.gen.rustUsageOf(ctx, h.crate, h.bin, h.args)
+			return p.gen.rustUsageOf(ctx, h.crate, h.bin, h.args, feats)
 		})
 		return
 	}

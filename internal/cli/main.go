@@ -139,6 +139,7 @@ func runTo(ctx context.Context, dir string, args []string, stdout, stderr io.Wri
 	g, err := gen.New(root, abs(root, cfg.Module), stderr, gen.Options{
 		Jobs:          cfg.Jobs,
 		Tags:          cfg.buildTags(),
+		Features:      cfg.cargoFeatures(),
 		Diff:          *diff,
 		Audit:         cmd == cmdCheck,
 		Depth:         cfg.Depth,

@@ -38,10 +38,10 @@ func (v *valueArgs) bindPrint(a *marker.Args, names bool) {
 func (v *valueArgs) bindCode(a *marker.Args) {
 	code, ok := a.Optional(argCode)
 	a.NonEmpty(argCode)
-	if ok && code != "" && code != "false" {
+	if ok && code != "" && code != valueFalse {
 		a.Fail("code= can only be false")
 	}
-	v.plain = code == "false"
+	v.plain = code == valueFalse
 }
 
 // planPrint sets the print= value of a marker with none from the print setting

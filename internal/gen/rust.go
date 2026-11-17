@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/USA-RedDragon/docgen/internal/cargo"
 )
 
 // runTarget builds the example or the binary name of the package crate, runs it
 // with args in the directory of the Cargo workspace, and returns its standard
 // output. kind is example or bin.
-func (g *Generator) runTarget(ctx context.Context, crate, kind, name string, args []string) (string, error) {
+func (g *Generator) runTarget(ctx context.Context, crate, kind, name string, args []string, feats cargo.Features) (string, error) {
 	ws, pkg, err := g.cargoPackage(ctx, crate)
 	if err != nil {
 		return "", err
@@ -17,7 +19,7 @@ func (g *Generator) runTarget(ctx context.Context, crate, kind, name string, arg
 	if _, err := targetName(pkg, kind, name); err != nil {
 		return "", err
 	}
-	exe, err := g.cargoBuild(ctx, ws, crate, kind, name)
+	exe, err := g.cargoBuild(ctx, ws, crate, kind, name, feats)
 	if err != nil {
 		return "", err
 	}

@@ -25,6 +25,7 @@ type rustOutput struct {
 	args  []string
 	run   *toolRun
 	batch *doctestBatch
+	feat  featureArgs
 }
 
 // bind reads the Rust arguments of a. It returns false when the marker has none
@@ -49,13 +50,14 @@ func (r *rustOutput) bind(a *marker.Args) bool {
 			return true
 		}
 	}
+	r.feat.bind(a)
 	n := 0
 	for _, has := range []bool{hasExample, hasBin, hasDoctest} {
 		if has {
 			n++
 		}
 	}
-	want := 2
+	want := 2 + r.feat.count
 	if hasArgs {
 		want++
 	}
@@ -87,14 +89,15 @@ func (r *rustOutput) bind(a *marker.Args) bool {
 
 func (r *rustOutput) plan(p *plan) {
 	if r.kind == kindDoctest {
-		r.batch = p.rust().batchOf(p, r.crate)
+		r.batch = p.rust().batchOf(p, r.crate, p.gen.features(&r.feat))
 		r.batch.add(r.name)
 		return
 	}
-	key := strings.Join(append([]string{"rust", r.kind, r.crate, r.name}, r.args...), "\x00")
+	feats := p.gen.features(&r.feat)
+	key := strings.Join(append([]string{"rust", r.kind, r.crate, r.name, feats.Key()}, r.args...), "\x00")
 	p.rust()
 	r.run = p.cargoTool(key, func(ctx context.Context) (string, error) {
-		return p.gen.runTarget(ctx, r.crate, r.kind, r.name, r.args)
+		return p.gen.runTarget(ctx, r.crate, r.kind, r.name, r.args, feats)
 	})
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/USA-RedDragon/docgen/internal/cargo"
 	"github.com/USA-RedDragon/docgen/internal/goprint"
 )
 
@@ -29,6 +30,10 @@ type Config struct {
 	Depth  int               `name:"depth" flag:"-" default:"1" description:"levels of nested docgen:docgen markers; 0 allows none"`
 	Print  string            `name:"print" flag:"-" default:"go" description:"how a marker with no print= prints a value: go, raw or config; raw runs no code"`
 	Vars   map[string]string `name:"vars" flag:"-" env:"-" description:"values of the docgen:var and docgen:text markers, by name"`
+
+	Features          string `name:"features" description:"comma-separated Cargo features of each cargo command, as feature or crate/feature"`
+	AllFeatures       bool   `name:"all-features" description:"enable every feature of each crate that a cargo command builds"`
+	NoDefaultFeatures bool   `name:"no-default-features" description:"leave the default feature of each crate off in each cargo command"`
 }
 
 // Validate implements the configulator interface.
@@ -50,6 +55,9 @@ func (c Config) Validate() error {
 	}
 	if err := checkVars(c.Vars); err != nil {
 		return err
+	}
+	if _, err := cargo.SplitFeatures(c.Features); err != nil {
+		return fmt.Errorf("features: %w", err)
 	}
 	for _, tag := range c.buildTags() {
 		for _, r := range tag {
@@ -82,6 +90,13 @@ func checkVars(vars map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// cargoFeatures returns the Cargo features of the features, all-features and
+// no-default-features settings. Validate has checked the list.
+func (c Config) cargoFeatures() cargo.Features {
+	list, _ := cargo.SplitFeatures(c.Features)
+	return cargo.Features{List: list, All: c.AllFeatures, NoDefault: c.NoDefaultFeatures}
 }
 
 // buildTags returns the tags of the tags setting, which commas or white space

@@ -20,13 +20,16 @@ import (
 )
 
 type configShadow struct {
-	Docs   *string            `json:"docs"   toml:"docs"   yaml:"docs"`
-	Module *string            `json:"module" toml:"module" yaml:"module"`
-	Jobs   *int               `json:"jobs"   toml:"jobs"   yaml:"jobs"`
-	Tags   *string            `json:"tags"   toml:"tags"   yaml:"tags"`
-	Depth  *int               `json:"depth"  toml:"depth"  yaml:"depth"`
-	Print  *string            `json:"print"  toml:"print"  yaml:"print"`
-	Vars   *map[string]string `json:"vars"   toml:"vars"   yaml:"vars"`
+	Docs              *string            `json:"docs"                toml:"docs"                yaml:"docs"`
+	Module            *string            `json:"module"              toml:"module"              yaml:"module"`
+	Jobs              *int               `json:"jobs"                toml:"jobs"                yaml:"jobs"`
+	Tags              *string            `json:"tags"                toml:"tags"                yaml:"tags"`
+	Depth             *int               `json:"depth"               toml:"depth"               yaml:"depth"`
+	Print             *string            `json:"print"               toml:"print"               yaml:"print"`
+	Vars              *map[string]string `json:"vars"                toml:"vars"                yaml:"vars"`
+	Features          *string            `json:"features"            toml:"features"            yaml:"features"`
+	AllFeatures       *bool              `json:"all-features"        toml:"all-features"        yaml:"all-features"`
+	NoDefaultFeatures *bool              `json:"no-default-features" toml:"no-default-features" yaml:"no-default-features"`
 }
 
 // ConfigSchema returns the generated schema for Config.
@@ -92,6 +95,18 @@ func (s *configShadow) applyTo(cfg *Config, _ string, set configulator.SetOrigin
 		cfg.Vars = *s.Vars
 		set("vars", configulator.LayerFile, file)
 	}
+	if s.Features != nil {
+		cfg.Features = *s.Features
+		set("features", configulator.LayerFile, file)
+	}
+	if s.AllFeatures != nil {
+		cfg.AllFeatures = *s.AllFeatures
+		set("all-features", configulator.LayerFile, file)
+	}
+	if s.NoDefaultFeatures != nil {
+		cfg.NoDefaultFeatures = *s.NoDefaultFeatures
+		set("no-default-features", configulator.LayerFile, file)
+	}
 	return nil
 }
 
@@ -138,6 +153,36 @@ func configApplyEnv(cfg *Config, ec configulator.EnvContext, set configulator.Se
 		cfg.Print = v
 		set("print", configulator.LayerEnv, n)
 	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "features"); ok {
+		cfg.Features = v
+		set("features", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "all-features"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "all-features",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.AllFeatures = p
+		set("all-features", configulator.LayerEnv, n)
+	}
+	if n, v, ok := impl.LookupEnv(ec.Getenv, ec.Opts.Prefix, ec.Opts.Separator, "no-default-features"); ok {
+		p, err := strconv.ParseBool(v)
+		if err != nil {
+			return &configulator.ParseError{
+				Err:    err,
+				Path:   "no-default-features",
+				Source: n,
+				Value:  v,
+			}
+		}
+		cfg.NoDefaultFeatures = p
+		set("no-default-features", configulator.LayerEnv, n)
+	}
 	return nil
 }
 
@@ -154,6 +199,9 @@ func configRegisterStdFlags(fs *flag.FlagSet, _ *cstd.Options) error {
 		"module",
 		"jobs",
 		"tags",
+		"features",
+		"all-features",
+		"no-default-features",
 	}
 	for i, name := range names {
 		if f := fs.Lookup(name); f != nil {
@@ -172,6 +220,9 @@ func configRegisterStdFlags(fs *flag.FlagSet, _ *cstd.Options) error {
 	fs.String(names[0], ".", "directory of the Go module, relative to the repository root")
 	fs.Int64(names[1], 0, "-p of each go command; 0 leaves it to go")
 	fs.String(names[2], "", "comma-separated build tags of each go command and package load")
+	fs.String(names[3], "", "comma-separated Cargo features of each cargo command, as feature or crate/feature")
+	fs.Bool(names[4], false, "enable every feature of each crate that a cargo command builds")
+	fs.Bool(names[5], false, "leave the default feature of each crate off in each cargo command")
 	return nil
 }
 
@@ -198,6 +249,21 @@ func configApplyStdFlags(cfg *Config, fs *flag.FlagSet, _ *cstd.Options, isSet m
 		pv := impl.FlagValue[string](fs, fn)
 		cfg.Tags = pv
 		set("tags", configulator.LayerCLI, "-"+fn)
+	}
+	if fn := "features"; isSet[fn] {
+		pv := impl.FlagValue[string](fs, fn)
+		cfg.Features = pv
+		set("features", configulator.LayerCLI, "-"+fn)
+	}
+	if fn := "all-features"; isSet[fn] {
+		pv := impl.FlagValue[bool](fs, fn)
+		cfg.AllFeatures = pv
+		set("all-features", configulator.LayerCLI, "-"+fn)
+	}
+	if fn := "no-default-features"; isSet[fn] {
+		pv := impl.FlagValue[bool](fs, fn)
+		cfg.NoDefaultFeatures = pv
+		set("no-default-features", configulator.LayerCLI, "-"+fn)
 	}
 	return nil
 }
@@ -346,6 +412,45 @@ func (s *configShadow) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 				}
 				s.Vars = &out
 			}
+		case "features":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindString:
+				str := v.String()
+				s.Features = &str
+			default:
+				return configJSONError("features", v, fmt.Errorf("expected a string, got %v", v.Kind()))
+			}
+		case "all-features":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.AllFeatures = &b
+			default:
+				return configJSONError("all-features", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
+		case "no-default-features":
+			v, err := dec.ReadToken()
+			if err != nil {
+				return err
+			}
+			switch v.Kind() {
+			case jsontext.KindNull:
+			case jsontext.KindTrue, jsontext.KindFalse:
+				b := v.Bool()
+				s.NoDefaultFeatures = &b
+			default:
+				return configJSONError("no-default-features", v, fmt.Errorf("expected a bool, got %v", v.Kind()))
+			}
 		default:
 			if reject, _ := json.GetOption(dec.Options(), json.RejectUnknownMembers); reject {
 				return &configulator.UnknownKeyError{Path: configQuoteKey(key)}
@@ -380,6 +485,9 @@ func (c Config) PrintConfig() string {
 	fmt.Fprintf(&b, "depth = %v\n", c.Depth)
 	fmt.Fprintf(&b, "print = %v\n", c.Print)
 	fmt.Fprintf(&b, "vars = %v\n", c.Vars)
+	fmt.Fprintf(&b, "features = %v\n", c.Features)
+	fmt.Fprintf(&b, "all-features = %v\n", c.AllFeatures)
+	fmt.Fprintf(&b, "no-default-features = %v\n", c.NoDefaultFeatures)
 	return b.String()
 }
 

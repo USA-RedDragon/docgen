@@ -1,0 +1,16 @@
+[package]
+name = "feat-gate"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["small"]
+small = []
+big = ["small"]
+extra = []
+
+[[example]]
+name = "sizes"
+path = "examples/sizes.rs"
+required-features = ["big"]

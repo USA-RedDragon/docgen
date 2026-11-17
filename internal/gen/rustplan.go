@@ -27,6 +27,8 @@ type rustSet struct {
 	err    error
 	mu     sync.Mutex
 	builds map[string]*rustBuild
+	// features is the features setting.
+	features cargo.Features
 }
 
 // newRustSet returns the rustSet of g, with the helper h. Each cargo command
@@ -94,6 +96,7 @@ type rustValue struct {
 	name    string
 	printAs string
 	table   *rustsrc.Table
+	feats   cargo.Features
 	text    string
 	err     error
 }
@@ -255,11 +258,17 @@ func (g *Generator) rustValues(ctx context.Context, r *cargo.Runner, ws *cargo.W
 			v.err = err
 			continue
 		}
+		flags, err := g.featureFlags(ctx, v.crate, v.feats)
+		if err != nil {
+			v.err = err
+			continue
+		}
 		c := rp.read[v.crate]
-		t := targets[v.crate]
+		key := v.crate + "\x00" + v.feats.Key()
+		t := targets[key]
 		if t == nil {
-			t = &rustsrc.Target{Package: v.crate, Bin: c.bin}
-			targets[v.crate] = t
+			t = &rustsrc.Target{Package: v.crate, Bin: c.bin, Flags: flags}
+			targets[key] = t
 		}
 		t.Requests = append(t.Requests, req)
 		links[req] = v
