@@ -112,15 +112,15 @@ python3 -m http.server -d artifacts/docs-site 8000
 
 ### Playground
 
-The playground is a page that runs the Go toolchain and docgen in the browser, on a sample repository in memory. Each process is a Web Worker that runs a Go `js/wasm` program. The header of each docs page links to the playground of its version: a page of `/main/` links to `/main/playground/`, a page of a release links to `/playground/`, and a page of a branch build links to the `/playground/` of that build.
+The playground is a page that runs the Go toolchain and docgen in the browser, on a sample repository in memory. Each process is a Web Worker that runs a Go `js/wasm` program, or a WASI program: the Rust helper of docgen. The header of each docs page links to the playground of its version: a page of `/main/` links to `/main/playground/`, a page of a release links to `/playground/`, and a page of a branch build links to the `/playground/` of that build.
 
 | Path | Content |
 | --- | --- |
-| `playground/web/` | The page: `index.html`, the scripts, the kernel that runs the processes, `pending.html`, and the npm packages of the editor bundle. |
+| `playground/web/` | The page: `index.html`, the scripts, the kernel that runs the processes, `pending.html`, and the npm packages of the editor bundle and of the WASI shim bundle. |
 | `playground/overlay/` | The new files of the `go build -overlay` that gives `js/wasm` processes and pipes, in the directories of GOROOT/src: `syscall/proc_js.go` starts, waits for and kills a process through the page, and `os/exec/lp_js.go` finds a program by path. A `go.mod` makes it a module of its own, so `./...` of the root module leaves it out. |
 | `playground/build/mkoverlay.py` | Writes the overlay from the GOROOT of the build: the new files, and the changed copies of some GOROOT files. Each change is an exact replacement, so a Go version with other source stops the build. It also writes `wasm_exec.js`. |
 | `playground/bb/` | A Go module with a shell (`mvdan.cc/sh`) and common commands (u-root) in one binary. `bb/ucmd` is the output of `bb/vendor-uroot.py`, with the license of u-root. |
-| `playground/testdata/` | The sample repository `dg` that the page starts with, and the module `loop`, a test that does not stop. The directory name keeps `docgen check` of this repository away from them. |
+| `playground/testdata/` | The sample repository `dg` that the page starts with, with the Rust crate `crates/lamp` and its page `docs/rust.md`, and the module `loop`, a test that does not stop. The directory name keeps `docgen check` of this repository away from them. |
 | `playground/build/build.sh` | Builds the playground. |
 | `playground/site.sh` | Puts the playground into the docs site, for `cloudflare.sh`. |
 | `playground/build/checkmanifest.mjs` | Checks the manifest of a downloaded playground. |
@@ -129,12 +129,34 @@ The playground is a page that runs the Go toolchain and docgen in the browser, o
 `playground/build/build.sh all OUT` builds the whole playground into `OUT`, with the Go version of `go.mod`:
 
 - `go`, `compile`, `link`, `asm` and `vet` of that Go version, `bb` and `docgen`, for `js/wasm`, with `-trimpath -ldflags="-s -w"`. `go`, `docgen` and `bb` start processes, so they have the overlay. The others have no overlay, because it made `compile` 20 to 40% slower in Firefox.
+- `rshelper`, the Rust helper of docgen (`internal/rustsrc/helper`), built with `cargo build --release --locked --target wasm32-wasip1`. The build needs cargo and the target (`rustup target add wasm32-wasip1`); the playground workflows add the target, and `build.sh all` stops without it.
 - `wasm-opt -Os` of binaryen on each tool other than `docgen`. This step takes most of the build time. `docgen` gets no `wasm-opt`, because its output is larger after compression, and the Cloudflare build builds `docgen` on each push.
 - A bundle of the source of each standard package that the sample imports, a bundle of the sample, and a bundle of a GOCACHE. To make the GOCACHE, the script runs `docgen check`, `go test` and `go build` on the sample under Node, with the kernel of the page and the same tools.
 - Each tool and bundle compressed with `zstd -19` in `assets/zstd/`, with the start of the SHA-256 of the raw file in its name (see [Compression](#compression)), and `manifest.json`. The manifest gives the Go version, and the docgen version and commit. The page shows that version and commit.
-- `licenses/`: the license of Go, and the notices of the Go modules in `bb` and `docgen` and of the npm packages in the editor bundle. The build writes the notices from the module list and from the esbuild metafile, so they match the code of each build.
+- `licenses/`: the license of Go, and the notices of the Go modules in `bb` and `docgen`, of the npm packages in the editor bundle and in the WASI shim bundle (`wasi-shim.js`, [@bjorn3/browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim), MIT or Apache-2.0), and of the crates and the Rust standard library in `rshelper` (`rshelper.txt`). The build writes the notices from the module list, from the esbuild metafiles and from `cargo metadata` and the `COPYRIGHT-library.html` of the toolchain, so they match the code of each build.
 
-`build.sh preview BASE OUT` builds only `docgen` and the page of the checkout, and takes the other assets from `BASE`, an earlier output of `build.sh all`. It uses the Go version of `BASE`. `build.sh gover` prints the Go version of `go.mod`.
+`build.sh preview BASE OUT` builds only `docgen`, the Rust helper and the page of the checkout, and takes the other assets from `BASE`, an earlier output of `build.sh all`. Without cargo and the target `wasm32-wasip1`, as in the Cloudflare build, it keeps the Rust helper of `BASE`, so a change of the helper source shows in a preview only after the next `playground-main` build. It uses the Go version of `BASE`. `build.sh gover` prints the Go version of `go.mod`.
+
+#### Rust in the playground
+
+The playground has no Rust compiler and no cargo. It runs one Rust program, the helper of docgen that reads Rust source with syn, built for `wasm32-wasip1`. So the Rust markers that read only the source work in the tab, and the ones that build or run Rust code are errors:
+
+| Works in the tab | Error in the tab |
+| --- | --- |
+| `docgen:doc crate=` | `docgen:const crate=` with `print=` other than `raw` (the value test) |
+| `docgen:errors crate=` | `docgen:config crate=` and `docgen:configulator crate=` (their defaults come from the value test) |
+| `docgen:const crate= print=raw` | `docgen:output crate=` with `bin=`, `example=` or `doctest=` |
+| `docgen:code file=*.rs symbol=` | `docgen:usage crate=` |
+| `docgen:crates`, `docgen:cargo` | |
+
+The error of such a marker starts with the page, line and marker, and says `this marker needs cargo, and the playground has no Rust toolchain`. On a computer with no cargo the text ends with the hint to install Rust instead.
+
+How it works:
+
+- `session.mjs` puts the helper at `/usr/local/bin/docgen-rs-helper` and sets `DOCGEN_RUST_HELPER` to that path, so docgen runs it and does not build the helper (see the package doc). With no cargo on `PATH`, docgen reads the Cargo workspace from the `Cargo.toml` files (`cargo.ReadWorkspace`), not with `cargo metadata`.
+- `proc.mjs` runs a module that imports `wasi_snapshot_preview1` and not `gojs` with `wasiproc.mjs`, in the same Worker type as a Go process. `wasiproc.mjs` uses [@bjorn3/browser_wasi_shim](https://github.com/bjorn3/browser_wasi_shim), pinned in `playground/web/package.json` and bundled by esbuild into `wasi-shim.js`. Its `Fd` classes send each file call to the kernel with the same synchronous call as a Go process, so the helper sees the memfs, its working directory is `/`, and standard input, output and error are the descriptors of the kernel. A read of a pipe with no data blocks the Worker until data comes, since a WASI program has no event loop. `proc_exit` ends the process with its status, and a trap, such as a Rust panic, is a crash of the process.
+- The package is used unchanged. `wasiproc.mjs` subclasses it for three fixes: setting the times of a file succeeds, a `readlink` fails with `EINVAL` as for a file that is not a link, and the times of a stat are written at the right offsets (version 0.4.2 writes them 2 to 8 bytes early). It also replaces the `path_rename` import, which moves objects of the shim, with a rename in the kernel.
+- The helper is about 1.2 MB raw, 0.8 MB after `wasm-opt -Os` and 0.2 MB with `zstd -19`. A run of the helper on the sample crate takes well under a second.
 
 #### Compression
 
@@ -187,6 +209,7 @@ The browser test in `playground/test/` uses [Playwright Test](https://playwright
 - The headers of the playground and its assets, and with `PLAYGROUND_DOCS` set, that a docs page has no cross-origin isolation header, loads its fonts and links the playground.
 - The first load and a load from the Cache API, and typing into the editor.
 - `docgen update` after an edit, `docgen check` on a clean and on a stale page, and the output of the `exec=` markers.
+- The Rust crate of the sample: `docgen update` after an edit of the crate, the helper run from the shell with its exit status, and the error of the markers that need cargo.
 - Shell commands, a `go test` with a timeout, Stop during a build, and the process limit.
 - The previews, and HTML in a Markdown preview that must run no script.
 - The explorer: selection, keyboard, drag and drop, rename, the context menu, upload, download, the saved workspace and Reset Sample.

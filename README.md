@@ -54,7 +54,7 @@ For the full list, see [Markers](docs/reference/markers.md).
 
 Read the docs at <https://docgen.mcswain.dev/>. Each release has its own version of the docs.
 
-Try docgen in your browser at <https://docgen.mcswain.dev/playground/>. The playground runs the Go toolchain and docgen of the latest release on a sample repository: edit the code or a page, then run `docgen check`, `docgen update` or a shell command.
+Try docgen in your browser at <https://docgen.mcswain.dev/playground/>. The playground runs the Go toolchain and docgen of the latest release on a sample repository: edit the code or a page, then run `docgen check`, `docgen update` or a shell command. The sample also has a small Rust crate. The playground has no Rust compiler, so the Rust markers that read the source work there (`docgen:doc`, `docgen:errors`, `docgen:code symbol=`, `docgen:const print=raw`, `docgen:crates`, `docgen:cargo`), and the ones that build or run Rust code (other `docgen:const` values, `docgen:config`, `docgen:configulator`, `docgen:output` and `docgen:usage` with `crate=`) are errors that say they need cargo.
 
 - [Get started](docs/start/01-install.md)
 - [Markers](docs/reference/markers.md)
