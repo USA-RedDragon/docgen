@@ -1,6 +1,7 @@
 package rustsrc
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,6 +101,16 @@ func TestCheckRelease(t *testing.T) {
 		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
 			t.Errorf("checkRelease(%q) = %v, want %q", out, err, want)
 		}
+	}
+}
+
+func TestNoRustc(t *testing.T) {
+	t.Parallel()
+	r := newRunner(t)
+	r.Environ = []string{"PATH=" + t.TempDir(), "RUSTC=" + filepath.Join(t.TempDir(), "rustc")}
+	_, err := (&Helper{}).rustc(t.Context(), r, t.TempDir())
+	if !errors.Is(err, ErrNoRustc) {
+		t.Errorf("error %v, want ErrNoRustc", err)
 	}
 }
 

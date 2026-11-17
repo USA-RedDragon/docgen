@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -75,8 +76,12 @@ func (h *Helper) cacheDir() (string, error) {
 
 var releaseLine = regexp.MustCompile(`(?m)^release: (\d+)\.(\d+)\.(\d+)`)
 
+// ErrNoRustc is the error of a missing rustc when docgen has to build the
+// helper.
+var ErrNoRustc = errors.New("reading Rust code needs rustc to build the docgen helper, and there is no rustc; install a Rust toolchain from https://rustup.rs, or set DOCGEN_RUST_HELPER to a prebuilt helper")
+
 // rustc returns the output of rustc -vV in dir, run with r.Exec. A rustc older
-// than MinRust is an error.
+// than MinRust is an error, and a missing rustc is ErrNoRustc.
 func (h *Helper) rustc(ctx context.Context, r *cargo.Runner, dir string) (string, error) {
 	env, err := r.Env()
 	if err != nil {
@@ -89,6 +94,9 @@ func (h *Helper) rustc(ctx context.Context, r *cargo.Runner, dir string) (string
 		}
 	}
 	out, errOut, err := r.Exec(ctx, dir, rustc, "-vV")
+	if errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
+		return "", ErrNoRustc
+	}
 	if err != nil {
 		return "", fmt.Errorf("rustc -vV: %w\n%s", err, strings.TrimSpace(errOut))
 	}
