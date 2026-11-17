@@ -3,6 +3,7 @@ package gen
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/USA-RedDragon/docgen/internal/excerpt"
@@ -14,13 +15,28 @@ import (
 // or the part of it at region, symbol or lines. With raw true, the excerpt keeps
 // doc comments and region marks.
 type codeHandler struct {
-	noPlan
 	file   string
 	lines  string
 	symbol string
 	region string
 	raw    bool
 	warned bool
+	rp     *rustPlan
+}
+
+// isRustSymbol reports whether h excerpts a symbol of a Rust file.
+func (h *codeHandler) isRustSymbol() bool {
+	return h.symbol != "" && filepath.Ext(h.file) == ".rs"
+}
+
+func (h *codeHandler) plan(p *plan) {
+	if !h.isRustSymbol() {
+		return
+	}
+	h.rp = p.rust()
+	if path, err := repoFile(p.mod, h.file); err == nil {
+		h.rp.symbolFile(path)
+	}
 }
 
 func (h *codeHandler) Bind(a *marker.Args) {
@@ -65,6 +81,20 @@ func (h *codeHandler) fill(_ context.Context, j job) (string, []outFile, error) 
 		ex, err := excerpt.Region(path, src, h.region)
 		if err != nil {
 			return "", nil, fmt.Errorf("%s: %w", rel, err)
+		}
+		return markdown.Fence(excerpt.Lang(path), ex), nil, nil
+	}
+	if h.isRustSymbol() {
+		syms, err := h.rp.symbolsOf(path)
+		if err != nil {
+			return "", nil, fmt.Errorf("%s: %w", rel, err)
+		}
+		ex, err := syms.Excerpt(src, h.symbol, h.raw)
+		if err != nil {
+			return "", nil, fmt.Errorf("%s: %s", rel, j.repoText(err.Error()))
+		}
+		if !h.raw {
+			ex = excerpt.DropRegionLines(ex)
 		}
 		return markdown.Fence(excerpt.Lang(path), ex), nil, nil
 	}

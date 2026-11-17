@@ -34,6 +34,12 @@ func Lang(path string) string {
 	return ""
 }
 
+// Dedent returns the lines joined with LF, with the indent that all of them
+// share removed and each blank line empty.
+func Dedent(lines []string) string {
+	return dedent(lines)
+}
+
 func dedent(lines []string) string {
 	prefix := ""
 	first := true

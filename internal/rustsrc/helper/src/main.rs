@@ -4,6 +4,10 @@
 //! Usage: `docgen-rs-helper <root file>...`, where each root file is the
 //! `lib.rs` or `main.rs` of a target. The output is one JSON array with one
 //! object for each root file, in order.
+//!
+//! `docgen-rs-helper --symbols <file>...` reads each file alone, with no
+//! module tree, and prints one JSON array with the places of the items of each
+//! file: see [`read_symbols`].
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,12 +19,25 @@ use serde_json::{json, Map, Value};
 use syn::spanned::Spanned;
 
 fn main() -> ExitCode {
-    let roots: Vec<String> = std::env::args().skip(1).collect();
+    let mut roots: Vec<String> = std::env::args().skip(1).collect();
+    let symbols = roots.first().is_some_and(|a| a == "--symbols");
+    if symbols {
+        roots.remove(0);
+    }
     if roots.is_empty() {
-        eprintln!("usage: docgen-rs-helper <root file>...");
+        eprintln!("usage: docgen-rs-helper [--symbols] <file>...");
         return ExitCode::from(2);
     }
-    let crates: Vec<Value> = roots.iter().map(|r| read_crate(Path::new(r))).collect();
+    let crates: Vec<Value> = roots
+        .iter()
+        .map(|r| {
+            if symbols {
+                read_symbols(Path::new(r))
+            } else {
+                read_crate(Path::new(r))
+            }
+        })
+        .collect();
     println!("{}", Value::Array(crates));
     ExitCode::SUCCESS
 }
@@ -813,4 +830,246 @@ fn strip_block(s: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// The places of the items of one file, for `docgen:code symbol=`: `file`, an
+/// `error` for a file that does not parse, `crate_doc` with the line range of
+/// each inner doc attribute of the file, and `symbols`. A symbol has its
+/// `kind`, its `names` (the first is the one that errors print), its first
+/// `line` and `end_line`, which include its attributes and doc comments, the
+/// line ranges of its `docs`, and its `cfg`. Items of inline modules are
+/// named from the file root, such as `net::connect`; the items of an impl or a
+/// trait are named `Type::name`, and the items of a trait impl also
+/// `<Type as Trait>::name`.
+fn read_symbols(path: &Path) -> Value {
+    let file = path.display().to_string();
+    match parse(path) {
+        Ok((_, parsed)) => {
+            let mut out = Vec::new();
+            collect_symbols(&parsed.items, &mut Vec::new(), &mut out);
+            let crate_doc: Vec<Value> = doc_ranges(&parsed.attrs, usize::MAX)
+                .into_iter()
+                .map(|(a, b)| json!([a, b]))
+                .collect();
+            json!({ "file": file, "error": null, "crate_doc": crate_doc, "symbols": out })
+        }
+        Err(e) => json!({ "file": file, "error": e, "crate_doc": [], "symbols": [] }),
+    }
+}
+
+/// The line ranges of the doc comments and `#[doc = "..."]` attributes in
+/// attrs. An outer one counts when it ends before `ident_line`, the line of
+/// the name of the item, so that an item on one line keeps its text; an inner
+/// one counts when it starts after that line.
+fn doc_ranges(attrs: &[syn::Attribute], ident_line: usize) -> Vec<(usize, usize)> {
+    attrs
+        .iter()
+        .filter(|a| matches!(&a.meta, syn::Meta::NameValue(_)) && a.path().is_ident("doc"))
+        .filter_map(|a| {
+            let (start, end) = (a.span().start().line, a.span().end().line);
+            let inner = matches!(a.style, syn::AttrStyle::Inner(_));
+            let keep = if ident_line == usize::MAX {
+                inner
+            } else if inner {
+                start > ident_line
+            } else {
+                end < ident_line
+            };
+            keep.then_some((start, end))
+        })
+        .collect()
+}
+
+fn collapse(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn push_unique(out: &mut Vec<String>, s: String) {
+    if !out.contains(&s) {
+        out.push(s);
+    }
+}
+
+fn path_idents(path: &syn::Path) -> String {
+    path.segments
+        .iter()
+        .map(|s| s.ident.unraw_string())
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
+/// The spellings of a type in a symbol: as written, and for a path with no
+/// `qself` also without generic arguments and its last name alone.
+fn type_forms(ty: &syn::Type) -> Vec<String> {
+    let mut out = vec![collapse(&src(ty))];
+    if let syn::Type::Path(tp) = ty {
+        if tp.qself.is_none() {
+            push_unique(&mut out, path_idents(&tp.path));
+            if let Some(last) = tp.path.segments.last() {
+                push_unique(&mut out, last.ident.unraw_string());
+            }
+        }
+    }
+    out
+}
+
+/// The spellings of a trait in a symbol: as written, without generic
+/// arguments, and the last segment with and without them.
+fn trait_forms(path: &syn::Path) -> Vec<String> {
+    let mut out = vec![collapse(&src(path))];
+    push_unique(&mut out, path_idents(path));
+    if let Some(last) = path.segments.last() {
+        push_unique(&mut out, collapse(&src(last)));
+        push_unique(&mut out, last.ident.unraw_string());
+    }
+    out
+}
+
+struct SymbolAt<'a> {
+    kind: &'a str,
+    names: Vec<String>,
+    attrs: &'a [syn::Attribute],
+    whole: Span,
+    ident: Span,
+}
+
+fn symbol(at: SymbolAt) -> Value {
+    let docs: Vec<Value> = doc_ranges(at.attrs, at.ident.start().line)
+        .into_iter()
+        .map(|(a, b)| json!([a, b]))
+        .collect();
+    json!({
+        "kind": at.kind,
+        "name": at.names[0],
+        "names": at.names,
+        "line": at.whole.start().line,
+        "end_line": at.whole.end().line,
+        "docs": docs,
+        "cfg": cfgs(at.attrs),
+    })
+}
+
+fn qualified(modpath: &[String], name: &str) -> String {
+    if modpath.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}::{name}", modpath.join("::"))
+    }
+}
+
+fn collect_symbols(items: &[syn::Item], modpath: &mut Vec<String>, out: &mut Vec<Value>) {
+    for item in items {
+        let whole = item.span();
+        let simple = |kind: &'static str, ident: &syn::Ident, attrs: &[syn::Attribute]| {
+            symbol(SymbolAt {
+                kind,
+                names: vec![qualified(modpath, &ident.unraw_string())],
+                attrs,
+                whole,
+                ident: ident.span(),
+            })
+        };
+        match item {
+            syn::Item::Const(c) => out.push(simple("const", &c.ident, &c.attrs)),
+            syn::Item::Static(s) => out.push(simple("static", &s.ident, &s.attrs)),
+            syn::Item::Struct(s) => out.push(simple("struct", &s.ident, &s.attrs)),
+            syn::Item::Enum(e) => out.push(simple("enum", &e.ident, &e.attrs)),
+            syn::Item::Union(u) => out.push(simple("union", &u.ident, &u.attrs)),
+            syn::Item::Fn(f) => out.push(simple("fn", &f.sig.ident, &f.attrs)),
+            syn::Item::Type(t) => out.push(simple("type", &t.ident, &t.attrs)),
+            syn::Item::Macro(m) => {
+                if let Some(ident) = &m.ident {
+                    out.push(simple("macro", ident, &m.attrs));
+                }
+            }
+            syn::Item::Trait(t) => {
+                out.push(simple("trait", &t.ident, &t.attrs));
+                let owner = qualified(modpath, &t.ident.unraw_string());
+                for ti in &t.items {
+                    let (kind, ident, attrs) = match ti {
+                        syn::TraitItem::Fn(f) => ("fn", &f.sig.ident, &f.attrs),
+                        syn::TraitItem::Const(c) => ("const", &c.ident, &c.attrs),
+                        syn::TraitItem::Type(t) => ("type", &t.ident, &t.attrs),
+                        _ => continue,
+                    };
+                    out.push(symbol(SymbolAt {
+                        kind,
+                        names: vec![format!("{owner}::{}", ident.unraw_string())],
+                        attrs,
+                        whole: ti.span(),
+                        ident: ident.span(),
+                    }));
+                }
+            }
+            syn::Item::Mod(m) => {
+                out.push(simple("mod", &m.ident, &m.attrs));
+                if let Some((_, inner)) = &m.content {
+                    modpath.push(m.ident.unraw_string());
+                    collect_symbols(inner, modpath, out);
+                    modpath.pop();
+                }
+            }
+            syn::Item::Impl(i) => impl_symbols(i, modpath, out),
+            _ => {}
+        }
+    }
+}
+
+/// The impl block, named `impl Type` or `impl Trait for Type`, and its fns,
+/// consts and types.
+fn impl_symbols(i: &syn::ItemImpl, modpath: &[String], out: &mut Vec<Value>) {
+    let selves = type_forms(&i.self_ty);
+    let traits: Vec<String> = i
+        .trait_
+        .as_ref()
+        .map_or_else(Vec::new, |(_, p, _)| trait_forms(p));
+    let bang = if i.trait_.as_ref().is_some_and(|t| t.0.is_some()) {
+        "!"
+    } else {
+        ""
+    };
+    let mut names = Vec::new();
+    if traits.is_empty() {
+        for s in &selves {
+            names.push(format!("impl {s}"));
+        }
+    } else {
+        for t in &traits {
+            for s in &selves {
+                names.push(format!("impl {bang}{t} for {s}"));
+            }
+        }
+    }
+    out.push(symbol(SymbolAt {
+        kind: "impl",
+        names,
+        attrs: &i.attrs,
+        whole: i.span(),
+        ident: i.impl_token.span,
+    }));
+    for ii in &i.items {
+        let (kind, ident, attrs) = match ii {
+            syn::ImplItem::Fn(f) => ("fn", &f.sig.ident, &f.attrs),
+            syn::ImplItem::Const(c) => ("const", &c.ident, &c.attrs),
+            syn::ImplItem::Type(t) => ("type", &t.ident, &t.attrs),
+            _ => continue,
+        };
+        let name = ident.unraw_string();
+        let mut names = Vec::new();
+        for t in &traits {
+            for s in &selves {
+                names.push(qualified(modpath, &format!("<{s} as {t}>::{name}")));
+            }
+        }
+        for s in &selves {
+            names.push(qualified(modpath, &format!("{s}::{name}")));
+        }
+        out.push(symbol(SymbolAt {
+            kind,
+            names,
+            attrs,
+            whole: ii.span(),
+            ident: ident.span(),
+        }));
+    }
 }

@@ -110,6 +110,31 @@ type rustPlan struct {
 	read    map[string]*rustCrate
 	err     error
 	batches map[string]*doctestBatch
+	// symbols holds the Rust files that docgen:code symbol= reads, by path.
+	symbols map[string]*rustSymbols
+}
+
+// A rustSymbols is the result of the read of one file for docgen:code.
+type rustSymbols struct {
+	syms *rustsrc.Symbols
+	err  error
+}
+
+// symbolFile adds the file at path to the files to read for symbol=.
+func (rp *rustPlan) symbolFile(path string) {
+	if rp.symbols == nil {
+		rp.symbols = map[string]*rustSymbols{}
+	}
+	rp.symbols[path] = &rustSymbols{}
+}
+
+// symbolsOf returns the read of the file at path, or the error of the read.
+func (rp *rustPlan) symbolsOf(path string) (*rustsrc.Symbols, error) {
+	s := rp.symbols[path]
+	if s == nil {
+		return nil, fmt.Errorf("%s was not read", path)
+	}
+	return s.syms, s.err
 }
 
 // A rustCrate is the result of the read of one crate.
@@ -193,6 +218,10 @@ func targetOf(pkg *cargo.Package) (root, bin string, err error) {
 // takes a slot of g.
 func (g *Generator) rustPrepare(ctx context.Context, rp *rustPlan) {
 	rp.read = map[string]*rustCrate{}
+	g.rustSymbols(ctx, rp)
+	if len(rp.crates) == 0 {
+		return
+	}
 	ws, err := g.cargoWorkspace(ctx)
 	if err != nil {
 		rp.err = err
@@ -238,6 +267,39 @@ func (g *Generator) rustPrepare(ctx context.Context, rp *rustPlan) {
 		}
 	}
 	g.rustValues(ctx, r, ws, rp)
+}
+
+// rustSymbols reads the files of rp for docgen:code symbol= with one run of
+// the helper. A file needs no crate and no Cargo workspace.
+func (g *Generator) rustSymbols(ctx context.Context, rp *rustPlan) {
+	if len(rp.symbols) == 0 {
+		return
+	}
+	files := sortedKeys(rp.symbols)
+	read, err := g.readSymbols(ctx, files)
+	for i, f := range files {
+		if err != nil {
+			rp.symbols[f].err = err
+			continue
+		}
+		rp.symbols[f].syms = read[i]
+	}
+}
+
+func (g *Generator) readSymbols(ctx context.Context, files []string) ([]*rustsrc.Symbols, error) {
+	abs := make([]string, len(files))
+	for i, f := range files {
+		var err error
+		if abs[i], err = filepath.Abs(f); err != nil {
+			return nil, err
+		}
+	}
+	r := g.cargoRunner()
+	bin, err := g.rust.helper.Path(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	return rustsrc.ReadSymbols(ctx, r, bin, abs)
 }
 
 // repoText returns s with each path in the repository relative to its root.

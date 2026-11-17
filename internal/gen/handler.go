@@ -57,12 +57,18 @@ type job struct {
 // repoPath returns the path of the file= value rel of a marker. A value that
 // leaves the repository is an error.
 func (j job) repoPath(rel string) (string, error) {
+	return repoFile(j.mod, rel)
+}
+
+// repoFile returns the path of the file= value rel of a marker in the module
+// mod. A value that leaves the repository is an error.
+func repoFile(mod *gomod.Module, rel string) (string, error) {
 	p := filepath.FromSlash(rel)
 	if !filepath.IsLocal(p) {
 		return "", fmt.Errorf("file=%s is outside the repository", rel)
 	}
-	full := filepath.Join(j.mod.Root, p)
-	if !gomod.Inside(j.mod.Root, full) {
+	full := filepath.Join(mod.Root, p)
+	if !gomod.Inside(mod.Root, full) {
 		return "", fmt.Errorf("file=%s is outside the repository", rel)
 	}
 	return full, nil

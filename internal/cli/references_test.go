@@ -153,7 +153,7 @@ func TestDanglingReferences(t *testing.T) {
 		{tag: "code file=data/c.json symbol=jobs[b]", want: "no items jobs[b] in the JSON file"},
 		{tag: "code file=data/c.toml symbol=jobs", want: "jobs in the TOML file is an array of tables"},
 		{tag: "code file=data/c.toml symbol=nope", want: "no key nope in the TOML file"},
-		{tag: "code file=data/a.txt symbol=One", want: "applies to a Go, YAML, JSON, TOML or C file"},
+		{tag: "code file=data/a.txt symbol=One", want: "applies to a Go, Rust, YAML, JSON, TOML or C file"},
 
 		{tag: "code file=data/r.txt region=nope", want: "no docgen:region nope"},
 		{tag: `code file=data/r.txt region=""`, want: "region= is empty", parse: true},

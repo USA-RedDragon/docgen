@@ -25,7 +25,7 @@ func Symbol(path string, src []byte, sym string) (string, error) {
 	case ".c", ".h":
 		return cExcerpt(src, sym)
 	default:
-		return "", errors.New("symbol= applies to a Go, YAML, JSON, TOML or C file")
+		return "", errors.New("symbol= applies to a Go, Rust, YAML, JSON, TOML or C file")
 	}
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, src, parser.ParseComments)
