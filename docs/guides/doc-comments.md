@@ -99,3 +99,102 @@ A Lamp blinks at these rates:
 <!-- /site:editor -->
 
 Text in backticks in a doc comment is a code span. For all options, see [`docgen:doc`](../reference/markers.md#docgendoc).
+
+## Rust
+
+For a Rust crate, give the package name with `crate=`, and the path of an item or module with `name=`:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/limits.rs region=check-jobs -->
+````rust
+/// Checks that jobs is between 1 and [`MAX_JOBS`].
+///
+/// ```
+/// # use core_a::limits::check_jobs;
+/// assert_eq!(check_jobs(2), Ok(2));
+/// ```
+pub fn check_jobs(jobs: usize) -> Result<usize, LimitError> {
+    match jobs {
+        0 => Err(LimitError::Zero),
+        n if n > MAX_JOBS => Err(LimitError::TooLarge(n)),
+        n => Ok(n.min(RETRIES as usize * MAX_JOBS)),
+    }
+}
+````
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-doc.md -->
+#### Before
+
+```
+# check_jobs
+
+<!-- docgen:doc crate=core-a name=limits::check_jobs -->
+<!-- /docgen:doc -->
+```
+
+#### After
+
+````
+# check_jobs
+
+<!-- docgen:doc crate=core-a name=limits::check_jobs -->
+Checks that jobs is between 1 and `MAX_JOBS`.
+
+```rust
+assert_eq!(check_jobs(2), Ok(2));
+```
+<!-- /docgen:doc -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+With no `name=`, the marker shows the crate doc. Headings move down two levels, code blocks with no language are `rust` blocks with no hidden lines, and an intra-doc link is its text:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/lib.rs region=crate-doc -->
+```rust
+//! The core of the fixture app.
+//!
+//! # Limits
+//!
+//! The app runs at most [`limits::MAX_JOBS`] jobs at once, and each job has a
+//! timeout.
+//!
+//! ## Timeouts
+//!
+//! A job that runs past its timeout stops.
+//!
+//! # Other
+//!
+//! Not copied.
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-doc-crate.md -->
+#### Before
+
+```
+<!-- docgen:doc crate=core-a section=Limits -->
+<!-- /docgen:doc -->
+
+<!-- docgen:doc crate=core-a name=net -->
+<!-- /docgen:doc -->
+```
+
+#### After
+
+```
+<!-- docgen:doc crate=core-a section=Limits -->
+The app runs at most `limits::MAX_JOBS` jobs at once, and each job has a
+timeout.
+
+#### Timeouts
+
+A job that runs past its timeout stops.
+<!-- /docgen:doc -->
+
+<!-- docgen:doc crate=core-a name=net -->
+Networking.
+<!-- /docgen:doc -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->

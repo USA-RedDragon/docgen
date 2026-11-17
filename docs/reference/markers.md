@@ -1216,6 +1216,18 @@ type Range struct {
 The reference table of a config type of [configulator](https://github.com/USA-RedDragon/configulator): each key, with its type, default, environment variable, flag and description.
 
 	docgen:configulator pkg=<path> type=<Config> [env=<prefix>] [envsep=<separator>] [flagsep=<separator>]
+
+For a Rust crate, `type=` is a struct with `#[derive(Config)]` of [configulator-rs](https://github.com/USA-RedDragon/configulator-rs):
+
+	docgen:configulator crate=<package> type=<path> [env=<prefix>] [envsep=<separator>] [flagsep=<separator>]
+
+The table is the one that `configulator --markdown` of configulator-cli prints, with no heading. docgen gets it from the markdown function of configulator-rs, on the fields that the derive of the type reports, in the value test of the crate (see Rust crates). So the table comes from the configulator-rs version of `Cargo.lock`. `env=`, `envsep=` and `flagsep=` are the `--env-prefix`, `--env-separator` and `--flag-separator` of configulator-cli, with the same defaults: no prefix, `_` and `.`. A `#[configulator(crate = "path")]` on the struct names a renamed crate.
+
+These are errors of the Rust form:
+
+  - `type=` that names no item, or an item that is not a struct.
+  - A struct with no `#[derive(Config)]`.
+  - A crate that does not build in test mode, with the message of rustc. The test calls a hidden markdown function of configulator-rs, which versions 0.3.1 to 0.5.0 have.
 <!-- /docgen:doc -->
 
 <!-- site:editor -->
@@ -1273,6 +1285,27 @@ The value of a constant, or of a package-level var with a constant initial value
 An empty value prints as `""`, and line endings in a value print as spaces. A verb that the value cannot use is an error. An integer too large for its default type prints its exact value. A type with a print method, or with `print=config` a type with a MarshalText method, runs in one `go test` for each package, so the tests of that package must compile.
 
 With `code=false`, the value has no backticks: 250ms in place of `250ms`. Any other value of `code=` is an error.
+
+For a Rust crate, `crate=` takes the place of `pkg=`, and `name=` is a path from the crate root (see Rust crates):
+
+	docgen:const crate=<package> name=<path> [print=<display|debug|raw|name|spec>] [code=false]
+
+`name=` is a `const`, a `static` that is not `mut`, or an associated const of an inherent impl, such as `limits::Port::HTTP`. Private items work too. The value comes from the value test of the crate, other than with `print=raw`:
+
+  - With no `print=`, the value prints with its `Display` impl, or else with its `Debug` impl, so a `&str` has no quotes and a `Duration` of 1.5s is `1.5s`.
+  - `print=display` and `print=debug` use that impl, as `{}` and `{:?}` do.
+  - `print=raw` is the expression as the source writes it, such as `MAX_JOBS / 4`, and runs no code.
+  - `print=name` is the path from the crate root of the one other const with the type of the item, as the source writes it, and the same value, such as `limits::PORT_WEB`. The type must implement `PartialEq`. A const counts when the module of the item can name it.
+  - `print={:#x}`, or any other Rust format spec of one value, is the value with that spec.
+
+The `print` setting `raw` applies to a Rust marker with no `print=`, and `go` and `config` leave the default. These are errors of the Rust form:
+
+  - `crate=` with `pkg=`.
+  - An empty `print=`, or a value that is not `display`, `debug`, `raw`, `name` or a format spec.
+  - `name=` that names no item, or an item that is not a `const` or `static`, or a `static mut`.
+  - A value with no code that compiles, such as a type with no `Display` and no `Debug` impl, or a spec that the type cannot use, such as `{:x}` for a string. The error holds the message of rustc.
+  - An item in a module with a `#[cfg]` that is false in the test build.
+  - `print=name` when no other const, or two other consts, have the value.
 <!-- /docgen:doc -->
 
 #### A value as Go prints it
@@ -1374,6 +1407,16 @@ The default wait is <!-- docgen:const pkg=machine name=DefaultWait code=false --
 A table of the errors named in the doc comments of the constructors and methods of a type. Names resolve in the package, the module packages that it imports and the root package of the module. Consts and vars of any error type count.
 
 	docgen:errors pkg=<path> type=<Type>
+
+For a Rust crate, `type=` is an enum or a struct that derives `Error` of [thiserror](https://docs.rs/thiserror):
+
+	docgen:errors crate=<package> type=<path>
+
+The table has a row for each variant of the enum, or one row for the struct. The columns are the error, its `#[error(...)]` message as the source writes it, its source and the first sentence of its doc. The message of `#[error(transparent)]` is the message of its one field. The source is a field with `#[from]` (marked "with From"), `#[source]`, or the name `source`. Unlike the Go table, the rows come from the type and not from doc comments, and the table has no Returned by column. These are errors of the Rust form:
+
+  - `type=` that names no item, or an item that is not an enum or a struct.
+  - A type with no `#[derive(Error)]` or `#[derive(thiserror::Error)]`.
+  - An enum with no variants.
 <!-- /docgen:doc -->
 
 <!-- site:editor -->
@@ -1682,6 +1725,18 @@ A doc comment as Markdown: the package doc, or the doc of a type, func, method (
 	docgen:doc pkg=<path> [name=<Name>] [section=<heading>]
 
 A `pkg=` that names a directory outside the module, such as a tool with a `go.mod` of its own, is the package doc of that directory. Its path is relative to the repository root. A name with no doc comment and a `section=` with no text are errors. Text in backticks in a doc comment is a code span.
+
+For a Rust crate:
+
+	docgen:doc crate=<package> [name=<path>] [section=<heading>]
+
+With no `name=`, it is the crate doc: the `//!` comments of the crate root. `name=` is an item or a module (see Rust crates). The doc of a module is the `///` above its `mod` line and then the `//!` at the top of its file. `#[doc = "..."]` and `#[doc = include_str!("file")]` count. On the page:
+
+  - A heading moves down two levels, so `#` is `###` and `##` is `####`.
+  - A code block with no language, or with only rustdoc words such as `no_run`, is a `rust` block, with no hidden `# ` lines.
+  - An intra-doc link, such as `[Config]` or `[text](crate::Config)`, is its text, and a reference definition of one is removed.
+
+`section=` is the text below the heading with that text, with no backticks, up to the next heading of the same or a higher level. A name with no doc, no such heading and a heading with no text are errors, as for Go.
 <!-- /docgen:doc -->
 
 #### The doc comment of one declaration, with `name=`
@@ -2079,6 +2134,18 @@ Each box of this page comes from a marker in this form. At the default depth thi
 <!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-const.md -->
 <!-- /docgen:docgen -->
 ```
+
+## Rust crates
+
+<!-- docgen:doc pkg=. section="Rust crates" -->
+A marker with `crate=` reads Rust code. `crate=` is the name of a package of the Cargo workspace in the module directory, as its `Cargo.toml` names it, and a marker with both `crate=` and `pkg=` is an error. The marker reads the library of the package, or else its binary with the name of the package, or else its one binary. A name that is not a package of the workspace is an error that lists the packages.
+
+`name=` and `type=` are paths from the crate root, such as `limits::MAX_JOBS`, with or without `crate::`. A path can go through a `use` of the crate, such as a `pub use` at the root. An associated item of an inherent impl is `Type::NAME`. A path that names nothing is an error that lists the names of the nearest module.
+
+docgen reads the module tree with a helper program that uses syn. Your cargo builds it once, with `cargo build --release --locked`, into `rust-helper` below docgen in the user cache directory, for each version of the helper and of rustc. Two runs at the same time each build to a new directory and rename the result, so neither reads a part of the other. The helper needs Rust 1.71 or later, and an older rustc is an error. A failed build is an error with the output of cargo. The tree follows each `mod` line: inline modules, `foo.rs` and `foo/mod.rs` files and `#[path]`. A module with a `#[cfg]` is read as any other. A file that does not parse, and a module with no file and no `#[cfg]`, are errors.
+
+A value comes from the value test of the crate. docgen copies the workspace, with no `target` directory, to the temporary directory of the run, adds a `#[cfg(test)]` module with one test to each module with a value, and runs `cargo test --locked` once for each crate of the run, so private items work. The added module allows all lints, so a `#![deny(warnings)]` stays. The crate must build in test mode with its dev-dependencies. When the code of one value does not compile, a second run prints the other values. Cargo builds into the temporary directory of the run, never into your target directory, and downloads crates at the versions of `Cargo.lock`. A `Cargo.lock` that is out of date is an error. Each cargo command counts toward the limit on commands at once, as a go command does, and a `jobs` value other than 0 is the `CARGO_BUILD_JOBS` of each command.
+<!-- /docgen:doc -->
 
 ## Marker rules
 

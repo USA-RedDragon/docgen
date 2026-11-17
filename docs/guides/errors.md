@@ -99,3 +99,63 @@ func (e *ConfigError) Error() string { return "bad " + e.Field }
 Name each error in the doc comment of the function that returns it. The table reads those doc comments, and a name that does not resolve adds no row.
 
 For details, see [`docgen:errors`](../reference/markers.md#docgenerrors).
+
+## Rust
+
+For a Rust crate, `type=` names an enum or a struct that derives `thiserror::Error`. The table has a row for each variant, with its message and its source:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/errors.rs -->
+```rust
+//! Errors of the app.
+
+use std::num::ParseIntError;
+
+/// An error of the app.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// A file could not be read.
+    #[error("read {path}: {source}")]
+    Read {
+        /// The path of the file.
+        path: String,
+        source: std::io::Error,
+    },
+    /// A number in the config is not valid. The line holds the number.
+    #[error("line {line}: bad number")]
+    Number {
+        line: usize,
+        #[source]
+        cause: ParseIntError,
+    },
+    /// The job count is out of range.
+    #[error(transparent)]
+    Limit(#[from] crate::limits::LimitError),
+    /// The app has no jobs | none at all.
+    #[error("no jobs")]
+    NoJobs,
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-errors.md -->
+#### Before
+
+```
+<!-- docgen:errors crate=core-a type=errors::Error -->
+<!-- /docgen:errors -->
+```
+
+#### After
+
+```
+<!-- docgen:errors crate=core-a type=errors::Error -->
+| Error | Message | Source | Meaning |
+|---|---|---|---|
+| `Error::Read` | `read {path}: {source}` | `std::io::Error` | A file could not be read. |
+| `Error::Number` | `line {line}: bad number` | `ParseIntError` | A number in the config is not valid. |
+| `Error::Limit` | the message of `crate::limits::LimitError` | `crate::limits::LimitError`, with From | The job count is out of range. |
+| `Error::NoJobs` | `no jobs` |  | The app has no jobs \| none at all. |
+<!-- /docgen:errors -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->

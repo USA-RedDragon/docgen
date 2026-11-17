@@ -60,3 +60,67 @@ Give the same values that you give to `WithEnvironmentVariables` and to the flag
 | `env=` | The environment variable prefix, such as `MYAPP_`. | none |
 | `envsep=` | The environment variable separator. | `_` |
 | `flagsep=` | The flag separator. | `.` |
+
+## Rust
+
+For a Rust program that loads its settings with [configulator-rs](https://github.com/USA-RedDragon/configulator-rs), give the package name with `crate=` and the path of the config struct with `type=`:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/core-a/src/config.rs -->
+```rust
+//! The configuration of the app.
+
+use configulator::Config;
+
+/// The configuration of the app.
+#[derive(Config, Debug)]
+pub struct AppConfig {
+    #[configulator(name = "log-level", default = "info", description = "log level: debug, info, warn or error")]
+    pub log_level: String,
+
+    #[configulator(name = "jobs", short = 'j', default = "4", description = "jobs that run at once")]
+    pub jobs: usize,
+
+    #[configulator(name = "http", nested)]
+    pub http: Http,
+
+    #[configulator(name = "token", required, secret, description = "API token")]
+    pub token: String,
+}
+
+/// The listener of the app.
+#[derive(Config, Debug)]
+pub struct Http {
+    #[configulator(name = "host", default = "[::]", description = "listen address")]
+    pub host: String,
+
+    #[configulator(name = "port", env = "LISTEN_PORT", default = "8080", description = "listen port")]
+    pub port: u16,
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-configulator.md -->
+#### Before
+
+```
+<!-- docgen:configulator crate=core-a type=config::AppConfig env=APP_ -->
+<!-- /docgen:configulator -->
+```
+
+#### After
+
+```
+<!-- docgen:configulator crate=core-a type=config::AppConfig env=APP_ -->
+| Key         | Type    | Default | Environment            | Flag           | Description                           |
+|-------------|---------|---------|------------------------|----------------|---------------------------------------|
+| `log-level` | string  | `info`  | `APP_LOG_LEVEL`        | `--log-level`  | log level: debug, info, warn or error |
+| `jobs`      | integer | `4`     | `APP_JOBS`             | `-j`, `--jobs` | jobs that run at once                 |
+| `http.host` | string  | `[::]`  | `APP_HTTP_HOST`        | `--http.host`  | listen address                        |
+| `http.port` | integer | `8080`  | `APP_HTTP_LISTEN_PORT` | `--http.port`  | listen port                           |
+| `token`     | string  |         | `APP_TOKEN`            | `--token`      | API token (required) (secret)         |
+<!-- /docgen:configulator -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+The table is the one that `configulator --markdown` prints. docgen gets it from configulator-rs in a test on a copy of the crate, so it comes from the configulator-rs version of `Cargo.lock`, and you install nothing.
