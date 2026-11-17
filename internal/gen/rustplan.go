@@ -98,13 +98,15 @@ type rustValue struct {
 	err     error
 }
 
-// A rustPlan holds the Rust work of a plan: the crates to read and the values
-// to print. Its results are ready when prepare returns.
+// A rustPlan holds the Rust work of a plan: the crates to read, the values to
+// print and the doctests to run, by crate. Its results are ready when prepare
+// returns.
 type rustPlan struct {
-	crates map[string]bool
-	values []*rustValue
-	read   map[string]*rustCrate
-	err    error
+	crates  map[string]bool
+	values  []*rustValue
+	read    map[string]*rustCrate
+	err     error
+	batches map[string]*doctestBatch
 }
 
 // A rustCrate is the result of the read of one crate.
@@ -118,7 +120,7 @@ type rustCrate struct {
 // rust returns the Rust plan of p, and makes it on first use.
 func (p *plan) rust() *rustPlan {
 	if p.rustWork == nil {
-		p.rustWork = &rustPlan{crates: map[string]bool{}}
+		p.rustWork = &rustPlan{crates: map[string]bool{}, batches: map[string]*doctestBatch{}}
 	}
 	return p.rustWork
 }

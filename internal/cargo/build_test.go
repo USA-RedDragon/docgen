@@ -29,20 +29,23 @@ func TestExecutableOf(t *testing.T) {
 		`not json`,
 		`{"reason":"build-finished","success":true}`,
 	}, "\n")
-	if got, err := executableOf(out, "cli", "demo"); err != nil || got != "/t/debug/demo" {
+	if got, err := executableOf(out, "cli", "bin", "demo"); err != nil || got != "/t/debug/demo" {
 		t.Errorf("executableOf = %q, %v", got, err)
 	}
-	if _, err := executableOf(out, "lib", "demo"); err == nil {
+	if _, err := executableOf(out, "lib", "bin", "demo"); err == nil {
 		t.Error("a library has no executable")
+	}
+	if _, err := executableOf(out, "cli", "example", "demo"); err == nil {
+		t.Error("a binary is not an example")
 	}
 }
 
-func TestBuildBin(t *testing.T) {
+func TestBuild(t *testing.T) {
 	t.Parallel()
 	needCargo(t)
 	r := newRunner(t)
 	ctx := t.Context()
-	exe, err := r.BuildBin(ctx, fixture, "tool", "tool")
+	exe, err := r.Build(ctx, fixture, "tool", "bin", "tool")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +59,7 @@ func TestBuildBin(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(fixture, "target")); err == nil {
 		t.Error("a target directory appeared in the fixture")
 	}
-	if _, err := r.BuildBin(ctx, fixture, "nope", "tool"); err == nil {
+	if _, err := r.Build(ctx, fixture, "nope", "bin", "tool"); err == nil {
 		t.Error("an unknown package built")
 	}
 }

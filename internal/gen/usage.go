@@ -25,8 +25,8 @@ type usageHandler struct {
 
 func (h *usageHandler) Bind(a *marker.Args) {
 	h.crate, _ = a.Optional(argCrate)
-	h.bin, _ = a.Optional(argBin)
-	a.NonEmpty(argCrate, argBin)
+	h.bin, _ = a.Optional(kindBin)
+	a.NonEmpty(argCrate, kindBin)
 	if h.crate == "" {
 		if h.bin != "" {
 			a.Fail("has bin= with no crate=")

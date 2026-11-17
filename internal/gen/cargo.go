@@ -15,19 +15,18 @@ import (
 	"github.com/USA-RedDragon/docgen/internal/marker"
 )
 
-const argBin = "bin"
-
-// A rustBuild is the build of one binary of a run.
+// A rustBuild is the build of one binary or example of a run.
 type rustBuild struct {
 	once sync.Once
 	exe  string
 	err  error
 }
 
-// cargoBinary builds the binary bin of the package pkg once for g and returns
-// its path.
-func (g *Generator) cargoBinary(ctx context.Context, ws *cargo.Workspace, pkg, bin string) (string, error) {
-	key := pkg + "\x00" + bin
+// cargoBuild builds the target of kind bin or example with the name of the
+// package pkg once for g, for all the markers of the run, and returns the path
+// of its executable.
+func (g *Generator) cargoBuild(ctx context.Context, ws *cargo.Workspace, pkg, kind, name string) (string, error) {
+	key := pkg + "\x00" + kind + "\x00" + name
 	g.rust.mu.Lock()
 	b := g.rust.builds[key]
 	if b == nil {
@@ -36,8 +35,8 @@ func (g *Generator) cargoBinary(ctx context.Context, ws *cargo.Workspace, pkg, b
 	}
 	g.rust.mu.Unlock()
 	b.once.Do(func() {
-		fmt.Fprintf(g.log, "docgen: building %s from %s\n", bin, pkg)
-		b.exe, b.err = g.rust.runner.BuildBin(ctx, ws.Root, pkg, bin)
+		fmt.Fprintf(g.log, "docgen: building %s %s of %s\n", kind, name, pkg)
+		b.exe, b.err = g.rust.runner.Build(ctx, ws.Root, pkg, kind, name)
 	})
 	return b.exe, b.err
 }
@@ -294,10 +293,10 @@ func (g *Generator) rustUsageOf(ctx context.Context, pkg, bin string, args []str
 	if err != nil {
 		return "", err
 	}
-	if bin, err = binName(p, bin); err != nil {
+	if bin, err = targetName(p, kindBin, bin); err != nil {
 		return "", err
 	}
-	exe, err := g.cargoBinary(ctx, ws, pkg, bin)
+	exe, err := g.cargoBuild(ctx, ws, pkg, kindBin, bin)
 	if err != nil {
 		return "", err
 	}
@@ -317,24 +316,30 @@ func (g *Generator) rustUsageOf(ctx context.Context, pkg, bin string, args []str
 	return markdown.Fence("text", usage), nil
 }
 
-// binName returns bin, or the one binary of p when bin is "". A name that is not
-// a binary of p is an error that lists them.
-func binName(p *cargo.Package, bin string) (string, error) {
-	var bins []string
+// targetName returns name, or the one target of kind of p when name is "".
+// kind is bin or example. A name that is not a target of p is an error that
+// lists them.
+func targetName(p *cargo.Package, kind, name string) (string, error) {
+	var names []string
 	for _, t := range p.Targets {
-		if t.Kind == "bin" {
-			bins = append(bins, t.Name)
+		if t.Kind == kind {
+			names = append(names, t.Name)
 		}
 	}
-	switch {
-	case len(bins) == 0:
-		return "", fmt.Errorf("crate %s has no binary", p.Name)
-	case bin == "" && len(bins) == 1:
-		return bins[0], nil
-	case bin == "":
-		return "", fmt.Errorf("crate %s has several binaries, so the marker needs bin=: %s", p.Name, strings.Join(bins, ", "))
-	case !slices.Contains(bins, bin):
-		return "", fmt.Errorf("crate %s has no binary %s; its binaries are: %s", p.Name, bin, strings.Join(bins, ", "))
+	slices.Sort(names)
+	one, many := kind, kind+"s"
+	if kind == kindBin {
+		one, many = "binary", "binaries"
 	}
-	return bin, nil
+	switch {
+	case len(names) == 0:
+		return "", fmt.Errorf("crate %s has no %s", p.Name, one)
+	case name == "" && len(names) == 1:
+		return names[0], nil
+	case name == "":
+		return "", fmt.Errorf("crate %s has several %s, so the marker needs %s=: %s", p.Name, many, kind, strings.Join(names, ", "))
+	case !slices.Contains(names, name):
+		return "", fmt.Errorf("crate %s has no %s %s; its %s are: %s", p.Name, one, name, many, strings.Join(names, ", "))
+	}
+	return name, nil
 }

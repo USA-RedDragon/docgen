@@ -1,0 +1,24 @@
+[package]
+name = "run-c"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "run-c"
+path = "src/main.rs"
+
+[[example]]
+name = "greet"
+path = "examples/greet.rs"
+
+[[example]]
+name = "fails"
+path = "examples/fails.rs"
+
+[[example]]
+name = "silent"
+path = "examples/silent.rs"

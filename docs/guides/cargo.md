@@ -111,6 +111,8 @@ A key that a crate sets to `workspace = true`, such as `version.workspace = true
 | `core-a` | `crates/core-a` | lib | 0.1.0 |  |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
 | `limits` | `crates/limits` | lib | 0.1.0 |  |
+| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
+| `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  |
 | `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
 <!-- /docgen:crates -->
 ```
@@ -136,6 +138,7 @@ Each row is a crate with its path, kind, version and the crates of the workspace
 |---|---|---|---|---|
 | `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core`, `limits` (dev) |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
+| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
 | `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
 <!-- /docgen:crates -->
 ```

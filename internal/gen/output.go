@@ -20,14 +20,20 @@ func splitTest(s string) (pkg, name string) {
 
 // An outputHandler is a docgen:output marker: the standard output of the Go
 // program in the directory cmd, or of the shell command exec, or the Output
-// comment of the Example test, in the form <pkg>.<ExampleName>.
+// comment of the Example test, in the form <pkg>.<ExampleName>. With crate, it
+// is the output of an example or a binary of a Rust crate, or the doctest of a
+// Rust item.
 type outputHandler struct {
 	cmd     string
 	command string
 	test    string
+	rust    rustOutput
 }
 
 func (h *outputHandler) Bind(a *marker.Args) {
+	if h.rust.bind(a) {
+		return
+	}
 	var hasCmd, hasExec, hasTest bool
 	h.cmd, hasCmd = a.Optional(argCmd)
 	h.command, hasExec = a.Optional("exec")
@@ -50,6 +56,10 @@ func (h *outputHandler) program() (programRun, bool) {
 }
 
 func (h *outputHandler) plan(p *plan) {
+	if h.rust.crate != "" {
+		h.rust.plan(p)
+		return
+	}
 	if run, ok := h.program(); ok {
 		if h.cmd == "" || p.mod.LocalDir(argCmd, h.cmd) == nil {
 			p.programs[run] = true
@@ -72,6 +82,9 @@ func (h *outputHandler) plan(p *plan) {
 }
 
 func (h *outputHandler) fill(_ context.Context, j job) (string, []outFile, error) {
+	if h.rust.crate != "" {
+		return h.rust.fill()
+	}
 	key, ok := h.program()
 	if !ok {
 		return h.fillTest(j)

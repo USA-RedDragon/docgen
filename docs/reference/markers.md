@@ -2015,6 +2015,8 @@ A value that is not one of the lists, a glob that is not valid, a crate outside 
 | `core-a` | `crates/core-a` | lib | 0.1.0 |  |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
 | `limits` | `crates/limits` | lib | 0.1.0 |  |
+| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
+| `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  |
 | `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
 <!-- /docgen:crates -->
 ```
@@ -2040,6 +2042,7 @@ A value that is not one of the lists, a glob that is not valid, a crate outside 
 |---|---|---|---|---|
 | `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core`, `limits` (dev) |
 | `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
+| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
 | `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
 <!-- /docgen:crates -->
 ```

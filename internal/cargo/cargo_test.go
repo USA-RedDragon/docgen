@@ -65,7 +65,7 @@ func TestOpenFixture(t *testing.T) {
 	for _, p := range ws.Packages {
 		names = append(names, p.Name)
 	}
-	if want := []string{"cargo-b-cli", "cargo-b-core", "core-a", "core-a-bin", "limits", "tool"}; !slices.Equal(names, want) {
+	if want := []string{"cargo-b-cli", "cargo-b-core", "core-a", "core-a-bin", "limits", "run-c", "run-c-broken", "tool"}; !slices.Equal(names, want) {
 		t.Fatalf("packages %v, want %v", names, want)
 	}
 	limits, err := ws.Package("limits")
@@ -127,7 +127,7 @@ func TestUnknownCrate(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = ws.Package("nope")
-	if err == nil || !strings.Contains(err.Error(), `"nope"`) || !strings.Contains(err.Error(), "limits, tool") {
+	if err == nil || !strings.Contains(err.Error(), `"nope"`) || !strings.Contains(err.Error(), "limits, run-c, run-c-broken, tool") {
 		t.Errorf("error %v", err)
 	}
 }

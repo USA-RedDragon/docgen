@@ -5,21 +5,22 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
-// BuildBin builds the binary bin of the package pkg of the workspace at dir,
-// with --locked, and returns the path of the executable. The build goes into
-// the target directory of the session.
-func (r *Runner) BuildBin(ctx context.Context, dir, pkg, bin string) (string, error) {
-	out, errOut, err := r.Run(ctx, dir, "build", "--locked", "--package", pkg, "--bin", bin, "--message-format", "json-render-diagnostics")
+// Build builds the target of kind bin or example with the name of the package
+// pkg of the workspace at dir, with --locked, and returns the path of the
+// executable. The build goes into the target directory of the session.
+func (r *Runner) Build(ctx context.Context, dir, pkg, kind, name string) (string, error) {
+	out, errOut, err := r.Run(ctx, dir, "build", "--locked", "--package", pkg, "--"+kind, name, "--message-format", "json-render-diagnostics")
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return "", err
 		}
-		return "", LockedError("cargo build "+pkg+" --bin "+bin, err, errOut)
+		return "", LockedError("cargo build --package "+pkg+" --"+kind+" "+name, err, errOut)
 	}
-	return executableOf(out, pkg, bin)
+	return executableOf(out, pkg, kind, name)
 }
 
 type buildMessage struct {
@@ -32,9 +33,9 @@ type buildMessage struct {
 	} `json:"target"`
 }
 
-// executableOf returns the executable of the binary bin of the package pkg in
-// the JSON lines out of a cargo build.
-func executableOf(out, pkg, bin string) (string, error) {
+// executableOf returns the executable of the target of kind with the name of
+// the package pkg in the JSON lines out of a cargo build.
+func executableOf(out, pkg, kind, name string) (string, error) {
 	for line := range strings.SplitSeq(out, "\n") {
 		if !strings.HasPrefix(line, "{") {
 			continue
@@ -43,11 +44,11 @@ func executableOf(out, pkg, bin string) (string, error) {
 		if err := json.Unmarshal([]byte(line), &m); err != nil {
 			continue
 		}
-		if m.Reason == "compiler-artifact" && m.Executable != "" && m.Target.Name == bin && packageName(m.PackageID) == pkg {
+		if m.Reason == "compiler-artifact" && m.Executable != "" && m.Target.Name == name && slices.Contains(m.Target.Kind, kind) && packageName(m.PackageID) == pkg {
 			return m.Executable, nil
 		}
 	}
-	return "", fmt.Errorf("cargo build made no executable for %s in package %s", bin, pkg)
+	return "", fmt.Errorf("cargo build made no executable for the %s %s of package %s", kind, name, pkg)
 }
 
 // packageName returns the name of a package from its package ID, in the
