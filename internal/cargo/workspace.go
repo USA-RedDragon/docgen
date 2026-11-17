@@ -36,10 +36,13 @@ type Dependency struct {
 
 // Package is a package of the workspace.
 type Package struct {
-	Name         string
-	Version      string
-	Edition      string
-	RustVersion  string
+	Name        string
+	Version     string
+	Edition     string
+	RustVersion string
+	// Description is the description of the manifest, with workspace
+	// inheritance applied, or "" when there is none.
+	Description  string
 	ManifestPath string
 	// Dir is the directory of the manifest.
 	Dir     string
@@ -143,6 +146,7 @@ type metaPackage struct {
 	Version      string              `json:"version"`
 	Edition      string              `json:"edition"`
 	RustVersion  string              `json:"rust_version"`
+	Description  string              `json:"description"`
 	ManifestPath string              `json:"manifest_path"`
 	Targets      []metaTarget        `json:"targets"`
 	Features     map[string][]string `json:"features"`
@@ -175,6 +179,7 @@ func parseMetadata(b []byte) (*Workspace, error) {
 			Version:      mp.Version,
 			Edition:      mp.Edition,
 			RustVersion:  mp.RustVersion,
+			Description:  mp.Description,
 			ManifestPath: mp.ManifestPath,
 			Dir:          filepath.Dir(mp.ManifestPath),
 			Features:     mp.Features,

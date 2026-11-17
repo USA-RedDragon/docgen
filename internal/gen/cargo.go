@@ -3,6 +3,7 @@ package gen
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -10,9 +11,11 @@ import (
 	"sync"
 
 	"github.com/USA-RedDragon/docgen/internal/cargo"
+	"github.com/USA-RedDragon/docgen/internal/excerpt"
 	"github.com/USA-RedDragon/docgen/internal/gocmd"
 	"github.com/USA-RedDragon/docgen/internal/markdown"
 	"github.com/USA-RedDragon/docgen/internal/marker"
+	"github.com/USA-RedDragon/docgen/internal/rustsrc"
 )
 
 // A rustBuild is the build of one binary or example of a run.
@@ -202,8 +205,8 @@ func featureTable(pkg *cargo.Package, feats *cargo.Features) (string, []outFile,
 }
 
 // A cratesHandler is a docgen:crates marker: the table of the crates of the
-// Cargo workspace with their path, kind, version and the crates of the workspace
-// that they depend on.
+// Cargo workspace with their path, kind, version, the crates of the workspace
+// that they depend on and their description.
 type cratesHandler struct {
 	kind  string
 	deps  string
@@ -250,7 +253,7 @@ func (h *cratesHandler) fill(ctx context.Context, j job) (string, []outFile, err
 		return "", nil, err
 	}
 	var b strings.Builder
-	b.WriteString("| Crate | Path | Kind | Version | Depends on |\n|---|---|---|---|---|\n")
+	b.WriteString("| Crate | Path | Kind | Version | Depends on | Description |\n|---|---|---|---|---|---|\n")
 	rows := 0
 	for _, p := range ws.Packages {
 		kinds := packageKinds(p)
@@ -266,13 +269,36 @@ func (h *cratesHandler) fill(ctx context.Context, j job) (string, []outFile, err
 		if err != nil || !filepath.IsLocal(rel) && rel != "." {
 			return "", nil, fmt.Errorf("crate %s is outside the repository", p.Name)
 		}
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", markdown.CodeSpan(p.Name), markdown.CodeSpan(filepath.ToSlash(rel)), strings.Join(kinds, ", "), markdown.Cell(p.Version), h.dependencies(p))
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", markdown.CodeSpan(p.Name), markdown.CodeSpan(filepath.ToSlash(rel)), strings.Join(kinds, ", "), markdown.Cell(p.Version), h.dependencies(p), markdown.Cell(crateDescription(p)))
 		rows++
 	}
 	if rows == 0 {
 		return "", nil, fmt.Errorf("no crate of the Cargo workspace matches the arguments of the marker")
 	}
 	return b.String(), nil, nil
+}
+
+// crateDescription returns the description of p: the description of its
+// manifest, or else the first line of the inner doc comment of its crate root,
+// or else "". The crate root is the library, or else the first binary. A
+// root that cannot be read gives "".
+func crateDescription(p *cargo.Package) string {
+	if p.Description != "" {
+		return p.Description
+	}
+	for _, k := range crateKinds() {
+		for _, t := range p.Targets {
+			if t.Kind != k {
+				continue
+			}
+			src, err := os.ReadFile(t.Path)
+			if err != nil {
+				return ""
+			}
+			return rustsrc.CrateSummary(excerpt.Source(src))
+		}
+	}
+	return ""
 }
 
 // dependencies returns the cell of the workspace dependencies of p of the kinds

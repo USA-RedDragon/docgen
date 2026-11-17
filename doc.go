@@ -879,12 +879,23 @@
 //
 // Each row is a crate: its name, its path relative to the repository root, its
 // kind (`lib`, `proc-macro` or `bin`, and `lib, bin` for a crate that has both),
-// its version, and the crates of the same workspace that it depends on, as
-// `cargo metadata` reports them. Rows are in name order. The workspace is the
-// one of the Rust markers (see Rust crates).
+// its version, the crates of the same workspace that it depends on, as
+// `cargo metadata` reports them, and its description. Rows are in name order.
+// The workspace is the one of the Rust markers (see Rust crates).
+//
+// The description is the `description` of the `Cargo.toml` of the crate, with
+// `description.workspace = true` taking `workspace.package.description`. A crate
+// with none has the first line of the inner doc comment (`//!`) at the top of its
+// crate root, which is the library, or else the first binary: the first
+// non-empty `//!` line, with the `#` of a Markdown heading removed and no
+// cut at a sentence end. Blank lines, line comments and `#![...]` attributes may
+// come before that comment. A block doc comment (`/*! */`), a first doc line
+// that is a code fence, an unreadable crate root and a crate with no
+// comment give an empty cell. Reading them needs no cargo and no Rust helper, so
+// the column is the same with no cargo.
 //
 //   - `kind=` lists only the crates with a target of that kind.
-//   - `deps=` is the kind of dependency in the last column: `normal`, the default,
+//   - `deps=` is the kind of dependency in the Depends on column: `normal`, the default,
 //     `dev`, `build`, or `all`. With `all`, a dev or build dependency has its kind
 //     in parentheses.
 //   - `match=` is a glob, as in Go's `path.Match`, for the names of the crates.

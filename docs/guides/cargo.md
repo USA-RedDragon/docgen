@@ -12,6 +12,7 @@ version = "0.3.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
+description = "A fixture workspace"
 authors = ["Docgen Fixture"]
 ```
 <!-- /docgen:code -->
@@ -129,28 +130,28 @@ When the `features` settings or `features=` on the marker enable something, the 
 
 ```
 <!-- docgen:crates -->
-| Crate | Path | Kind | Version | Depends on |
-|---|---|---|---|---|
-| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core` |
-| `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` |
-| `cfg-app` | `crates/cfg-app` | lib | 0.1.0 |  |
-| `core-a` | `crates/core-a` | lib | 0.1.0 |  |
-| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
-| `err-store` | `crates/err-store` | lib | 0.4.2 |  |
-| `feat-gate` | `crates/feat-gate` | lib | 0.1.0 |  |
-| `limits` | `crates/limits` | lib | 0.1.0 |  |
-| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
-| `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  |
-| `states-door` | `crates/states-door` | lib | 0.1.0 |  |
-| `states-lamp` | `crates/states-lamp` | lib | 0.1.0 |  |
-| `states-odd` | `crates/states-odd` | lib | 0.1.0 |  |
-| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
+| Crate | Path | Kind | Version | Depends on | Description |
+|---|---|---|---|---|---|
+| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core` |  |
+| `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` | Core of the cargo marker fixture |
+| `cfg-app` | `crates/cfg-app` | lib | 0.1.0 |  | Config structs for the docgen:config tests. |
+| `core-a` | `crates/core-a` | lib | 0.1.0 |  | The core of the fixture app. |
+| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  | A fixture workspace |
+| `err-store` | `crates/err-store` | lib | 0.4.2 |  | A store that returns errors, for the Returned by column and docs.rs links. |
+| `feat-gate` | `crates/feat-gate` | lib | 0.1.0 |  | Limits that depend on the Cargo features of the crate. |
+| `limits` | `crates/limits` | lib | 0.1.0 |  | Limits of the fixture. |
+| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  | Helpers to run and to test. |
+| `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  | A crate whose doctest fails. |
+| `states-door` | `crates/states-door` | lib | 0.1.0 |  | A door whose state is the variant of an enum, for docgen:states. |
+| `states-lamp` | `crates/states-lamp` | lib | 0.1.0 |  | A lamp with a timer, for docgen:states. |
+| `states-odd` | `crates/states-odd` | lib | 0.1.0 |  | Machines that docgen:states records in part or not at all. |
+| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |  |
 <!-- /docgen:crates -->
 ```
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-Each row is a crate with its path, kind, version and the crates of the workspace that it depends on, in name order. `kind=` keeps one kind of crate, `match=` keeps the names that a glob matches, and `deps=` picks the dependencies in the last column: `normal`, `dev`, `build` or `all`.
+Each row is a crate with its path, kind, version, the crates of the workspace that it depends on, and its description, in name order. The description is the `description` of its `Cargo.toml`, with `description.workspace = true` taking the workspace value, or else the first line of the `//!` doc comment of its crate root. `kind=` keeps one kind of crate, `match=` keeps the names that a glob matches, and `deps=` picks the dependencies in the Depends on column: `normal`, `dev`, `build` or `all`.
 
 <!-- site:editor -->
 <!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-crates-filter.md -->
@@ -165,12 +166,12 @@ Each row is a crate with its path, kind, version and the crates of the workspace
 
 ```
 <!-- docgen:crates kind=bin deps=all -->
-| Crate | Path | Kind | Version | Depends on |
-|---|---|---|---|---|
-| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core`, `limits` (dev) |
-| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
-| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
-| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
+| Crate | Path | Kind | Version | Depends on | Description |
+|---|---|---|---|---|---|
+| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core`, `limits` (dev) |  |
+| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  | A fixture workspace |
+| `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  | Helpers to run and to test. |
+| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |  |
 <!-- /docgen:crates -->
 ```
 <!-- /docgen:docgen -->

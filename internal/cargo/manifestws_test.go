@@ -85,6 +85,7 @@ version = "1.2.3"
 edition = "2024"
 rust-version = "1.85"
 publish = ["crates-io", "inner"]
+description = "The shared description"
 
 [workspace.dependencies]
 shared = { path = "crates/shared" }
@@ -96,6 +97,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+description.workspace = true
 autoexamples = false
 
 [lib]
@@ -166,6 +168,12 @@ publish = false
 	}
 	if app.Version != "1.2.3" || app.Edition != "2024" || app.RustVersion != "1.85" {
 		t.Errorf("app fields %s %s %s, want the workspace values", app.Version, app.Edition, app.RustVersion)
+	}
+	if app.Description != "The shared description" {
+		t.Errorf("app description %q, want the workspace value", app.Description)
+	}
+	if shared, err := ws.Package("shared"); err != nil || shared.Description != "" {
+		t.Errorf("shared description %q, %v, want none", shared.Description, err)
 	}
 	appDir := filepath.Join(dir, "crates", "app")
 	wantTargets := []Target{

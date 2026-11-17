@@ -195,6 +195,9 @@ func (r *manifestReader) readPackage(dir string) (*Package, []rawDep, error) {
 	if p.RustVersion, err = field("rust-version", ""); err != nil {
 		return nil, nil, err
 	}
+	if p.Description, err = field("description", ""); err != nil {
+		return nil, nil, err
+	}
 	if p.Targets, err = targets(m, p); err != nil {
 		return nil, nil, err
 	}

@@ -2,4 +2,5 @@
 name = "core-a-bin"
 version = "0.1.0"
 edition = "2021"
+description.workspace = true
 publish = false
