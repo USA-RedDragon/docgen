@@ -282,7 +282,7 @@ func TestMarkdown(t *testing.T) {
 		"## Details\n\nSee [docs] and `[not a link]` and [Rust](https://rust-lang.org).\n\n" +
 		"[docs]: https://example.com/docs\n[`Config`]: crate::Config\n\n" +
 		"# Other\n\nNot copied."
-	got, err := Markdown(doc, "", "x")
+	got, err := Markdown(doc, "", "x", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +297,7 @@ func TestMarkdown(t *testing.T) {
 	if got != want {
 		t.Errorf("Markdown =\n%s\nwant\n%s", got, want)
 	}
-	sec, err := Markdown(doc, "Usage", "x")
+	sec, err := Markdown(doc, "Usage", "x", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,11 +308,48 @@ func TestMarkdown(t *testing.T) {
 		"Nope":  "no heading # Nope in the doc of x",
 		"Empty": "heading # Empty in the doc of x has no text",
 	} {
-		if _, err := Markdown("# Empty\n\n# Next\n\ntext", section, "x"); err == nil || err.Error() != want {
+		if _, err := Markdown("# Empty\n\n# Next\n\ntext", section, "x", nil); err == nil || err.Error() != want {
 			t.Errorf("section %s: %v, want %q", section, err, want)
 		}
 	}
-	if _, err := Markdown("  \n", "", "x"); err == nil || err.Error() != "no doc comment for x" {
+	if _, err := Markdown("  \n", "", "x", nil); err == nil || err.Error() != "no doc comment for x" {
 		t.Errorf("empty doc: %v", err)
+	}
+}
+
+func TestHelperReturnTypes(t *testing.T) {
+	t.Parallel()
+	c := readFixture(t, "crates/err-store/src/lib.rs")[0]
+	if len(c.Errors) != 0 || len(c.Warnings) != 0 {
+		t.Fatalf("errors %v, warnings %v", c.Errors, c.Warnings)
+	}
+	store := c.Module("store")
+	for name, want := range map[string]string{
+		"count":           "Result<usize>",
+		"Store::open":     "Result<Self>",
+		"Store::get":      "std::result::Result<&T, Error>",
+		"Store::remove":   "Result<T>",
+		"Store::CAPACITY": "",
+	} {
+		it := store.Item(name, "")
+		if it == nil || it.Ret != want {
+			t.Errorf("%s: %+v, want Ret %q", name, it, want)
+		}
+	}
+	f, err := c.Lookup("err-store", "Error")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.ReturnedBy(f)
+	want := map[string][]string{
+		"NotFound": {"store::Store::get", "store::Store::remove", "store::count"},
+		"Locked":   {"store::Store::open", "store::Store::remove", "store::count"},
+		"Corrupt":  {"error::Error::from_code", "repair"},
+	}
+	for v, fns := range want {
+		slices.Sort(fns)
+		if !slices.Equal(got[v], fns) {
+			t.Errorf("ReturnedBy[%s] = %v, want %v", v, got[v], fns)
+		}
 	}
 }

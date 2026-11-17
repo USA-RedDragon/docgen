@@ -169,12 +169,12 @@ func TestRustRead(t *testing.T) {
 		"section=Limits -->\nThe app runs at most `limits::MAX_JOBS` jobs at once, and each job has a\ntimeout.\n\n#### Timeouts\n\nA job that runs past its timeout stops.\n<!-- /docgen:doc -->",
 		"name=limits::Port::HTTP -->\nThe port of a plain HTTP server.\n<",
 		"name=net -->\nNetworking.\n<",
-		"| Error | Message | Source | Meaning |\n|---|---|---|---|\n",
-		"| `Error::Read` | `read {path}: {source}` | `std::io::Error` | A file could not be read. |\n",
-		"| `Error::Number` | `line {line}: bad number` | `ParseIntError` | A number in the config is not valid. |\n",
-		"| `Error::Limit` | the message of `crate::limits::LimitError` | `crate::limits::LimitError`, with From | The job count is out of range. |\n",
-		"| `Error::NoJobs` | `no jobs` |  | The app has no jobs \\| none at all. |\n",
-		"| `LimitError::TooLarge` | `{0} is above the limit` |  | The count is above MAX_JOBS. |\n",
+		"| Error | Returned by | Message | Source | Meaning |\n|---|---|---|---|---|\n",
+		"| `Error::Read` |  | `read {path}: {source}` | `std::io::Error` | A file could not be read. |\n",
+		"| `Error::Number` |  | `line {line}: bad number` | `ParseIntError` | A number in the config is not valid. |\n",
+		"| `Error::Limit` |  | the message of `crate::limits::LimitError` | `crate::limits::LimitError`, with From | The job count is out of range. |\n",
+		"| `Error::NoJobs` |  | `no jobs` |  | The app has no jobs \\| none at all. |\n",
+		"| `LimitError::TooLarge` |  | `{0} is above the limit` |  | The count is above MAX_JOBS. |\n",
 	)
 	if rc, log := docgen(t, root, "check"); rc != 0 {
 		t.Fatalf("check: rc %d, log:\n%s", rc, log)

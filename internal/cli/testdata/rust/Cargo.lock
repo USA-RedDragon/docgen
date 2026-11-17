@@ -150,6 +150,13 @@ name = "core-a-bin"
 version = "0.1.0"
 
 [[package]]
+name = "err-store"
+version = "0.4.2"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "feat-gate"
 version = "0.1.0"
 

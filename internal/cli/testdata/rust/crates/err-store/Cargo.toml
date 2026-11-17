@@ -1,0 +1,9 @@
+[package]
+name = "err-store"
+version = "0.4.2"
+edition = "2021"
+description = "A store that returns errors, for the Returned by column and docs.rs links."
+license = "MIT"
+
+[dependencies]
+thiserror = "2"

@@ -31,24 +31,28 @@ func rustdocAttr(w string) bool {
 //   - A heading moves down two levels, so # is ###.
 //   - A code block with no language, or with only rustdoc words such as
 //     no_run, is a rust block, with no hidden lines (# at the start).
-//   - An intra-doc link, such as [`Config`] or [text](crate::Config), is its
-//     text, since a page has no rustdoc to resolve it.
+//   - An intra-doc link, such as [`Config`] or [text](crate::Config), is a
+//     link to the URL that resolve returns for its path, and is its text
+//     when resolve is nil or returns false. A reference definition of an
+//     intra-doc link is removed.
 //
 // A section other than "" selects the text below the heading with that text,
 // up to the next heading of the same or a higher level. what names the item in
-// errors.
-func Markdown(doc, section, what string) (string, error) {
+// errors. A reference definition anywhere in doc counts, also outside the
+// section.
+func Markdown(doc, section, what string, resolve func(path string) (string, bool)) (string, error) {
 	if strings.TrimSpace(doc) == "" {
 		return "", fmt.Errorf("no doc comment for %s", what)
 	}
 	lines := strings.Split(doc, "\n")
+	defs := definitions(lines)
 	if section != "" {
 		var err error
 		if lines, err = sectionLines(lines, section, what); err != nil {
 			return "", err
 		}
 	}
-	return strings.Trim(strings.Join(rewrite(lines), "\n"), "\n"), nil
+	return strings.Trim(strings.Join(rewrite(lines, defs, resolve), "\n"), "\n"), nil
 }
 
 // sectionLines returns the lines below the heading section.
@@ -115,13 +119,26 @@ func isRustInfo(info string) bool {
 	return true
 }
 
-func rewrite(lines []string) []string {
-	defs := map[string]bool{}
+// definitions returns the targets of the reference definitions of lines, by
+// label in lower case. The first definition of a label wins, as in Markdown.
+func definitions(lines []string) map[string]string {
+	defs := map[string]string{}
+	fence := ""
 	for _, l := range lines {
-		if m := refDef.FindStringSubmatch(l); m != nil && !isPath(m[2]) {
-			defs[strings.ToLower(m[1])] = true
+		next := fenceState(fence, l)
+		if fence == "" && next == "" {
+			if m := refDef.FindStringSubmatch(l); m != nil {
+				if _, ok := defs[strings.ToLower(m[1])]; !ok {
+					defs[strings.ToLower(m[1])] = m[2]
+				}
+			}
 		}
+		fence = next
 	}
+	return defs
+}
+
+func rewrite(lines []string, defs map[string]string, resolve func(string) (string, bool)) []string {
 	out := make([]string, 0, len(lines))
 	fence, rust := "", false
 	for _, l := range lines {
@@ -160,7 +177,7 @@ func rewrite(lines []string) []string {
 			out = append(out, strings.Repeat("#", level)+" "+strings.TrimSpace(m[2]))
 			continue
 		}
-		out = append(out, links(l, defs))
+		out = append(out, links(l, defs, resolve))
 	}
 	return out
 }
@@ -173,9 +190,9 @@ func isPath(s string) bool {
 	return rustPath.MatchString(s)
 }
 
-// links returns l with each intra-doc link as its text. Links in code spans
-// stay.
-func links(l string, defs map[string]bool) string {
+// links returns l with each intra-doc link as a link to the URL of resolve, or
+// as its text. Links in code spans stay.
+func links(l string, defs map[string]string, resolve func(string) (string, bool)) string {
 	spans := codeSpans(l)
 	var b strings.Builder
 	at := 0
@@ -184,37 +201,57 @@ func links(l string, defs map[string]bool) string {
 			continue
 		}
 		text := l[m[2]:m[3]]
-		intra := isIntra(l, m, text, defs)
+		target, intra := intraTarget(l, m, text, defs)
 		if !intra {
 			continue
 		}
 		b.WriteString(l[at:m[0]])
-		b.WriteString(text)
+		if url, ok := resolveLink(resolve, target); ok {
+			b.WriteString("[" + text + "](" + url + ")")
+		} else {
+			b.WriteString(text)
+		}
 		at = m[1]
 	}
 	b.WriteString(l[at:])
 	return b.String()
 }
 
-// isIntra reports whether the link match m of l, with the text text, is an
-// intra-doc link: its target, or its label with no definition in defs, is a
-// Rust path.
-func isIntra(l string, m []int, text string, defs map[string]bool) bool {
+func resolveLink(resolve func(string) (string, bool), target string) (string, bool) {
+	if resolve == nil {
+		return "", false
+	}
+	return resolve(target)
+}
+
+// intraTarget returns the target of the link match m of l, with the text text,
+// when it is an intra-doc link: its target, or the target of its label in defs,
+// or else its label, is a Rust path.
+func intraTarget(l string, m []int, text string, defs map[string]string) (string, bool) {
+	var target string
 	switch {
 	case m[4] >= 0:
-		return isPath(l[m[4]:m[5]])
+		target = l[m[4]:m[5]]
 	case m[6] >= 0:
 		label := l[m[6]:m[7]]
 		if label == "" {
 			label = text
 		}
-		return !defs[strings.ToLower(label)] && isPath(label)
+		target = labelTarget(defs, label)
+	default:
+		if m[1] < len(l) && l[m[1]] == ':' {
+			return "", false
+		}
+		target = labelTarget(defs, text)
 	}
-	next := ""
-	if m[1] < len(l) {
-		next = l[m[1] : m[1]+1]
+	return target, isPath(target)
+}
+
+func labelTarget(defs map[string]string, label string) string {
+	if t, ok := defs[strings.ToLower(label)]; ok {
+		return t
 	}
-	return next != ":" && !defs[strings.ToLower(text)] && isPath(text)
+	return label
 }
 
 // codeSpans returns the byte ranges of the code spans of l.

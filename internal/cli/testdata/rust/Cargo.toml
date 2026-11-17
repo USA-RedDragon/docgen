@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/cargo-b-cli", "crates/cargo-b-core", "crates/core-a", "crates/core-a-bin", "crates/feat-gate", "crates/limits", "crates/run-c", "crates/run-c-broken", "crates/tool"]
+members = ["crates/cargo-b-cli", "crates/cargo-b-core", "crates/core-a", "crates/core-a-bin", "crates/err-store", "crates/feat-gate", "crates/limits", "crates/run-c", "crates/run-c-broken", "crates/tool"]
 
 [workspace.package]
 version = "0.3.0"

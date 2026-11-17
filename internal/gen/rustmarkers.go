@@ -103,7 +103,7 @@ func (h *rustDocHandler) plan(p *plan) {
 }
 
 func (h *rustDocHandler) fill(context.Context, job) (string, []outFile, error) {
-	_, f, err := h.rp.lookup(h.crate, h.name)
+	c, f, err := h.rp.lookup(h.crate, h.name)
 	if err != nil {
 		return "", nil, err
 	}
@@ -114,7 +114,11 @@ func (h *rustDocHandler) fill(context.Context, job) (string, []outFile, error) {
 	if f.Path != "" {
 		what = f.Path + " in crate " + h.crate
 	}
-	body, err := rustsrc.Markdown(doc, h.section, what)
+	scopes := []*rustsrc.Module{f.Module}
+	if f.Item == nil && f.Module.Parent() != nil {
+		scopes = append(scopes, f.Module.Parent())
+	}
+	body, err := rustsrc.Markdown(doc, h.section, what, c.docs().Resolver(scopes...))
 	if err != nil {
 		return "", nil, err
 	}
@@ -141,7 +145,7 @@ func (h *rustErrorsHandler) plan(p *plan) {
 }
 
 func (h *rustErrorsHandler) fill(context.Context, job) (string, []outFile, error) {
-	_, f, err := h.rp.lookup(h.crate, h.typ)
+	c, f, err := h.rp.lookup(h.crate, h.typ)
 	if err != nil {
 		return "", nil, err
 	}
@@ -152,24 +156,29 @@ func (h *rustErrorsHandler) fill(context.Context, job) (string, []outFile, error
 	if !derives(it, "Error") {
 		return "", nil, fmt.Errorf("%s has no #[derive(thiserror::Error)]", h.typ)
 	}
+	docs := c.docs()
+	by := c.crate.ReturnedBy(f)
 	var b strings.Builder
-	b.WriteString("| Error | Message | Source | Meaning |\n|---|---|---|---|\n")
+	b.WriteString("| Error | Returned by | Message | Source | Meaning |\n|---|---|---|---|---|\n")
 	if it.Kind == rustsrc.KindStruct {
-		b.WriteString(errorRow(it.Name, it.Error, nil, it.Fields, it.Doc))
+		url, _ := docs.Item(f)
+		b.WriteString(errorRow(it.Name, url, by[""], it.Error, nil, it.Fields, it.Doc))
 		return b.String(), nil, nil
 	}
 	if len(it.Variants) == 0 {
 		return "", nil, fmt.Errorf("enum %s has no variants", h.typ)
 	}
 	for _, v := range it.Variants {
-		b.WriteString(errorRow(it.Name+"::"+v.Name, v.Error, it.Error, v.Fields, v.Doc))
+		url, _ := docs.Variant(f, v.Name)
+		b.WriteString(errorRow(it.Name+"::"+v.Name, url, by[v.Name], v.Error, it.Error, v.Fields, v.Doc))
 	}
 	return b.String(), nil, nil
 }
 
-// errorRow returns the row of one error: its name, the message of attr or else
-// of the enum attr outer, the source field and the first sentence of doc.
-func errorRow(name string, attr, outer *rustsrc.ErrorAttr, fields []rustsrc.Field, doc string) string {
+// errorRow returns the row of one error: its name, linked to url when that is
+// not "", the functions that return it, the message of attr or else of the enum
+// attr outer, the source field and the first sentence of doc.
+func errorRow(name, url string, by []string, attr, outer *rustsrc.ErrorAttr, fields []rustsrc.Field, doc string) string {
 	if attr == nil {
 		attr = outer
 	}
@@ -192,7 +201,15 @@ func errorRow(name string, attr, outer *rustsrc.ErrorAttr, fields []rustsrc.Fiel
 			src = append(src, markdown.CodeSpan(f.Type))
 		}
 	}
-	return fmt.Sprintf("| %s | %s | %s | %s |\n", markdown.CodeSpan(name), markdown.Cell(msg), markdown.Cell(strings.Join(src, ", ")), markdown.Cell(firstSentence(doc)))
+	label := markdown.CodeSpan(name)
+	if url != "" {
+		label = "[" + label + "](" + url + ")"
+	}
+	fns := make([]string, len(by))
+	for i, f := range by {
+		fns[i] = markdown.CodeSpan(f)
+	}
+	return fmt.Sprintf("| %s | %s | %s | %s | %s |\n", label, markdown.Cell(strings.Join(fns, ", ")), markdown.Cell(msg), markdown.Cell(strings.Join(src, ", ")), markdown.Cell(firstSentence(doc)))
 }
 
 // derives reports whether it derives a trait whose path ends in name.

@@ -149,6 +149,15 @@ type rustCrate struct {
 	err   error
 }
 
+// docs returns the docs.rs URLs of the library that c is the read of, or nil
+// when the crate has none to link to.
+func (c *rustCrate) docs() *rustsrc.Docs {
+	if c.bin != "" {
+		return nil
+	}
+	return rustsrc.NewDocs(c.pkg, c.crate)
+}
+
 // rust returns the Rust plan of p, and makes it on first use.
 func (p *plan) rust() *rustPlan {
 	if p.rustWork == nil {

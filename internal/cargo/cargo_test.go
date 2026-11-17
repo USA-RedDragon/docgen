@@ -65,12 +65,19 @@ func TestOpenFixture(t *testing.T) {
 	for _, p := range ws.Packages {
 		names = append(names, p.Name)
 	}
-	if want := []string{"cargo-b-cli", "cargo-b-core", "core-a", "core-a-bin", "feat-gate", "limits", "run-c", "run-c-broken", "tool"}; !slices.Equal(names, want) {
+	if want := []string{"cargo-b-cli", "cargo-b-core", "core-a", "core-a-bin", "err-store", "feat-gate", "limits", "run-c", "run-c-broken", "tool"}; !slices.Equal(names, want) {
 		t.Fatalf("packages %v, want %v", names, want)
 	}
 	limits, err := ws.Package("limits")
 	if err != nil {
 		t.Fatal(err)
+	}
+	store, err := ws.Package("err-store")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !store.Published() || limits.Published() {
+		t.Errorf("Published: err-store %v, limits %v", store.Published(), limits.Published())
 	}
 	if limits.Version != "0.1.0" || limits.Edition != "2024" || limits.RustVersion != "1.85" {
 		t.Errorf("limits: %+v", limits)
@@ -275,6 +282,7 @@ func TestCancel(t *testing.T) {
 }
 
 func TestPublished(t *testing.T) {
+	t.Parallel()
 	const meta = `{"workspace_root": "/w", "packages": [
 		{"name": "open", "version": "1.0.0", "manifest_path": "/w/open/Cargo.toml", "publish": null},
 		{"name": "closed", "version": "1.0.0", "manifest_path": "/w/closed/Cargo.toml", "publish": []},
