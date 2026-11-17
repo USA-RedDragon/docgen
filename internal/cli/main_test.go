@@ -27,7 +27,7 @@ func docgen(t *testing.T, dir string, args ...string) (int, string) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	rc := run(t.Context(), dir, args, f)
+	rc := runTo(t.Context(), dir, args, os.Stdout, f, testOptions())
 	b, _ := os.ReadFile(f.Name())
 	return rc, string(b)
 }

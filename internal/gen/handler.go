@@ -20,6 +20,7 @@ const (
 	argFile  = "file"
 	argName  = "name"
 	argPrint = "print"
+	argCrate = "crate"
 )
 
 // typeArgs holds the pkg= and type= arguments of a marker.
@@ -87,6 +88,22 @@ func (j job) source(path string) ([]byte, error) {
 	return excerpt.Source(b), nil
 }
 
+// A langHandler is a marker kind with a Go form and a Rust form. Bind picks the
+// Rust form for a marker with crate=, and the Go form for any other.
+type langHandler struct {
+	handler
+	goH   handler
+	rustH handler
+}
+
+func (h *langHandler) Bind(a *marker.Args) {
+	h.handler = h.goH
+	if _, ok := a.Optional(argCrate); ok {
+		h.handler = h.rustH
+	}
+	h.handler.Bind(a)
+}
+
 // newHandler returns a new handler of a marker kind, and nil for an unknown
 // kind.
 func newHandler(kind string) handler {
@@ -100,17 +117,17 @@ func newHandler(kind string) handler {
 	case "config":
 		return &configHandler{}
 	case "const":
-		return &constHandler{}
+		return &langHandler{goH: &constHandler{}, rustH: &rustConstHandler{}}
 	case "errors":
-		return &errorsHandler{}
+		return &langHandler{goH: &errorsHandler{}, rustH: &rustErrorsHandler{}}
 	case "doc":
-		return &docHandler{}
+		return &langHandler{goH: &docHandler{}, rustH: &rustDocHandler{}}
 	case "gomod":
 		return &goModHandler{}
 	case "usage":
 		return &usageHandler{}
 	case "configulator":
-		return &configulatorHandler{}
+		return &langHandler{goH: &configulatorHandler{}, rustH: &rustConfigulatorHandler{}}
 	case "docgen":
 		return &docgenHandler{}
 	case "var":

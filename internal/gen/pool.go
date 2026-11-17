@@ -17,6 +17,18 @@ func newSlots(limit int) *slots {
 	return &slots{sem: make(chan struct{}, limit)}
 }
 
+// acquire takes one slot for a command that a function of a pool runs with no
+// slot of its own, such as a cargo command. It returns the function that
+// releases the slot, or the cause of ctx when ctx ends first.
+func (s *slots) acquire(ctx context.Context) (func(), error) {
+	select {
+	case s.sem <- struct{}{}:
+		return func() { <-s.sem }, nil
+	case <-ctx.Done():
+		return nil, context.Cause(ctx)
+	}
+}
+
 // A pool runs functions at the same time, each in a slot. A function that has
 // not started when ctx ends does not run.
 type pool struct {
@@ -52,6 +64,16 @@ func (w *pool) run(fn func(ctx context.Context)) {
 			return
 		}
 		defer func() { <-w.slots.sem }()
+		if w.ctx.Err() == nil {
+			fn(w.ctx)
+		}
+	})
+}
+
+// runFree runs fn with no slot. fn takes a slot for each command that it runs,
+// with acquire. A function that has not started when ctx ends does not run.
+func (w *pool) runFree(fn func(ctx context.Context)) {
+	w.wg.Go(func() {
 		if w.ctx.Err() == nil {
 			fn(w.ctx)
 		}

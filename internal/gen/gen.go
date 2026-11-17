@@ -16,6 +16,7 @@ import (
 	"github.com/USA-RedDragon/docgen/internal/gocmd"
 	"github.com/USA-RedDragon/docgen/internal/gomod"
 	"github.com/USA-RedDragon/docgen/internal/goprint"
+	"github.com/USA-RedDragon/docgen/internal/rustsrc"
 )
 
 // A Generator fills the pages of one repository from one Go module.
@@ -49,6 +50,7 @@ type Generator struct {
 	printAs  string
 	vars     map[string]string
 	varsFile string
+	rust     *rustSet
 }
 
 // Options holds the settings of a Generator.
@@ -78,6 +80,9 @@ type Options struct {
 	// Settings returns the settings of the copy at root of a docgen:docgen
 	// marker. nil means a scan of the whole copy.
 	Settings func(root string) (Settings, error)
+	// RustHelperDir holds the build of the helper that reads Rust crates. ""
+	// means rust-helper in the docgen directory of the user cache.
+	RustHelperDir string
 }
 
 // A lockedWriter serializes writes, so that the lines of concurrent work stay
@@ -117,7 +122,7 @@ func New(root, modDir string, log io.Writer, opts Options) (*Generator, error) {
 	if settings == nil {
 		settings = func(string) (Settings, error) { return Settings{Docs: "."}, nil }
 	}
-	return &Generator{
+	g := &Generator{
 		mod:      mod,
 		session:  &gocmd.Session{Jobs: opts.Jobs, Tags: opts.Tags},
 		log:      &lockedWriter{w: log},
@@ -131,7 +136,9 @@ func New(root, modDir string, log io.Writer, opts Options) (*Generator, error) {
 		printAs:  opts.Print,
 		vars:     opts.Vars,
 		varsFile: opts.VarsFile,
-	}, nil
+	}
+	g.rust = g.newRustSet(&rustsrc.Helper{CacheDir: opts.RustHelperDir})
+	return g, nil
 }
 
 // printValue returns the print= value of a marker with the argument arg, with ""

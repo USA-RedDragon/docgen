@@ -23,6 +23,13 @@ const (
 	configFile = ".docgen.yaml"
 )
 
+// runOptions holds the settings of a run that are not flags or config.
+type runOptions struct {
+	// rustHelperDir is the gen.Options.RustHelperDir of the run. Tests set
+	// it, so that they do not build into the user cache.
+	rustHelperDir string
+}
+
 // fileOptions returns the options of the config file of the repository at root.
 func fileOptions(root string) *configulator.FileOptions {
 	return &configulator.FileOptions{
@@ -73,7 +80,7 @@ func Main(args []string, stderr io.Writer) int {
 
 // run runs docgen in dir with the diff on the standard output of the process.
 func run(ctx context.Context, dir string, args []string, stderr io.Writer) int {
-	return runTo(ctx, dir, args, os.Stdout, stderr)
+	return runTo(ctx, dir, args, os.Stdout, stderr, runOptions{})
 }
 
 // varsFile returns the slash path in root of the config file that c loaded, with
@@ -88,7 +95,7 @@ func varsFile(c *configulator.Configulator[Config], dir, root string) string {
 
 // runTo runs docgen in dir. The diff of check -diff goes to stdout, and all other
 // text goes to stderr.
-func runTo(ctx context.Context, dir string, args []string, stdout, stderr io.Writer) int {
+func runTo(ctx context.Context, dir string, args []string, stdout, stderr io.Writer, opts runOptions) int {
 	root := findRoot(dir)
 	fs := flag.NewFlagSet("docgen", flag.ContinueOnError)
 	c := bind(fs, root)
@@ -130,15 +137,16 @@ func runTo(ctx context.Context, dir string, args []string, stdout, stderr io.Wri
 		return 1
 	}
 	g, err := gen.New(root, abs(root, cfg.Module), stderr, gen.Options{
-		Jobs:     cfg.Jobs,
-		Tags:     cfg.buildTags(),
-		Diff:     *diff,
-		Audit:    cmd == cmdCheck,
-		Depth:    cfg.Depth,
-		Print:    cfg.Print,
-		Vars:     cfg.Vars,
-		VarsFile: varsFile(c, dir, root),
-		Settings: copySettings,
+		Jobs:          cfg.Jobs,
+		Tags:          cfg.buildTags(),
+		Diff:          *diff,
+		Audit:         cmd == cmdCheck,
+		Depth:         cfg.Depth,
+		Print:         cfg.Print,
+		Vars:          cfg.Vars,
+		VarsFile:      varsFile(c, dir, root),
+		Settings:      copySettings,
+		RustHelperDir: opts.rustHelperDir,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, "docgen:", err)

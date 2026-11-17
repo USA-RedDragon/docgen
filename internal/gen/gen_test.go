@@ -53,7 +53,7 @@ func setup(t *testing.T, files map[string]string) (string, *Generator) {
 
 func generator(t *testing.T, root string) *Generator {
 	t.Helper()
-	g, err := New(root, root, io.Discard, Options{})
+	g, err := New(root, root, io.Discard, Options{RustHelperDir: filepath.Join(t.TempDir(), "rust-helper")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,11 @@ func TestConfigulatorArgs(t *testing.T) {
 		if err := pg.parse(); err != nil {
 			t.Fatal(err)
 		}
-		h, ok := pg.markers[0].handler.(*configulatorHandler)
+		lh, ok := pg.markers[0].handler.(*langHandler)
+		if !ok {
+			t.Fatalf("handler %T", pg.markers[0].handler)
+		}
+		h, ok := lh.handler.(*configulatorHandler)
 		if !ok {
 			t.Fatalf("handler %T", pg.markers[0].handler)
 		}
@@ -324,7 +328,7 @@ func TestRunCanceled(t *testing.T) {
 func TestJobsZeroLeavesSessionJobsAtZero(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	g, err := New(root, root, io.Discard, Options{})
+	g, err := New(root, root, io.Discard, Options{RustHelperDir: filepath.Join(t.TempDir(), "rust-helper")})
 	if err != nil {
 		t.Fatal(err)
 	}

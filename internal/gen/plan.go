@@ -25,6 +25,7 @@ type plan struct {
 	toolJobs []func(ctx context.Context)
 	nested   map[string]*nestedRun
 	values   []valueReader
+	rustWork *rustPlan
 	gen      *Generator
 }
 
@@ -143,6 +144,9 @@ func (g *Generator) prepare(ctx context.Context, p *plan) (*prepared, error) {
 	}
 	for _, job := range p.toolJobs {
 		w.run(job)
+	}
+	if p.rustWork != nil {
+		w.runFree(func(ctx context.Context) { g.rustPrepare(ctx, p.rustWork) })
 	}
 	var err error
 	res.loaded, err = load.Packages(ctx, g.mod, g.session, p.pkgs)

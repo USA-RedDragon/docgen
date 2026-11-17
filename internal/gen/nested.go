@@ -187,6 +187,7 @@ func (g *Generator) nestedGenerator(ctx context.Context, r *nestedRun, work, ses
 	inner.session = g.session.Nested()
 	inner.session.SetWorkspace(sampleWorkspace(g.session.Workspace(), g.mod.RootDir(r.root), work))
 	inner.slots = g.slots
+	inner.rust = inner.newRustSet(g.rust.helper)
 	inner.depth = g.depth - 1
 	inner.level = g.level + 1
 	if g.printAs != goprint.PrintRaw {

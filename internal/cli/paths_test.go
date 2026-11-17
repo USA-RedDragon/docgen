@@ -20,7 +20,7 @@ const leak = "leaked-value"
 func docgenDiff(t *testing.T, dir string, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	rc := runTo(t.Context(), dir, args, &stdout, &stderr)
+	rc := runTo(t.Context(), dir, args, &stdout, &stderr, testOptions())
 	return rc, stderr.String(), stdout.String()
 }
 
@@ -617,7 +617,7 @@ func TestDiffWriteError(t *testing.T) {
 	t.Parallel()
 	root := pageRepo(t, map[string]string{"docs/a.md": goodPair + "\n"})
 	var stderr bytes.Buffer
-	if rc := runTo(t.Context(), root, []string{"check", "-diff"}, failingWriter{}, &stderr); rc != 1 {
+	if rc := runTo(t.Context(), root, []string{"check", "-diff"}, failingWriter{}, &stderr, testOptions()); rc != 1 {
 		t.Fatalf("rc %d, log:\n%s", rc, stderr.String())
 	}
 	wantIn(t, stderr.String(), "no space")
