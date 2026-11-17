@@ -29,9 +29,14 @@ func needCargo(t *testing.T) {
 	}
 }
 
+// fixtureRegions is a page with the regions of the Rust fixture that the
+// guides of the repository excerpt, so that a check of a copy finds them used.
+const fixtureRegions = "<!-- docgen:code file=crates/run-c/src/lib.rs region=area -->\n<!-- /docgen:code -->\n"
+
 // rustRepo copies the Rust fixture workspace to a new directory with the
 // files, and returns its path. The copy has no pages of the fixture, which the
-// guides fill, so that a test checks only the pages that it writes.
+// guides fill, so that a test checks only the pages that it writes, and a page
+// docs/regions.md with fixtureRegions.
 func rustRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -41,6 +46,7 @@ func rustRepo(t *testing.T, files map[string]string) string {
 	if err := os.RemoveAll(filepath.Join(root, "docs")); err != nil {
 		t.Fatal(err)
 	}
+	writeTree(t, root, map[string]string{"docs/regions.md": fixtureRegions})
 	writeTree(t, root, files)
 	return root
 }

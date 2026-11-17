@@ -69,11 +69,15 @@
 //
 // # docgen:output
 //
-// The output of a program, a command or an Example.
+// The output of a program, a command or an Example, or the checked code of a
+// Rust doctest.
 //
 //	docgen:output cmd=<dir>
 //	docgen:output exec="<command>"
 //	docgen:output test=<pkg>.<ExampleName>
+//	docgen:output crate=<package> example=<name> [args="<args>"]
+//	docgen:output crate=<package> bin=<name> [args="<args>"]
+//	docgen:output crate=<package> doctest=<path::item>
 //
 // The arguments:
 //
@@ -90,6 +94,44 @@
 // The output must be the same on each run, or check fails. A program or command
 // with no output gives an empty block, and an Example with an empty `// Output:`
 // comment is an error.
+//
+// A marker with `crate=` is for Rust. The value is the name of a Cargo package
+// of the Cargo workspace in the module directory, so that directory holds the
+// `Cargo.toml`. A marker with `crate=` and any of `cmd=`, `exec=`, `test=` or
+// `pkg=` is an error, and so is one with `example=`, `bin=`, `doctest=` or
+// `args=` and no `crate=`. It has exactly one of these:
+//
+//   - `example=` is the standard output of `cargo run --locked --example` on the
+//     example of that name in the `examples` directory of the package, in a
+//     block of text. A nonzero exit status is an error that holds the standard
+//     error of the example, and an example with no output gives an empty block.
+//     An example that the package does not have is an error that lists the
+//     examples that it has.
+//   - `bin=` is the same for a binary target of the package, with `cargo run
+//     --locked --bin`.
+//   - `args=` goes with `example=` or `bin=` and holds the arguments of the
+//     program, split on white space. A part in double quotes is one argument,
+//     also with spaces. `args=` with `doctest=` is an error.
+//   - `doctest=` is the code of the doctests in the doc comment of an item, as
+//     one Rust code block for each doctest, in the order of the file. Give the
+//     path of the item in the crate as rustdoc names it, such as `double`,
+//     `shapes::area` or `Counter::next`, with no leading `crate::`. A crate name
+//     or `crate` alone is the doc comment of the crate itself. rustdoc hides the
+//     lines that start with `# ` and a line that is only `#`, and the code block
+//     has none of them, and `##` shows as `#`. Rust has no output to compare, so
+//     the page shows code and not output. The markers of one crate run in one
+//     `cargo test --locked --doc`, and update and check fail when a doctest
+//     fails to compile or fails when it runs, so a page cannot show a broken
+//     example. A doctest with `no_run` only compiles, and one with
+//     `compile_fail` must not compile. A doctest with `ignore` is an error, as
+//     nothing checks it. An item with no doctest is an error that lists the
+//     items that have one, and so is a crate with no library. The code is read
+//     from `///`, `//!` and `/** */` comments; a doc comment from a `#[doc]`
+//     attribute or a macro is an error.
+//
+// The builds of the Rust markers go to the temporary directory of the run, and
+// the run never changes `Cargo.lock`: a `Cargo.lock` that is out of date is an
+// error. It needs stable Rust, and a missing `cargo` is an error that says so.
 //
 // # docgen:code
 //

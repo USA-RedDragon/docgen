@@ -22,6 +22,7 @@ pub fn greeting(name: &str) -> String {
 
 /// Shapes.
 pub mod shapes {
+    // docgen:region area
     /// The area of a rectangle.
     ///
     /// ```
@@ -38,6 +39,7 @@ pub mod shapes {
     pub fn area(w: u32, h: u32) -> u32 {
         w * h
     }
+    // docgen:end
 }
 
 /// A counter.
