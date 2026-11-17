@@ -71,6 +71,8 @@ To record transitions, docgen runs `go test` with a hook at the top of each expo
 A new state, a new transition or a method that no longer changes the state fails check until you run update.
 
 The diagram is an SVG file with one box per state, in value order. A transition to a later state is an arc above the boxes, and a transition to an earlier state is an arc below them. Each arc has the method names as its label.
+
+A machine of a Rust crate has its own rules, which docgen:states lists.
 <!-- /docgen:doc -->
 
 ## Limits

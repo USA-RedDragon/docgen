@@ -1791,6 +1791,43 @@ The states and the transitions of a state machine, and an SVG diagram of them.
 The diagram goes in `states/<pkg>-<type>.svg` next to the page. `diagram=` gives another path, relative to the page, which must end in `.svg` and must not be a scanned page. Two machines with one diagram file are an error. `type=` can be an alias of a type of the package.
 
 Value receiver methods, promoted methods and methods with no receiver name are not recorded, and the output lists them under Not recorded.
+
+For a Rust crate:
+
+	docgen:states crate=<package> type=<path> [run=<filter>] [diagram=<path>] [features=<list>] [allfeatures=<bool>] [nodefaultfeatures=<bool>]
+
+`type=` is a path from the crate root (see Rust crates) to an enum or a struct with no generics. The state of the machine is the variant of an enum:
+
+  - For an enum, the state is its own variant.
+  - For a struct with a method `fn state(&self)` in an inherent impl, the state is the variant of the enum that it returns, or that the reference that it returns points to. A `state` method with parameters or generics, or whose return type is not an enum of the crate with no generics, is an error.
+  - For a struct with no `state` method, the state is the variant of its one field whose type is an enum of the crate. A struct with no such field is an error, and so is a struct with more than one, which lists them.
+
+The rows of the state table are the variants of that enum in source order, with their doc comments and no links. A variant with fields is one state, whatever its fields hold, and its row shows it as a pattern, such as `Door::Locked { .. }` or `Door::Locked(..)`. In the transition table and the diagram, a state is the name of its variant.
+
+docgen records the pub methods (`pub` or `pub(...)`) of the inherent impls of the type:
+
+  - A method with `&mut self` is a call on the machine. The hook reads the state when the call starts and when it returns, and a change is a transition.
+  - A method with `self` or `mut self` that returns `Self` or the type, an `Option` of it, or a `Result` with it as the `Ok` type, is a transition from the state of `self` to the state of the result. A `None` or `Err` result is no transition. A method with `self` and another return type is not recorded.
+  - An associated function with no `self` that returns the type in one of those forms, such as `new`, is a constructor, and the state of the value that it returns is a first state.
+  - A parameter whose type is an enum of the crate with no generics, or a reference to one, adds its variant to the name of the call, so `door.on(Event::Push)` is `on(Push)` in the tables and the diagram.
+  - A call from one recorded `&mut self` method to another of the same machine is part of the outer call. A recorded call with `self` inside another one on the same thread is part of the outer call.
+
+The output lists the pub methods that could change the state and have no hook under Not recorded, with the reason: an `async fn` (async), a `const fn` (const), a receiver with a type such as `self: Box<Self>` (self: Type), a method with `&mut self` whose return type holds a `&` or a lifetime (returns a borrow) or `impl` (returns impl Trait), and a method whose code does not compile with the hook (does not build with the hook), such as one that returns a type that borrows `self` with an elided lifetime. Methods with `&self`, the `state` method, methods that are not pub and items that a macro makes are not recorded and not listed. A machine that no constructor makes, such as an enum literal or the value of a derived `Default`, has no first state.
+
+The hook goes into a copy of the workspace in the temporary directory of the run, as the value test does (see Rust crates), so the crate needs no dependency on docgen and your files do not change. The body of each recorded method runs in a closure with the return type of the method, so `return` and `?` work as before, and the hook reads the state before and after the closure. The hook is in every build of the copy, not only with `cfg(test)`. It allows the lints that its code can trigger, such as `unused` and `unused_qualifications`, so a `#![deny(warnings)]` stays, but a lint that the crate sets with `#![forbid]` makes each recorded method not build with the hook. docgen runs `cargo test --locked -p <crate>` once for each crate and set of features, with the machines of all its markers, so the unit tests, the integration tests and the doctests of the crate all count. `run=` is a test filter of cargo test, which runs each test whose name holds the text, such as `run=lamp` for `tests::lamp`. It applies only when each `docgen:states` marker of the crate with the same features has one, and then each filter runs. A `run=` that starts with `-` is an error.
+
+The diagram goes in `states/<crate>-<path>.svg` next to the page, in lower case, with each run of characters other than letters and digits as `-`, such as `states/states-lamp-lamp.svg` for `crate=states-lamp type=Lamp`. The rules of `diagram=` are those of Go.
+
+These are errors of the Rust form:
+
+  - `type=` that names no item, an item that is not an enum or a struct, or a type with generics.
+  - A struct whose state is not known, as above, and an enum of the state with no variants.
+  - A type with no pub method to record and none under Not recorded.
+  - Tests that do not build with the hook, other than in a recorded method, with the errors of rustc.
+  - A test that fails, with the failures that the test binary prints.
+  - Tests that record no transition of a machine with no method under Not recorded.
+
+The Rust form differs from the Go form in these ways. The state is always the variant of an enum: Go reads a State method with an integer type, a state type that one method returns, or the result of methods that return a bool. A first state is a state that a constructor returns, where Go marks the state of a machine at the first call that the hook records on it. Rust has no `type=` for a state type, and the names of calls hold the variants of enum parameters.
 <!-- /docgen:doc -->
 
 #### A state machine
@@ -2290,6 +2327,9 @@ A value that is not one of the lists, a glob that is not valid, a crate outside 
 | `limits` | `crates/limits` | lib | 0.1.0 |  |
 | `run-c` | `crates/run-c` | lib, bin | 0.1.0 |  |
 | `run-c-broken` | `crates/run-c-broken` | lib | 0.1.0 |  |
+| `states-door` | `crates/states-door` | lib | 0.1.0 |  |
+| `states-lamp` | `crates/states-lamp` | lib | 0.1.0 |  |
+| `states-odd` | `crates/states-odd` | lib | 0.1.0 |  |
 | `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
 <!-- /docgen:crates -->
 ```
@@ -2617,7 +2657,7 @@ Each box of this page comes from a marker in this form. At the default depth thi
 ## Rust crates
 
 <!-- docgen:doc pkg=. section="Rust crates" -->
-A marker with `crate=` is for Rust: `docgen:const`, `docgen:doc`, `docgen:errors`, `docgen:config`, `docgen:configulator`, `docgen:output`, `docgen:usage` and `docgen:cargo`. `crate=` is the name of a package of the Cargo workspace whose `Cargo.toml` is in the module directory, as `cargo metadata` reports it, and `docgen:crates` reads the same workspace. A name that is not a package of the workspace is an error that lists the packages, and a marker with both `crate=` and `pkg=` is an error.
+A marker with `crate=` is for Rust: `docgen:const`, `docgen:doc`, `docgen:errors`, `docgen:config`, `docgen:configulator`, `docgen:states`, `docgen:output`, `docgen:usage` and `docgen:cargo`. `crate=` is the name of a package of the Cargo workspace whose `Cargo.toml` is in the module directory, as `cargo metadata` reports it, and `docgen:crates` reads the same workspace. A name that is not a package of the workspace is an error that lists the packages, and a marker with both `crate=` and `pkg=` is an error.
 
 These markers run `cargo` from the `PATH` and need stable Rust, and a missing `cargo` is an error. Each cargo command passes `--locked`, so the run never changes `Cargo.lock`, and a `Cargo.lock` that is out of date is an error with the cargo command that updates it. Cargo downloads crates at the versions of `Cargo.lock` and builds into the temporary directory of the run, never into your `target` directory. The markers of one run read the workspace once and build each binary and example once. Each cargo command, and each program that a cargo build made, counts toward the limit on commands at once, as a go command does. Each one stops after 10 minutes, the limit of a run of a Go example, since a cold build of a crate with many dependencies can take longer than the 5 minutes of a Go build. A `jobs` value other than 0 is the `CARGO_BUILD_JOBS` of each command.
 
@@ -2631,13 +2671,13 @@ A value comes from the value test of the crate. docgen copies the workspace, wit
 ## Cargo features
 
 <!-- docgen:doc pkg=. section="Cargo features" -->
-The `features`, `all-features` and `no-default-features` settings choose the Cargo features of each cargo command that builds a crate for a marker: the build of a binary or example for `docgen:output` and `docgen:usage`, `cargo test --doc` for a doctest, and the value test of `docgen:const`, `docgen:config` and `docgen:configulator`. The setting is for the workspace as a whole, so it applies to each crate that has what it names, and cargo gets the flags of the crate of the command, with `--package`:
+The `features`, `all-features` and `no-default-features` settings choose the Cargo features of each cargo command that builds a crate for a marker: the build of a binary or example for `docgen:output` and `docgen:usage`, `cargo test --doc` for a doctest, the value test of `docgen:const`, `docgen:config` and `docgen:configulator`, and the test run of `docgen:states`. The setting is for the workspace as a whole, so it applies to each crate that has what it names, and cargo gets the flags of the crate of the command, with `--package`:
 
   - A `features` entry that is a feature, such as `serde`, enables it in each crate that has a feature of that name, and in no other. An entry `crate/feature`, such as `core-a/strict`, enables it in `crate` alone. A feature of a dependency, such as `serde/derive`, is not a valid entry; the crate that depends on it has a feature that turns it on.
   - `all-features` passes `--all-features` and `no-default-features` passes `--no-default-features`, to each command.
   - An entry that no crate has as a feature, a crate that is not in the workspace, and a feature that the crate does not have, are errors that list the crates or the features. A name has letters, digits, `_`, `-`, `+` and dots. The error of a command that cargo rejects, such as a build of an example with a `required-features` that the setting does not enable, is the message of cargo.
 
-A marker that runs cargo can set its own with `features=`, which is a list in the form of the setting and replaces the list of the setting, and `allfeatures=` and `nodefaultfeatures=`, which are `true` or `false` and replace the setting of the same name. An argument that the marker does not set keeps the setting. `docgen:const`, `docgen:config`, `docgen:configulator`, `docgen:usage` with `crate=`, `docgen:output` with `crate=` and `docgen:cargo field=features` take the three. `docgen:doc`, `docgen:errors` and `docgen:crates` run no cargo command that builds, so `features=` on them is an error, and a `docgen:const` with `print=raw` reads the source and ignores the features, as does a `docgen:config` with `print=raw` when the source writes each default. docgen builds each binary and example once for each set of features, and runs one value test and one doctest run for each crate and set of features, so markers with the same features share their work. A nested `docgen:docgen` run does not use the settings of the outer run; its markers can set `features=`.
+A marker that runs cargo can set its own with `features=`, which is a list in the form of the setting and replaces the list of the setting, and `allfeatures=` and `nodefaultfeatures=`, which are `true` or `false` and replace the setting of the same name. An argument that the marker does not set keeps the setting. `docgen:const`, `docgen:config`, `docgen:configulator`, `docgen:usage` with `crate=`, `docgen:output` with `crate=`, `docgen:states` with `crate=` and `docgen:cargo field=features` take the three. `docgen:doc`, `docgen:errors` and `docgen:crates` run no cargo command that builds, so `features=` on them is an error, and a `docgen:const` with `print=raw` reads the source and ignores the features, as does a `docgen:config` with `print=raw` when the source writes each default. docgen builds each binary and example once for each set of features, and runs one value test, one doctest run and one states test for each crate and set of features, so markers with the same features share their work. A nested `docgen:docgen` run does not use the settings of the outer run; its markers can set `features=`.
 
 What a feature does not change: the helper that reads the module tree reads each module and item regardless of its `#[cfg]`, so `docgen:doc`, `docgen:errors` and `print=raw` show an item behind a feature that is off. `cargo metadata` runs with `--no-deps` and lists all features of a crate whatever is enabled, so `docgen:crates` and the features table are the same for every setting. A value is different: it comes from the value test, which builds the crate with the features of the marker, so a const behind `#[cfg(feature = "big")]` has a value only when `big` is enabled. With it off, the value is an error: for a const in a module that the feature gates, the test printed no value for it, and for a const that the feature gates in a module that is built, the test code does not compile because rustc cannot find the item. Both errors name the `#[cfg]` and end with a hint to enable the feature with the `features` setting or `features=`. A doctest of an item that a feature gates is not run with the feature off, so it is the error that the crate has no doctest for the item.
 <!-- /docgen:doc -->

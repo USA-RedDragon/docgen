@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1018,9 +1019,21 @@ func generatedSrc(t *testing.T, block, path string) string {
 func TestStatesBoxListsTheDiagram(t *testing.T) {
 	t.Parallel()
 	needPandoc(t)
-	for _, c := range []struct{ page, out string }{
-		{"docs/guides/state-machines.md", "guides/state-machines.html"},
-		{"docs/reference/markers.md", "reference/markers.html"},
+	type diagram struct{ root, path string }
+	goDiagrams := []diagram{
+		{"internal/cli/testdata/repo", "docs/machines/states/machine-lamp.svg"},
+		{"internal/cli/testdata/repo", "docs/machines/states/door-open.svg"},
+	}
+	rustDiagrams := []diagram{
+		{"internal/cli/testdata/rust", "docs/states/states-lamp-lamp.svg"},
+		{"internal/cli/testdata/rust", "docs/states/door-events.svg"},
+	}
+	for _, c := range []struct {
+		page, out string
+		diagrams  []diagram
+	}{
+		{"docs/guides/state-machines.md", "guides/state-machines.html", append(slices.Clone(goDiagrams), rustDiagrams...)},
+		{"docs/reference/markers.md", "reference/markers.html", goDiagrams},
 	} {
 		t.Run(c.page, func(t *testing.T) {
 			t.Parallel()
@@ -1029,20 +1042,20 @@ func TestStatesBoxListsTheDiagram(t *testing.T) {
 				t.Fatal(err)
 			}
 			root := repo(t)
-			const states = "internal/cli/testdata/repo/docs/machines/states"
-			for _, name := range []string{"machine-lamp.svg", "door-open.svg"} {
-				svg, err := os.ReadFile(filepath.Join("../..", states, name))
+			for _, d := range c.diagrams {
+				file := d.root + "/" + d.path
+				svg, err := os.ReadFile(filepath.Join("../..", file))
 				if err != nil {
 					t.Fatal(err)
 				}
-				writeRepoFile(t, root, states+"/"+name, string(svg))
+				writeRepoFile(t, root, file, string(svg))
 			}
 			writeRepoFile(t, root, "docs/nav.md", "- [Home](../README.md)\n- [Page]("+strings.TrimPrefix(c.page, "docs/")+")\n")
 			writeRepoFile(t, root, c.page, string(text))
 			got := buildPage(t, root, nil, c.out)
-			for _, name := range []string{"machine-lamp.svg", "door-open.svg"} {
-				src := generatedSrc(t, got, "docs/machines/states/"+name)
-				if want := "../" + states + "/" + name; src != want {
+			for _, d := range c.diagrams {
+				src := generatedSrc(t, got, d.path)
+				if want := "../" + d.root + "/" + d.path; src != want {
 					t.Errorf("src %s, want %s", src, want)
 				}
 				exists(t, filepath.Join(root, "artifacts/docs-site", filepath.Dir(c.out), src))

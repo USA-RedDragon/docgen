@@ -208,4 +208,203 @@ Transitions seen in tests:
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+## Rust
+
+For a Rust crate, give the package name with `crate=` and the path of the machine type with `type=`. The state is the variant of an enum. Here a `state` method returns it:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-lamp/src/lib.rs symbol=LampState -->
+```rust
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LampState {
+    /// Gives no light.
+    Off,
+    /// Gives light until the wait ends.
+    On,
+    /// Never gives light again.
+    Broken,
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-lamp/src/lib.rs symbol=Lamp::new -->
+```rust
+pub fn new(wait: u64) -> Self {
+    Lamp {
+        state: LampState::Off,
+        until: 0,
+        wait,
+        name: String::from("lamp"),
+    }
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-lamp/src/lib.rs symbol=Lamp::state -->
+```rust
+pub fn state(&self) -> LampState {
+    self.state
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-lamp/src/lib.rs symbol=Lamp::start -->
+```rust
+pub fn start(&mut self, now: u64) -> Result<(), LampError> {
+    if self.state == LampState::On {
+        return Err(LampError::Busy);
+    }
+    if self.state == LampState::Off {
+        self.state = LampState::On;
+        self.until = now + self.wait;
+    }
+    Ok(())
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-lamp/src/lib.rs symbol=Lamp::name_mut -->
+```rust
+pub fn name_mut(&mut self) -> &mut String {
+    &mut self.name
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-lamp/src/lib.rs symbol=tests::lamp -->
+```rust
+#[test]
+fn lamp() {
+    let mut l = Lamp::new(3);
+    assert_eq!(l.start(0), Ok(()));
+    l.tick(3);
+    assert_eq!(l.start(0), Ok(()));
+    assert_eq!(l.stop(), Ok(()));
+    assert_eq!(l.stop(), Err(LampError::Off));
+    l.name_mut().push('!');
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-states.md -->
+#### Before
+
+```
+# The lamp
+
+<!-- docgen:states crate=states-lamp type=Lamp -->
+<!-- /docgen:states -->
+```
+
+#### After
+
+```
+# The lamp
+
+<!-- docgen:states crate=states-lamp type=Lamp -->
+States of `Lamp`, from `Lamp::state`:
+
+| State | Meaning | Seen in tests |
+|---|---|---|
+| `LampState::Off` | Gives no light. | yes, first state |
+| `LampState::On` | Gives light until the wait ends. | yes |
+| `LampState::Broken` | Never gives light again. | yes |
+
+Transitions seen in tests:
+
+| From | Method call | To |
+|---|---|---|
+| Off | `start` | On |
+| Off | `smash` | Broken |
+| On | `stop`, `tick` | Off |
+
+![Transitions of Lamp](states/states-lamp-lamp.svg)
+
+Not recorded (returns a borrow): name_mut.
+<!-- /docgen:states -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+`new` returns the lamp, so `Off` is its first state. `smash` is called only in an integration test in `tests/`, and it counts, as do doctests. `name_mut` returns a borrow of the lamp, and the state cannot be read while that borrow lives, so the table lists it under Not recorded.
+
+An enum can be the machine itself. A method with `self` that returns `Self` is a transition to the value that it returns, and a parameter whose type is an enum of the crate names its variant in the call:
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-door/src/lib.rs symbol=Door -->
+```rust
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Door {
+    /// Shut and not locked.
+    Closed,
+    /// Open.
+    Open,
+    /// Shut and locked with a code.
+    Locked {
+        /// The code that unlocks the door.
+        code: u16,
+    },
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-door/src/lib.rs symbol=Door::on -->
+```rust
+pub fn on(self, event: Event) -> Self {
+    match (self, event) {
+        (Door::Closed, Event::Push) => Door::Open,
+        (Door::Open, Event::Pull) => Door::Closed,
+        (Door::Closed, Event::Lock(code)) => Door::Locked { code },
+        (Door::Locked { code }, Event::Unlock(c)) if c == code => Door::Closed,
+        (door, _) => door,
+    }
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:code file=internal/cli/testdata/rust/crates/states-door/src/lib.rs symbol=tests::events -->
+```rust
+#[test]
+fn events() {
+    let d = Door::Closed.on(Event::Push).on(Event::Pull);
+    let d = d.on(Event::Lock(7)).on(Event::Unlock(7));
+    assert_eq!(d, Door::Closed);
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-states-enum.md -->
+#### Before
+
+```
+<!-- docgen:states crate=states-door type=Door run=events diagram=states/door-events.svg -->
+<!-- /docgen:states -->
+```
+
+#### After
+
+```
+<!-- docgen:states crate=states-door type=Door run=events diagram=states/door-events.svg -->
+States of `Door`, from its variant:
+
+| State | Meaning | Seen in tests |
+|---|---|---|
+| `Door::Closed` | Shut and not locked. | yes |
+| `Door::Open` | Open. | yes |
+| `Door::Locked { .. }` | Shut and locked with a code. | yes |
+
+Transitions seen in tests:
+
+| From | Method call | To |
+|---|---|---|
+| Closed | `on(Push)` | Open |
+| Closed | `on(Lock)` | Locked |
+| Open | `on(Pull)` | Closed |
+| Locked | `on(Unlock)` | Closed |
+
+![Transitions of Door](states/door-events.svg)
+<!-- /docgen:states -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+The tests build `Door` from a literal, which no constructor returns, so no state is marked as first. `run=` is a cargo test filter: a test runs when its name holds the text.
+
+### Requirements in Rust
+
+- An enum, or a struct with a `state(&self)` method or one field whose type is an enum of the crate. Generic types are not supported.
+- Pub methods with `&mut self`, or with `self` that return `Self`, an `Option<Self>` or a `Result<Self, E>`.
+- Tests that drive the machine, in the crate or in its `tests/` directory. docgen adds the hook to a copy of the workspace, so the crate needs no dependency on docgen.
+
 For the exact rules, see [How docgen works](../concepts/how-it-works.md#states-and-transitions).
