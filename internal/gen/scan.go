@@ -40,6 +40,29 @@ func skipDir(name string) bool {
 	return gomod.SkipDir(name) || name == "node_modules"
 }
 
+// cargoTagText is the text that cargo writes into the CACHEDIR.TAG of a target
+// directory.
+const cargoTagText = "created by cargo"
+
+// cargoTarget reports whether the directory dir of fsys is a Cargo target
+// directory: one named target next to a Cargo.toml, or one with the
+// CACHEDIR.TAG that cargo writes, which a directory of any name can have.
+func cargoTarget(fsys fs.FS, dir string) bool {
+	if path.Base(dir) == "target" {
+		if info, err := fs.Stat(fsys, path.Join(path.Dir(dir), "Cargo.toml")); err == nil && info.Mode().IsRegular() {
+			return true
+		}
+	}
+	f, err := fsys.Open(path.Join(dir, "CACHEDIR.TAG"))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, 256)
+	n, _ := io.ReadFull(f, head)
+	return strings.Contains(string(head[:n]), cargoTagText)
+}
+
 func newPage(file, rel, raw string) *page {
 	pg := &page{path: file, key: canonical(file), rel: rel, raw: raw, text: strings.ReplaceAll(raw, "\r\n", "\n")}
 	removed := 0
@@ -223,9 +246,9 @@ type walkFailure struct {
 }
 
 // walkFiles calls visit for each regular file in root, in the directories that
-// skipDir does not skip and that prune, when it is not nil, is false for. A path
-// that does not read is a failure and the walk goes on. The error is the error of
-// visit, which ends the walk.
+// skipDir and cargoTarget do not skip and that prune, when it is not nil, is
+// false for. A path that does not read is a failure and the walk goes on. The
+// error is the error of visit, which ends the walk.
 func walkFiles(root *os.Root, prune func(string) bool, visit func(name string, d fs.DirEntry) error) ([]walkFailure, error) {
 	var failures []walkFailure
 	err := fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, err error) error {
@@ -240,7 +263,7 @@ func walkFiles(root *os.Root, prune func(string) bool, visit func(name string, d
 			return nil
 		}
 		if d.IsDir() {
-			if name != "." && (skipDir(d.Name()) || prune != nil && prune(name)) {
+			if name != "." && (skipDir(d.Name()) || prune != nil && prune(name) || cargoTarget(root.FS(), name)) {
 				return fs.SkipDir
 			}
 			return nil

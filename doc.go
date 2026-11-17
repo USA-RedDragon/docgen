@@ -2,8 +2,11 @@
 // repository from the code of a Go module. Each Markdown file of the repository
 // is a page. An argument or the docs setting narrows the scan to one directory.
 // A scan skips testdata, vendor, node_modules, directories whose names start
-// with a dot or an underscore, paths that git ignores, and anything that is not
-// a regular file, such as a symlink. A directory named by the argument or the docs
+// with a dot or an underscore, Cargo target directories, paths that git ignores,
+// and anything that is not a regular file, such as a symlink. A Cargo target
+// directory is a directory named target next to a Cargo.toml, and a directory of
+// any name that holds the CACHEDIR.TAG that cargo writes; a directory named
+// target with neither is scanned. A directory named by the argument or the docs
 // setting is scanned also when git ignores it, and a `.gitignore` below it applies.
 // Each generated part has an open and a close comment:
 //

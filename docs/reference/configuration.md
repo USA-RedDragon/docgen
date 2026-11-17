@@ -78,6 +78,7 @@ A scan skips:
 
 - `testdata`, `vendor` and `node_modules`.
 - Directories whose names start with `.` or `_`.
+- Cargo target directories: a directory named `target` next to a `Cargo.toml`, and a directory of any name that holds the `CACHEDIR.TAG` that cargo writes. A directory named `target` with neither is scanned.
 - Paths that git ignores. A directory named by the argument or `docs` is scanned also when git ignores it, and a `.gitignore` below it applies.
 - Pages under the `root` of a `docgen:docgen` marker.
 - Anything that is not a regular file, such as a symlink.
