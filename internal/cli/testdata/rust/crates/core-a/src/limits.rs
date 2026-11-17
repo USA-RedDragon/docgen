@@ -3,12 +3,15 @@
 use std::fmt;
 use std::time::Duration;
 
+// docgen:region max-jobs
 /// The most jobs that run at once.
 pub const MAX_JOBS: usize = 8;
+// docgen:end
 
 /// The jobs of a small machine.
 pub const SMALL_JOBS: usize = MAX_JOBS / 4;
 
+// docgen:region values
 /// The name of the app.
 pub const NAME: &str = "core-a";
 
@@ -41,6 +44,7 @@ pub static LISTEN: Port = PORT_WEB;
 
 /// The tries of a job.
 const RETRIES: u32 = 3;
+// docgen:end
 
 /// A type with no Display and no Debug.
 pub struct Opaque;
@@ -59,7 +63,13 @@ pub enum LimitError {
     Zero,
 }
 
-/// Checks that jobs is between 1 and MAX_JOBS.
+// docgen:region check-jobs
+/// Checks that jobs is between 1 and [`MAX_JOBS`].
+///
+/// ```
+/// # use core_a::limits::check_jobs;
+/// assert_eq!(check_jobs(2), Ok(2));
+/// ```
 pub fn check_jobs(jobs: usize) -> Result<usize, LimitError> {
     match jobs {
         0 => Err(LimitError::Zero),
@@ -67,3 +77,4 @@ pub fn check_jobs(jobs: usize) -> Result<usize, LimitError> {
         n => Ok(n.min(RETRIES as usize * MAX_JOBS)),
     }
 }
+// docgen:end

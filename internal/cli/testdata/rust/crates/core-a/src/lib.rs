@@ -1,3 +1,4 @@
+// docgen:region crate-doc
 //! The core of the fixture app.
 //!
 //! # Limits
@@ -12,6 +13,7 @@
 //! # Other
 //!
 //! Not copied.
+// docgen:end
 
 pub mod config;
 pub mod errors;

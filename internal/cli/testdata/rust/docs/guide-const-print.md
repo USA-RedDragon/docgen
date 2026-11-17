@@ -1,0 +1,8 @@
+- Default: <!-- docgen:const crate=core-a name=limits::LISTEN --><!-- /docgen:const -->
+- `display`: <!-- docgen:const crate=core-a name=limits::LISTEN print=display --><!-- /docgen:const -->
+- `debug`: <!-- docgen:const crate=core-a name=limits::LISTEN print=debug --><!-- /docgen:const -->
+- `raw`: <!-- docgen:const crate=core-a name=limits::LISTEN print=raw --><!-- /docgen:const -->
+- `name`: <!-- docgen:const crate=core-a name=limits::LISTEN print=name --><!-- /docgen:const -->
+- `{:x}`: <!-- docgen:const crate=core-a name=limits::MAX_JOBS print={:#06x} --><!-- /docgen:const -->
+- `Duration`: <!-- docgen:const crate=core-a name=limits::TIMEOUT --><!-- /docgen:const -->
+- Private: <!-- docgen:const crate=core-a name=limits::RETRIES --><!-- /docgen:const -->
