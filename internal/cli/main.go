@@ -15,6 +15,7 @@ import (
 	configulator "github.com/USA-RedDragon/configulator/v2"
 	cstd "github.com/USA-RedDragon/configulator/v2/flags/std"
 	"github.com/USA-RedDragon/docgen/internal/gen"
+	"github.com/USA-RedDragon/docgen/internal/rustsrc"
 )
 
 const (
@@ -83,6 +84,15 @@ func run(ctx context.Context, dir string, args []string, stderr io.Writer) int {
 	return runTo(ctx, dir, args, os.Stdout, stderr, runOptions{})
 }
 
+// rustHelper returns the path of the Rust helper that the environment
+// variable rustsrc.BinEnv names, relative to dir, or "" when it is not set.
+func rustHelper(dir string) string {
+	if p := os.Getenv(rustsrc.BinEnv); p != "" {
+		return abs(dir, p)
+	}
+	return ""
+}
+
 // varsFile returns the slash path in root of the config file that c loaded, with
 // a path relative to dir.
 func varsFile(c *configulator.Configulator[Config], dir, root string) string {
@@ -148,6 +158,7 @@ func runTo(ctx context.Context, dir string, args []string, stdout, stderr io.Wri
 		VarsFile:      varsFile(c, dir, root),
 		Settings:      copySettings,
 		RustHelperDir: opts.rustHelperDir,
+		RustHelper:    rustHelper(dir),
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, "docgen:", err)

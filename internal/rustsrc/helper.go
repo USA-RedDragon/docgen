@@ -38,7 +38,28 @@ type Helper struct {
 	// CacheDir holds the built helper. An empty CacheDir is rust-helper in
 	// the docgen directory of the user cache.
 	CacheDir string
-	mu       sync.Mutex
+	// Bin, when it is not empty, is the path of a helper program that was
+	// built before the run from the helper source of this docgen version,
+	// such as the wasm32-wasip1 build of the playground. Path returns it with
+	// no rustc check and no build, so the helper markers need no Rust
+	// toolchain.
+	Bin string
+	mu  sync.Mutex
+}
+
+// BinEnv is the environment variable that sets Helper.Bin for a run.
+const BinEnv = "DOCGEN_RUST_HELPER"
+
+// prebuilt returns h.Bin, or an error when it is not a regular file.
+func (h *Helper) prebuilt() (string, error) {
+	info, err := os.Stat(h.Bin)
+	if err != nil {
+		return "", fmt.Errorf("the Rust helper of %s: %w", BinEnv, err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("the Rust helper of %s, %s, is not a regular file", BinEnv, h.Bin)
+	}
+	return h.Bin, nil
 }
 
 func (h *Helper) cacheDir() (string, error) {
@@ -100,11 +121,15 @@ func atLeast(major, minor, minVersion string) bool {
 	return a > x || a == x && b >= y
 }
 
-// Path returns the path of the helper program, with r for the commands. The
-// first call for a version of the helper source and of rustc builds it with
-// cargo build --release --locked in a new directory and renames it into the
-// cache, so that a run at the same time never reads a part of it.
+// Path returns the path of the helper program, with r for the commands: Bin
+// when it is set, or else a build in the cache. The first call for a version
+// of the helper source and of rustc builds it with cargo build --release
+// --locked in a new directory and renames it into the cache, so that a run at
+// the same time never reads a part of it.
 func (h *Helper) Path(ctx context.Context, r *cargo.Runner) (string, error) {
+	if h.Bin != "" {
+		return h.prebuilt()
+	}
 	dir, err := h.cacheDir()
 	if err != nil {
 		return "", err

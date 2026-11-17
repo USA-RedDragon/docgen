@@ -90,6 +90,9 @@ type Options struct {
 	// RustHelperDir holds the build of the helper that reads Rust crates. ""
 	// means rust-helper in the docgen directory of the user cache.
 	RustHelperDir string
+	// RustHelper is the path of a helper program built before the run, which
+	// replaces the build; see rustsrc.Helper.Bin.
+	RustHelper string
 }
 
 // A lockedWriter serializes writes, so that the lines of concurrent work stay
@@ -144,7 +147,7 @@ func New(root, modDir string, log io.Writer, opts Options) (*Generator, error) {
 		vars:     opts.Vars,
 		varsFile: opts.VarsFile,
 	}
-	g.rust = g.newRustSet(&rustsrc.Helper{CacheDir: opts.RustHelperDir})
+	g.rust = g.newRustSet(&rustsrc.Helper{CacheDir: opts.RustHelperDir, Bin: opts.RustHelper})
 	g.rust.features = opts.Features
 	return g, nil
 }
