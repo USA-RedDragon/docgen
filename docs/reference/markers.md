@@ -37,14 +37,12 @@ The arguments:
 
 The output must be the same on each run, or check fails. A program or command with no output gives an empty block, and an Example with an empty `// Output:` comment is an error.
 
-A marker with `crate=` is for Rust. The value is the name of a Cargo package of the Cargo workspace in the module directory, so that directory holds the `Cargo.toml`. A marker with `crate=` and any of `cmd=`, `exec=`, `test=` or `pkg=` is an error, and so is one with `example=`, `bin=`, `doctest=` or `args=` and no `crate=`. It has exactly one of these:
+A marker with `crate=` is for Rust (see Rust crates). A marker with `crate=` and any of `cmd=`, `exec=`, `test=` or `pkg=` is an error, and so is one with `example=`, `bin=`, `doctest=` or `args=` and no `crate=`. It has exactly one of these:
 
-  - `example=` is the standard output of `cargo run --locked --example` on the example of that name in the `examples` directory of the package, in a block of text. A nonzero exit status is an error that holds the standard error of the example, and an example with no output gives an empty block. An example that the package does not have is an error that lists the examples that it has.
-  - `bin=` is the same for a binary target of the package, with `cargo run --locked --bin`.
+  - `example=` is the standard output of the example of that name of the package, in a block of text. docgen builds it with `cargo build --locked --example` and runs it in the directory of the Cargo workspace. A nonzero exit status is an error that holds the standard error of the example, and an example with no output gives an empty block. An example that the package does not have is an error that lists the examples that it has.
+  - `bin=` is the same for a binary target of the package, built with `cargo build --locked --bin`.
   - `args=` goes with `example=` or `bin=` and holds the arguments of the program, split on white space. A part in double quotes is one argument, also with spaces. `args=` with `doctest=` is an error.
   - `doctest=` is the code of the doctests in the doc comment of an item, as one Rust code block for each doctest, in the order of the file. Give the path of the item in the crate as rustdoc names it, such as `double`, `shapes::area` or `Counter::next`, with no leading `crate::`. A crate name or `crate` alone is the doc comment of the crate itself. rustdoc hides the lines that start with `# ` and a line that is only `#`, and the code block has none of them, and `##` shows as `#`. Rust has no output to compare, so the page shows code and not output. The markers of one crate run in one `cargo test --locked --doc`, and update and check fail when a doctest fails to compile or fails when it runs, so a page cannot show a broken example. A doctest with `no_run` only compiles, and one with `compile_fail` must not compile. A doctest with `ignore` is an error, as nothing checks it. An item with no doctest is an error that lists the items that have one, and so is a crate with no library. The code is read from `///`, `//!` and `/** */` comments; a doc comment from a `#[doc]` attribute or a macro is an error.
-
-The builds of the Rust markers go to the temporary directory of the run, and the run never changes `Cargo.lock`: a `Cargo.lock` that is out of date is an error. It needs stable Rust, and a missing `cargo` is an error that says so.
 <!-- /docgen:doc -->
 
 #### The output of an Example, with `test=`
@@ -2034,14 +2032,14 @@ A value of a Cargo manifest of a Rust workspace, or the table of the features of
 	docgen:cargo field=<key> [crate=<package>] [file=<repo path>] [code=false]
 	docgen:cargo field=features crate=<package>
 
-`field=` is a dotted key path in the TOML file, such as `package.rust-version`, `workspace.package.version` or `dependencies.clap.version`. The file is the `Cargo.toml` in the module directory, the `Cargo.toml` of the Cargo package that `crate=` names, or the TOML file at `file=`, such as `rust-toolchain.toml` with `field=toolchain.channel`. `crate=` and `file=` together are an error. A `crate=` needs `cargo` on the `PATH`, since docgen finds the package with `cargo metadata`.
+`field=` is a dotted key path in the TOML file, such as `package.rust-version`, `workspace.package.version` or `dependencies.clap.version`. The file is the `Cargo.toml` in the module directory, the `Cargo.toml` of the Cargo package that `crate=` names (see Rust crates), or the TOML file at `file=`, such as `rust-toolchain.toml` with `field=toolchain.channel`. `crate=` and `file=` together are an error. Only `crate=` runs cargo.
 
 Workspace inheritance applies, with the `Cargo.toml` of the workspace as the source:
 
   - A `package` key set to `workspace = true`, such as `version.workspace = true`, has the value of the same key in `[workspace.package]`.
   - A dependency set to `workspace = true` has the keys of the dependency in `[workspace.dependencies]`, so `dependencies.clap.version` works. `features` of both are one list.
 
-The value is a string, number or boolean as it is, and an array of them is its items joined by a comma and a space. These are errors: a table, an array of tables or a date as the value, a file that is missing or is not valid TOML, a key that is not in the file (the error lists the keys that are there), a key below a value that is not a table, an inherited value that `[workspace.package]` or `[workspace.dependencies]` does not have, a `crate=` that is not a package of the workspace (the error lists them), and a `cargo` that is not on the `PATH`. With `code=false`, the value has no backticks, as for `docgen:const`.
+The value is a string, number or boolean as it is, and an array of them is its items joined by a comma and a space. These are errors: a table, an array of tables or a date as the value, a file that is missing or is not valid TOML, a key that is not in the file (the error lists the keys that are there), a key below a value that is not a table, and an inherited value that `[workspace.package]` or `[workspace.dependencies]` does not have. With `code=false`, the value has no backticks, as for `docgen:const`.
 
 With `field=features`, the marker is a table of the features of the package, in name order, with the column Default for the ones that the `default` feature enables and the column Enables for the items of each, such as other features and `dep:` items. A package with no features is an error. `field=features` needs `crate=`, and has no `file=` and no `code=`.
 <!-- /docgen:doc -->
@@ -2102,13 +2100,13 @@ A table of the crates of a Cargo workspace.
 
 	docgen:crates [kind=<lib|proc-macro|bin>] [deps=<normal|dev|build|all>] [match=<glob>]
 
-Each row is a crate: its name, its path relative to the repository root, its kind (`lib`, `proc-macro` or `bin`, and `lib, bin` for a crate that has both), its version, and the crates of the same workspace that it depends on, as `cargo metadata` reports them. Rows are in name order. The workspace is the one at `Cargo.toml` of the module directory.
+Each row is a crate: its name, its path relative to the repository root, its kind (`lib`, `proc-macro` or `bin`, and `lib, bin` for a crate that has both), its version, and the crates of the same workspace that it depends on, as `cargo metadata` reports them. Rows are in name order. The workspace is the one of the Rust markers (see Rust crates).
 
   - `kind=` lists only the crates with a target of that kind.
   - `deps=` is the kind of dependency in the last column: `normal`, the default, `dev`, `build`, or `all`. With `all`, a dev or build dependency has its kind in parentheses.
   - `match=` is a glob, as in Go's `path.Match`, for the names of the crates.
 
-A value that is not one of the lists, a glob that is not valid, a crate outside the repository, no crate that matches, a missing `Cargo.toml` in the module directory and a `cargo` that is not on the `PATH` are errors.
+A value that is not one of the lists, a glob that is not valid, a crate outside the repository, no crate that matches and a missing `Cargo.toml` in the module directory are errors.
 <!-- /docgen:doc -->
 
 <!-- site:editor -->
@@ -2175,7 +2173,7 @@ The usage of a command.
 
 docgen builds the command in that directory, relative to the repository root, and runs it with `-h`. With `args=`, the arguments are that value, split on spaces, such as `args="help config"` or `args=--help`. In the value, `\"` starts and ends an argument with spaces: `args="--name \"a b\""`.
 
-With `crate=`, the command is a binary of a Cargo package of the workspace in the module directory, not a Go command, and `cmd=` is an error with it. `bin=` is the name of the binary. It can be left out when the package has one binary, and a name that the package does not have is an error that lists the ones it has. docgen builds the binary with `cargo build --locked`, so `Cargo.lock` must be up to date, and the build goes into a directory of the run, not the `target` directory of the repository. The markers of one run build a binary once. The rules for the output are the ones below, so a binary that uses clap prints its usage with `-h`, and a subcommand with `args="help <name>"` or `args="<name> --help"`. `bin=` with no `crate=` is an error.
+With `crate=`, the command is a binary of a Cargo package (see Rust crates), not a Go command, and `cmd=` is an error with it. `bin=` is the name of the binary. It can be left out when the package has one binary, and a name that the package does not have is an error that lists the ones it has. docgen builds the binary with `cargo build --locked --bin`. The rules for the output are the ones below, so a binary that uses clap prints its usage with `-h`, and a subcommand with `args="help <name>"` or `args="<name> --help"`. `bin=` with no `crate=` is an error.
 
 A build failure, a panic, an exit status other than 0, 1 or 2, or output with no line that starts with usage, in any letter case, and no flag line, is an error. This also applies to arguments that do not ask for help, so a command such as `version` must print a usage line or a flag line, such as `usage: tool version`.
 <!-- /docgen:doc -->
@@ -2460,13 +2458,15 @@ Each box of this page comes from a marker in this form. At the default depth thi
 ## Rust crates
 
 <!-- docgen:doc pkg=. section="Rust crates" -->
-A marker with `crate=` reads Rust code. `crate=` is the name of a package of the Cargo workspace in the module directory, as its `Cargo.toml` names it, and a marker with both `crate=` and `pkg=` is an error. The marker reads the library of the package, or else its binary with the name of the package, or else its one binary. A name that is not a package of the workspace is an error that lists the packages.
+A marker with `crate=` is for Rust: `docgen:const`, `docgen:doc`, `docgen:errors`, `docgen:configulator`, `docgen:output`, `docgen:usage` and `docgen:cargo`. `crate=` is the name of a package of the Cargo workspace whose `Cargo.toml` is in the module directory, as `cargo metadata` reports it, and `docgen:crates` reads the same workspace. A name that is not a package of the workspace is an error that lists the packages, and a marker with both `crate=` and `pkg=` is an error.
 
-`name=` and `type=` are paths from the crate root, such as `limits::MAX_JOBS`, with or without `crate::`. A path can go through a `use` of the crate, such as a `pub use` at the root. An associated item of an inherent impl is `Type::NAME`. A path that names nothing is an error that lists the names of the nearest module.
+These markers run `cargo` from the `PATH` and need stable Rust, and a missing `cargo` is an error. Each cargo command passes `--locked`, so the run never changes `Cargo.lock`, and a `Cargo.lock` that is out of date is an error with the cargo command that updates it. Cargo downloads crates at the versions of `Cargo.lock` and builds into the temporary directory of the run, never into your `target` directory. The markers of one run read the workspace once and build each binary and example once. Each cargo command, and each program that a cargo build made, counts toward the limit on commands at once, as a go command does. Each one stops after 10 minutes, the limit of a run of a Go example, since a cold build of a crate with many dependencies can take longer than the 5 minutes of a Go build. A `jobs` value other than 0 is the `CARGO_BUILD_JOBS` of each command.
 
-docgen reads the module tree with a helper program that uses syn. Your cargo builds it once, with `cargo build --release --locked`, into `rust-helper` below docgen in the user cache directory, for each version of the helper and of rustc. Two runs at the same time each build to a new directory and rename the result, so neither reads a part of the other. The helper needs Rust 1.71 or later, and an older rustc is an error. A failed build is an error with the output of cargo. The tree follows each `mod` line: inline modules, `foo.rs` and `foo/mod.rs` files and `#[path]`. A module with a `#[cfg]` is read as any other. A file that does not parse, and a module with no file and no `#[cfg]`, are errors.
+`docgen:const`, `docgen:doc`, `docgen:errors` and `docgen:configulator` read the library of the package, or else its binary with the name of the package, or else its one binary. `name=` and `type=` are paths from the crate root, such as `limits::MAX_JOBS`, with or without `crate::`. A path can go through a `use` of the crate, such as a `pub use` at the root. An associated item of an inherent impl is `Type::NAME`. A path that names nothing is an error that lists the names of the nearest module.
 
-A value comes from the value test of the crate. docgen copies the workspace, with no `target` directory, to the temporary directory of the run, adds a `#[cfg(test)]` module with one test to each module with a value, and runs `cargo test --locked` once for each crate of the run, so private items work. The added module allows all lints, so a `#![deny(warnings)]` stays. The crate must build in test mode with its dev-dependencies. When the code of one value does not compile, a second run prints the other values. Cargo builds into the temporary directory of the run, never into your target directory, and downloads crates at the versions of `Cargo.lock`. A `Cargo.lock` that is out of date is an error. Each cargo command counts toward the limit on commands at once, as a go command does, and a `jobs` value other than 0 is the `CARGO_BUILD_JOBS` of each command.
+docgen reads the module tree with a helper program that uses syn. Your cargo builds it once, with `cargo build --release --locked`, into `rust-helper` below docgen in the user cache directory, for each version of the helper and of rustc. Two runs at the same time each build to a new directory and rename the result, so neither reads a part of the other. The helper needs Rust 1.71 or later, and an older rustc is an error. A failed build is an error with the output of cargo. The tree follows each `mod` line: inline modules, `foo.rs` and `foo/mod.rs` files and `#[path]`. A module with a `#[cfg]` is read as any other. A file that does not parse, and a module with no file and no `#[cfg]`, are errors. What the helper skips is a warning on standard error that names the crate and the file, such as a module with a `#[cfg]` and no file, a `#[doc = include_str!(...)]` whose file is missing, or a `#[doc]` value that is not a string.
+
+A value comes from the value test of the crate. docgen copies the workspace, with no `target` directory, to the temporary directory of the run, adds a `#[cfg(test)]` module with one test to each module with a value, and runs `cargo test --locked` once for each crate of the run, so private items work. The added module allows all lints, so a `#![deny(warnings)]` stays. The crate must build in test mode with its dev-dependencies. When the code of one value does not compile, a second run prints the other values.
 <!-- /docgen:doc -->
 
 ## Marker rules

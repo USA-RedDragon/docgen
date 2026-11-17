@@ -92,7 +92,7 @@ Both run on each `update` and `check`, also in CI. The output must be the same o
 
 ## A Rust example or binary
 
-`crate=` names a Cargo package of the Cargo workspace in the module directory. `example=` runs `cargo run --locked --example` on an example of the package, and `bin=` runs a binary. `args=` gives the arguments of the program. Builds go to the temporary directory of the run, and builds of one run are shared.
+`crate=` names a Cargo package of the Cargo workspace in the module directory. `example=` builds an example of the package with `cargo build --locked --example` and runs it, and `bin=` does the same for a binary. `args=` gives the arguments of the program. Builds go to the temporary directory of the run, and the markers of one run, `docgen:usage` included, build each example and binary once.
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/rust/crates/run-c/examples/greet.rs -->
