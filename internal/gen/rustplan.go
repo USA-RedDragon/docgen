@@ -94,12 +94,15 @@ func bindCrate(a *marker.Args) string {
 }
 
 // A rustValue is a value that a test on a copy of a crate prints: the value of
-// a const or static, or with table the configulator table of a type.
+// a const or static, with table the configulator table of a type, or with
+// config the defaults of the fields of a struct, which are rows.
 type rustValue struct {
 	crate   string
 	name    string
 	printAs string
 	table   *rustsrc.Table
+	config  bool
+	rows    []*configRow
 	feats   cargo.Features
 	text    string
 	err     error
@@ -326,9 +329,9 @@ func (g *Generator) repoText(s string) string {
 // rustValues prints the values of rp with one cargo test for each crate.
 func (g *Generator) rustValues(ctx context.Context, r *cargo.Runner, ws *cargo.Workspace, rp *rustPlan) {
 	targets := map[string]*rustsrc.Target{}
-	links := map[*rustsrc.Request]*rustValue{}
+	ran := map[*rustValue][]*rustsrc.Request{}
 	for _, v := range rp.values {
-		req, err := rp.request(v)
+		reqs, err := rp.requests(v)
 		if err != nil {
 			v.err = err
 			continue
@@ -345,8 +348,8 @@ func (g *Generator) rustValues(ctx context.Context, r *cargo.Runner, ws *cargo.W
 			t = &rustsrc.Target{Package: v.crate, Bin: c.bin, Flags: flags}
 			targets[key] = t
 		}
-		t.Requests = append(t.Requests, req)
-		links[req] = v
+		t.Requests = append(t.Requests, reqs...)
+		ran[v] = reqs
 	}
 	if len(targets) == 0 {
 		return
@@ -359,13 +362,34 @@ func (g *Generator) rustValues(ctx context.Context, r *cargo.Runner, ws *cargo.W
 	if err == nil {
 		err = rustsrc.RunValues(ctx, r, ws.Root, work, list)
 	}
-	for req, v := range links {
+	for v, reqs := range ran {
 		if err != nil {
 			v.err = err
 			continue
 		}
-		v.text, v.err = req.Text, req.Err
+		for _, req := range reqs {
+			if v.err == nil {
+				v.err = req.Err
+			}
+		}
+		if !v.config && len(reqs) == 1 {
+			v.text = reqs[0].Text
+		}
 	}
+}
+
+// requests returns the test requests of v: one for a const, static or
+// configulator table, and for a config struct one for each row that needs a
+// run.
+func (rp *rustPlan) requests(v *rustValue) ([]*rustsrc.Request, error) {
+	if v.config {
+		return rp.configRequests(v)
+	}
+	req, err := rp.request(v)
+	if err != nil {
+		return nil, err
+	}
+	return []*rustsrc.Request{req}, nil
 }
 
 // request returns the test request of v.
@@ -405,14 +429,20 @@ func checkValueItem(f rustsrc.Found, name string) error {
 // nameCandidates returns the consts of the crate other than f with the type of
 // f, as written, that the module of f can name.
 func nameCandidates(c *rustsrc.Crate, f rustsrc.Found) []rustsrc.Candidate {
-	want := strings.Join(strings.Fields(f.Item.Type), "")
+	return constCandidates(c, f.Item.Type, f.Module, f.Item)
+}
+
+// constCandidates returns the consts of the crate other than skip with the
+// type typ, as written, that the module from can name.
+func constCandidates(c *rustsrc.Crate, typ string, from *rustsrc.Module, skip *rustsrc.Item) []rustsrc.Candidate {
+	want := strings.Join(strings.Fields(typ), "")
 	var out []rustsrc.Candidate
 	for _, m := range c.Modules {
 		for _, it := range m.Items {
-			if it.Kind != rustsrc.KindConst || it == f.Item || strings.Join(strings.Fields(it.Type), "") != want {
+			if it.Kind != rustsrc.KindConst || it == skip || strings.Join(strings.Fields(it.Type), "") != want {
 				continue
 			}
-			if !visibleFrom(m, it, f.Module) {
+			if !visibleFrom(m, it, from) {
 				continue
 			}
 			p := joinRust(m.Path, it.Name)
