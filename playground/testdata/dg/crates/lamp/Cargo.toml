@@ -1,0 +1,10 @@
+[package]
+name = "lamp"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.71"
+publish = false
+description = "A dimmable lamp, the Rust crate of the docgen playground sample"
+
+[dependencies]
+thiserror = "2"
