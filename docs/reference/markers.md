@@ -2,7 +2,7 @@
 
 The marker kinds and their arguments. The text comes from the package doc of docgen.
 
-A marker has this form. Kinds `const`, `gomod` and `var` go inline in a sentence. Other kinds have the body on the lines between the two comments:
+A marker has this form. Kinds `const`, `gomod`, `cargo` (except `field=features`) and `var` go inline in a sentence. Other kinds have the body on the lines between the two comments:
 
 ```text
 <!-- docgen:<kind> <arg>=<value> ... -->
@@ -1910,14 +1910,153 @@ This module needs Go <!-- docgen:gomod field=go code=false -->1.24.0<!-- /docgen
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+### docgen:cargo
+
+<!-- docgen:doc pkg=. section="docgen:cargo" -->
+A value of a Cargo manifest of a Rust workspace, or the table of the features of a crate. A value goes inline in a sentence.
+
+	docgen:cargo field=<key> [crate=<package>] [file=<repo path>] [code=false]
+	docgen:cargo field=features crate=<package>
+
+`field=` is a dotted key path in the TOML file, such as `package.rust-version`, `workspace.package.version` or `dependencies.clap.version`. The file is the `Cargo.toml` in the module directory, the `Cargo.toml` of the Cargo package that `crate=` names, or the TOML file at `file=`, such as `rust-toolchain.toml` with `field=toolchain.channel`. `crate=` and `file=` together are an error. A `crate=` needs `cargo` on the `PATH`, since docgen finds the package with `cargo metadata`.
+
+Workspace inheritance applies, with the `Cargo.toml` of the workspace as the source:
+
+  - A `package` key set to `workspace = true`, such as `version.workspace = true`, has the value of the same key in `[workspace.package]`.
+  - A dependency set to `workspace = true` has the keys of the dependency in `[workspace.dependencies]`, so `dependencies.clap.version` works. `features` of both are one list.
+
+The value is a string, number or boolean as it is, and an array of them is its items joined by a comma and a space. These are errors: a table, an array of tables or a date as the value, a file that is missing or is not valid TOML, a key that is not in the file (the error lists the keys that are there), a key below a value that is not a table, an inherited value that `[workspace.package]` or `[workspace.dependencies]` does not have, a `crate=` that is not a package of the workspace (the error lists them), and a `cargo` that is not on the `PATH`. With `code=false`, the value has no backticks, as for `docgen:const`.
+
+With `field=features`, the marker is a table of the features of the package, in name order, with the column Default for the ones that the `default` feature enables and the column Enables for the items of each, such as other features and `dep:` items. A package with no features is an error. `field=features` needs `crate=`, and has no `file=` and no `code=`.
+<!-- /docgen:doc -->
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-cargo.md -->
+#### Before
+
+```
+- Version: <!-- docgen:cargo field=workspace.package.version --><!-- /docgen:cargo -->
+- Minimum Rust: <!-- docgen:cargo field=package.rust-version crate=cargo-b-core --><!-- /docgen:cargo -->
+- Version of the core crate: <!-- docgen:cargo field=package.version crate=cargo-b-core code=false --><!-- /docgen:cargo -->
+- Channel: <!-- docgen:cargo field=toolchain.channel file=rust-toolchain.toml --><!-- /docgen:cargo -->
+- Components: <!-- docgen:cargo field=toolchain.components file=rust-toolchain.toml --><!-- /docgen:cargo -->
+```
+
+#### After
+
+```
+- Version: <!-- docgen:cargo field=workspace.package.version -->`0.3.0`<!-- /docgen:cargo -->
+- Minimum Rust: <!-- docgen:cargo field=package.rust-version crate=cargo-b-core -->`1.85`<!-- /docgen:cargo -->
+- Version of the core crate: <!-- docgen:cargo field=package.version crate=cargo-b-core code=false -->0.3.0<!-- /docgen:cargo -->
+- Channel: <!-- docgen:cargo field=toolchain.channel file=rust-toolchain.toml -->`stable`<!-- /docgen:cargo -->
+- Components: <!-- docgen:cargo field=toolchain.components file=rust-toolchain.toml -->`rustfmt, clippy`<!-- /docgen:cargo -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### The features of a crate, with `field=features`
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-cargo-features.md -->
+#### Before
+
+```
+<!-- docgen:cargo field=features crate=cargo-b-core -->
+<!-- /docgen:cargo -->
+```
+
+#### After
+
+```
+<!-- docgen:cargo field=features crate=cargo-b-core -->
+| Feature | Default | Enables |
+|---|---|---|
+| `checked` |  | `dep:limits`, `strict` |
+| `fast` | yes |  |
+| `strict` |  | `fast` |
+<!-- /docgen:cargo -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+### docgen:crates
+
+<!-- docgen:doc pkg=. section="docgen:crates" -->
+A table of the crates of a Cargo workspace.
+
+	docgen:crates [kind=<lib|proc-macro|bin>] [deps=<normal|dev|build|all>] [match=<glob>]
+
+Each row is a crate: its name, its path relative to the repository root, its kind (`lib`, `proc-macro` or `bin`, and `lib, bin` for a crate that has both), its version, and the crates of the same workspace that it depends on, as `cargo metadata` reports them. Rows are in name order. The workspace is the one at `Cargo.toml` of the module directory.
+
+  - `kind=` lists only the crates with a target of that kind.
+  - `deps=` is the kind of dependency in the last column: `normal`, the default, `dev`, `build`, or `all`. With `all`, a dev or build dependency has its kind in parentheses.
+  - `match=` is a glob, as in Go's `path.Match`, for the names of the crates.
+
+A value that is not one of the lists, a glob that is not valid, a crate outside the repository, no crate that matches, a missing `Cargo.toml` in the module directory and a `cargo` that is not on the `PATH` are errors.
+<!-- /docgen:doc -->
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-crates.md -->
+#### Before
+
+```
+<!-- docgen:crates -->
+<!-- /docgen:crates -->
+```
+
+#### After
+
+```
+<!-- docgen:crates -->
+| Crate | Path | Kind | Version | Depends on |
+|---|---|---|---|---|
+| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core` |
+| `cargo-b-core` | `crates/cargo-b-core` | lib | 0.3.0 | `limits` |
+| `core-a` | `crates/core-a` | lib | 0.1.0 |  |
+| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
+| `limits` | `crates/limits` | lib | 0.1.0 |  |
+| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
+<!-- /docgen:crates -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### Only some crates, with `kind=` and `deps=`
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-crates-filter.md -->
+#### Before
+
+```
+<!-- docgen:crates kind=bin deps=all -->
+<!-- /docgen:crates -->
+```
+
+#### After
+
+```
+<!-- docgen:crates kind=bin deps=all -->
+| Crate | Path | Kind | Version | Depends on |
+|---|---|---|---|---|
+| `cargo-b-cli` | `crates/cargo-b-cli` | bin | 0.3.0 | `cargo-b-core`, `limits` (dev) |
+| `core-a-bin` | `crates/core-a-bin` | bin | 0.1.0 |  |
+| `tool` | `crates/tool` | bin | 0.2.0 | `limits` |
+<!-- /docgen:crates -->
+```
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
 ### docgen:usage
 
 <!-- docgen:doc pkg=. section="docgen:usage" -->
 The usage of a command.
 
 	docgen:usage cmd=<dir> [args="<args>"]
+	docgen:usage crate=<package> [bin=<name>] [args="<args>"]
 
 docgen builds the command in that directory, relative to the repository root, and runs it with `-h`. With `args=`, the arguments are that value, split on spaces, such as `args="help config"` or `args=--help`. In the value, `\"` starts and ends an argument with spaces: `args="--name \"a b\""`.
+
+With `crate=`, the command is a binary of a Cargo package of the workspace in the module directory, not a Go command, and `cmd=` is an error with it. `bin=` is the name of the binary. It can be left out when the package has one binary, and a name that the package does not have is an error that lists the ones it has. docgen builds the binary with `cargo build --locked`, so `Cargo.lock` must be up to date, and the build goes into a directory of the run, not the `target` directory of the repository. The markers of one run build a binary once. The rules for the output are the ones below, so a binary that uses clap prints its usage with `-h`, and a subcommand with `args="help <name>"` or `args="<name> --help"`. `bin=` with no `crate=` is an error.
 
 A build failure, a panic, an exit status other than 0, 1 or 2, or output with no line that starts with usage, in any letter case, and no flag line, is an error. This also applies to arguments that do not ask for help, so a command such as `version` must print a usage line or a flag line, such as `usage: tool version`.
 <!-- /docgen:doc -->
@@ -2003,6 +2142,70 @@ Usage of lamp config:
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
+#### A Rust binary, with `crate=`
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-usage.md -->
+#### Before
+
+```
+<!-- docgen:usage crate=cargo-b-cli bin=demo -->
+<!-- /docgen:usage -->
+```
+
+#### After
+
+````
+<!-- docgen:usage crate=cargo-b-cli bin=demo -->
+```text
+Inspect the demo workspace
+
+Usage: demo [OPTIONS] <COMMAND>
+
+Commands:
+  show   Print the jobs
+  label  Print the jobs with a prefix
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -j, --jobs <JOBS>  How many jobs to run [default: 1]
+  -h, --help         Print help
+  -V, --version      Print version
+```
+<!-- /docgen:usage -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+#### A subcommand of a Rust binary
+
+<!-- site:editor -->
+<!-- docgen:docgen root=internal/cli/testdata/rust page=docs/guide-usage-sub.md -->
+#### Before
+
+```
+<!-- docgen:usage crate=cargo-b-cli bin=demo args="help label" -->
+<!-- /docgen:usage -->
+```
+
+#### After
+
+````
+<!-- docgen:usage crate=cargo-b-cli bin=demo args="help label" -->
+```text
+Print the jobs with a prefix
+
+Usage: demo label [OPTIONS]
+
+Options:
+      --prefix <PREFIX>  Text to put before the jobs [default: jobs]
+  -h, --help             Print help
+```
+<!-- /docgen:usage -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
 ### docgen:var
 
 <!-- docgen:doc pkg=. section="docgen:var" -->
@@ -2080,7 +2283,7 @@ Text from a template, in which `vars` values replace the keys. With no `code=`, 
 
 	docgen:text text="<template>" [code=<language>]
 
-Here `code=` is a language. In `docgen:const`, `docgen:var` and `docgen:gomod`, `code=false` is the one value, for a value with no backticks.
+Here `code=` is a language. In `docgen:const`, `docgen:var`, `docgen:gomod` and `docgen:cargo`, `code=false` is the one value, for a value with no backticks.
 
 The template has these forms:
 
