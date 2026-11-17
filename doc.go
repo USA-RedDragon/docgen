@@ -56,8 +56,12 @@
 //     in a page of the repository works and a marker in a page of its `root` is an
 //     error. The value is at most 8, and 0 makes each such marker an error. Only
 //     the outermost value counts.
-//   - `print` applies to a marker with no `print=`: `go`, the default, `raw` or
-//     `config`. With `raw`, a marker with no `print=` runs no code.
+//   - `print` applies to a marker with no `print=`: `go`, the default, `raw`,
+//     `config`, `display` or `debug`. With `raw`, a marker with no `print=` runs
+//     no code. Each language uses the values that it has: `go` and `config` are
+//     Go values, so a Rust marker with no `print=` prints its default, and
+//     `display` and `debug` are Rust values, so a Go marker with no `print=` uses
+//     the `go` rule. `raw` applies to both. A `print=` of a marker always wins.
 //   - `features` is a list of Cargo features, separated by commas or white space, that
 //     each cargo command of a Rust marker enables. An entry is a feature, such as
 //     `serde`, or `crate/feature`, such as `core-a/strict`. See Rust crates.
@@ -461,8 +465,10 @@
 //   - `print={:#x}`, or any other Rust format spec of one value, is the value
 //     with that spec.
 //
-// The `print` setting `raw` applies to a Rust marker with no `print=`, and `go`
-// and `config` leave the default. These are errors of the Rust form:
+// The `print` setting applies to a Rust marker with no `print=` when it is
+// `raw`, `display` or `debug`, as that `print=` does. The settings `go` and
+// `config` are for Go markers, and leave the default of a Rust marker above.
+// These are errors of the Rust form:
 //
 //   - `crate=` with `pkg=`.
 //   - An empty `print=`, or a value that is not `display`, `debug`, `raw`,

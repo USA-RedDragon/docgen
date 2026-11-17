@@ -1502,7 +1502,7 @@ For a Rust crate, `crate=` takes the place of `pkg=`, and `name=` is a path from
   - `print=name` is the path from the crate root of the one other const with the type of the item, as the source writes it, and the same value, such as `limits::PORT_WEB`. The type must implement `PartialEq`. A const counts when the module of the item can name it.
   - `print={:#x}`, or any other Rust format spec of one value, is the value with that spec.
 
-The `print` setting `raw` applies to a Rust marker with no `print=`, and `go` and `config` leave the default. These are errors of the Rust form:
+The `print` setting applies to a Rust marker with no `print=` when it is `raw`, `display` or `debug`, as that `print=` does. The settings `go` and `config` are for Go markers, and leave the default of a Rust marker above. These are errors of the Rust form:
 
   - `crate=` with `pkg=`.
   - An empty `print=`, or a value that is not `display`, `debug`, `raw`, `name` or a format spec.

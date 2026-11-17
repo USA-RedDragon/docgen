@@ -9,6 +9,7 @@ import (
 
 	"github.com/USA-RedDragon/docgen/internal/cargo"
 	"github.com/USA-RedDragon/docgen/internal/goprint"
+	"github.com/USA-RedDragon/docgen/internal/rustsrc"
 )
 
 // maxJobs limits the jobs setting. A go command with a huge -p does not finish.
@@ -28,7 +29,7 @@ type Config struct {
 	Jobs   int               `name:"jobs" default:"0" description:"-p of each go command; 0 leaves it to go"`
 	Tags   string            `name:"tags" description:"comma-separated build tags of each go command and package load"`
 	Depth  int               `name:"depth" flag:"-" default:"1" description:"levels of nested docgen:docgen markers; 0 allows none"`
-	Print  string            `name:"print" flag:"-" default:"go" description:"how a marker with no print= prints a value: go, raw or config; raw runs no code"`
+	Print  string            `name:"print" flag:"-" default:"go" description:"how a marker with no print= prints a value: go, raw, config, display or debug; raw runs no code"`
 	Vars   map[string]string `name:"vars" flag:"-" env:"-" description:"values of the docgen:var and docgen:text markers, by name"`
 
 	Features          string `name:"features" description:"comma-separated Cargo features of each cargo command, as feature or crate/feature"`
@@ -69,12 +70,14 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// checkPrint returns an error for a print setting that is not go, raw or config.
+// checkPrint returns an error for a print setting that is not go, raw, config,
+// display or debug.
 func checkPrint(value string) error {
-	if value != goprint.PrintGo && value != goprint.PrintRaw && value != goprint.PrintConfig {
-		return fmt.Errorf("print is %q; it must be go, raw or config", value)
+	switch value {
+	case goprint.PrintGo, goprint.PrintRaw, goprint.PrintConfig, rustsrc.PrintDisplay, rustsrc.PrintDebug:
+		return nil
 	}
-	return nil
+	return fmt.Errorf("print is %q; it must be go, raw, config, display or debug", value)
 }
 
 // checkVars returns an error for the first key of vars, in sorted order, that is

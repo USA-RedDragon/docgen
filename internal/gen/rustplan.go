@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/USA-RedDragon/docgen/internal/cargo"
-	"github.com/USA-RedDragon/docgen/internal/goprint"
 	"github.com/USA-RedDragon/docgen/internal/marker"
 	"github.com/USA-RedDragon/docgen/internal/rustsrc"
 )
@@ -71,13 +70,18 @@ func (g *Generator) cargoPackage(ctx context.Context, crate string) (*cargo.Work
 }
 
 // rustPrint returns the print= value of a Rust marker with the argument arg:
-// the print setting of g when arg is "", where raw is raw and go and config are
-// the default.
+// the print setting of g when arg is "" and the setting is raw, display or
+// debug. The settings go and config are for Go markers, and a Rust marker with
+// no print= takes the default of Rust, a Display impl or else a Debug impl.
 func (g *Generator) rustPrint(arg string) string {
-	if arg == "" && g.printAs == goprint.PrintRaw {
-		return rustsrc.PrintRaw
+	if arg != "" {
+		return arg
 	}
-	return arg
+	switch g.printAs {
+	case rustsrc.PrintRaw, rustsrc.PrintDisplay, rustsrc.PrintDebug:
+		return g.printAs
+	}
+	return ""
 }
 
 // bindCrate reads crate= of a Rust marker. pkg= with it is an error.

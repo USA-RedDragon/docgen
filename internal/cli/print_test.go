@@ -238,6 +238,9 @@ func TestPrintSetting(t *testing.T) {
 		"marker verb":             {"print: raw\n", "name=Wait print=%v", "`1.5s`", 0},
 		"marker raw over go":      {"print: go\n", "name=Main print=raw", "`4001`", 0},
 		"marker print=go on code": {"print: raw\n", "name=Main print=go", "", 1},
+		"display is for Rust":     {"print: display\n", "name=Main", "", 1},
+		"debug is for Rust":       {"print: debug\n", "name=Main", "", 1},
+		"display on a Go raw":     {"print: display\n", "name=Main print=raw", "`4001`", 0},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -259,7 +262,7 @@ func TestPrintSettingValues(t *testing.T) {
 	t.Parallel()
 	for _, value := range []string{"name", "\"%d\"", "RAW", "Config", "\"\""} {
 		root := pageRepo(t, map[string]string{".docgen.yaml": "print: " + value + "\n"})
-		if rc, log := docgen(t, root, "check"); rc != 1 || !strings.Contains(log, "it must be go, raw or config") {
+		if rc, log := docgen(t, root, "check"); rc != 1 || !strings.Contains(log, "it must be go, raw, config, display or debug") {
 			t.Errorf("%s: rc %d, log:\n%s", value, rc, log)
 		}
 	}

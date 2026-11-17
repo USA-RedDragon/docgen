@@ -5,18 +5,18 @@ The settings of `docgen`, with the key in `.docgen.yaml`, the environment variab
 ## Settings
 
 <!-- docgen:configulator pkg=internal/cli type=Config env=DOCGEN_ -->
-| Key                   | Type          | Default | Environment                  | Flag                    | Description                                                                       |
-|-----------------------|---------------|---------|------------------------------|-------------------------|-----------------------------------------------------------------------------------|
-| `docs`                | string        | `.`     | `DOCGEN_DOCS`                | —                       | directory to scan for Markdown pages, relative to the repository root             |
-| `module`              | string        | `.`     | `DOCGEN_MODULE`              | `--module`              | directory of the Go module, relative to the repository root                       |
-| `jobs`                | integer       | `0`     | `DOCGEN_JOBS`                | `--jobs`                | -p of each go command; 0 leaves it to go                                          |
-| `tags`                | string        |         | `DOCGEN_TAGS`                | `--tags`                | comma-separated build tags of each go command and package load                    |
-| `depth`               | integer       | `1`     | `DOCGEN_DEPTH`               | —                       | levels of nested docgen:docgen markers; 0 allows none                             |
-| `print`               | string        | `go`    | `DOCGEN_PRINT`               | —                       | how a marker with no print= prints a value: go, raw or config; raw runs no code   |
-| `vars`                | map of string |         | —                            | —                       | values of the docgen:var and docgen:text markers, by name                         |
-| `features`            | string        |         | `DOCGEN_FEATURES`            | `--features`            | comma-separated Cargo features of each cargo command, as feature or crate/feature |
-| `all-features`        | boolean       |         | `DOCGEN_ALL_FEATURES`        | `--all-features`        | enable every feature of each crate that a cargo command builds                    |
-| `no-default-features` | boolean       |         | `DOCGEN_NO_DEFAULT_FEATURES` | `--no-default-features` | leave the default feature of each crate off in each cargo command                 |
+| Key                   | Type          | Default | Environment                  | Flag                    | Description                                                                                     |
+|-----------------------|---------------|---------|------------------------------|-------------------------|-------------------------------------------------------------------------------------------------|
+| `docs`                | string        | `.`     | `DOCGEN_DOCS`                | —                       | directory to scan for Markdown pages, relative to the repository root                           |
+| `module`              | string        | `.`     | `DOCGEN_MODULE`              | `--module`              | directory of the Go module, relative to the repository root                                     |
+| `jobs`                | integer       | `0`     | `DOCGEN_JOBS`                | `--jobs`                | -p of each go command; 0 leaves it to go                                                        |
+| `tags`                | string        |         | `DOCGEN_TAGS`                | `--tags`                | comma-separated build tags of each go command and package load                                  |
+| `depth`               | integer       | `1`     | `DOCGEN_DEPTH`               | —                       | levels of nested docgen:docgen markers; 0 allows none                                           |
+| `print`               | string        | `go`    | `DOCGEN_PRINT`               | —                       | how a marker with no print= prints a value: go, raw, config, display or debug; raw runs no code |
+| `vars`                | map of string |         | —                            | —                       | values of the docgen:var and docgen:text markers, by name                                       |
+| `features`            | string        |         | `DOCGEN_FEATURES`            | `--features`            | comma-separated Cargo features of each cargo command, as feature or crate/feature               |
+| `all-features`        | boolean       |         | `DOCGEN_ALL_FEATURES`        | `--all-features`        | enable every feature of each crate that a cargo command builds                                  |
+| `no-default-features` | boolean       |         | `DOCGEN_NO_DEFAULT_FEATURES` | `--no-default-features` | leave the default feature of each crate off in each cargo command                               |
 <!-- /docgen:configulator -->
 
 - `vars` holds the values of the [`docgen:var`](markers.md#docgenvar) and [`docgen:text`](markers.md#docgentext) markers. It is a setting of the file only. A key has letters, digits, `_` and `-`.

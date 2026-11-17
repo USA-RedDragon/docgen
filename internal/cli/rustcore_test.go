@@ -269,3 +269,37 @@ func TestRustBindErrors(t *testing.T) {
 		}
 	}
 }
+
+const rustPrintPage = `- <!-- docgen:const crate=core-a name=limits::LISTEN --><!-- /docgen:const -->
+- <!-- docgen:const crate=core-a name=limits::LISTEN print=display --><!-- /docgen:const -->
+- <!-- docgen:const crate=core-a name=limits::MAX_JOBS --><!-- /docgen:const -->
+- <!-- docgen:const pkg=p name=Wait --><!-- /docgen:const -->
+`
+
+const rustPrintGo = "package p\n\nimport \"time\"\n\n// Wait is a wait.\nconst Wait = 1500 * time.Millisecond\n"
+
+func TestRustPrintSetting(t *testing.T) {
+	t.Parallel()
+	needCargo(t)
+	for name, c := range map[string]struct{ yaml, want string }{
+		"default": {"", "LISTEN -->`port 8080`<!-- /docgen:const -->\n- <!-- docgen:const crate=core-a name=limits::LISTEN print=display -->`port 8080`<!-- /docgen:const -->\n- <!-- docgen:const crate=core-a name=limits::MAX_JOBS -->`8`<!-- /docgen:const -->\n- <!-- docgen:const pkg=p name=Wait -->`1.5s`<"},
+		"go":      {"go", "LISTEN -->`port 8080`<"},
+		"config":  {"config", "LISTEN -->`port 8080`<"},
+		"display": {"display", "LISTEN -->`port 8080`<"},
+		"debug":   {"debug", "LISTEN -->`Port(8080)`<!-- /docgen:const -->\n- <!-- docgen:const crate=core-a name=limits::LISTEN print=display -->`port 8080`<!-- /docgen:const -->\n- <!-- docgen:const crate=core-a name=limits::MAX_JOBS -->`8`<!-- /docgen:const -->\n- <!-- docgen:const pkg=p name=Wait -->`1.5s`<"},
+		"raw":     {"raw", "LISTEN -->`PORT_WEB`<!-- /docgen:const -->\n- <!-- docgen:const crate=core-a name=limits::LISTEN print=display -->`port 8080`<!-- /docgen:const -->\n- <!-- docgen:const crate=core-a name=limits::MAX_JOBS -->`8`<!-- /docgen:const -->\n- <!-- docgen:const pkg=p name=Wait -->`1500000000`<"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			files := map[string]string{"go.mod": "module example.com/w\n\ngo 1.24.0\n", "p/p.go": rustPrintGo, "docs/print.md": rustPrintPage}
+			if c.yaml != "" {
+				files[".docgen.yaml"] = "print: " + c.yaml + "\n"
+			}
+			root := rustRepo(t, files)
+			if rc, log := docgen(t, root, "update"); rc != 0 {
+				t.Fatalf("update: rc %d, log:\n%s", rc, log)
+			}
+			wantIn(t, page(t, root, "print.md"), c.want)
+		})
+	}
+}

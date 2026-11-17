@@ -72,7 +72,10 @@ type Options struct {
 	// Depth is the number of levels of docgen:docgen markers, and 0 means none.
 	Depth int
 	// Print is the print= value of a marker with none: goprint.PrintGo, "" for
-	// the same, goprint.PrintRaw or goprint.PrintConfig.
+	// the same, goprint.PrintRaw, goprint.PrintConfig, rustsrc.PrintDisplay or
+	// rustsrc.PrintDebug. A Go marker takes the default of Go for the last two,
+	// and a Rust marker takes its default for goprint.PrintGo and
+	// goprint.PrintConfig.
 	Print string
 	// Vars holds the values of the docgen:var and docgen:text markers.
 	Vars map[string]string
@@ -146,11 +149,15 @@ func New(root, modDir string, log io.Writer, opts Options) (*Generator, error) {
 	return g, nil
 }
 
-// printValue returns the print= value of a marker with the argument arg, with ""
-// for the default rule of fmt.
+// printValue returns the print= value of a Go marker with the argument arg,
+// with "" for the default rule of fmt. A print setting of display or debug is
+// for Rust markers, and a Go marker with no print= takes the default.
 func (g *Generator) printValue(arg string) string {
 	if arg == "" {
 		arg = g.printAs
+		if arg == rustsrc.PrintDisplay || arg == rustsrc.PrintDebug {
+			return ""
+		}
 	}
 	if arg == goprint.PrintGo {
 		return ""
