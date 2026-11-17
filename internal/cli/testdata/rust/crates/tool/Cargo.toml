@@ -1,0 +1,12 @@
+[package]
+name = "tool"
+version = "0.2.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+limits = { path = "../limits" }
+
+[[bin]]
+name = "tool"
+path = "src/main.rs"

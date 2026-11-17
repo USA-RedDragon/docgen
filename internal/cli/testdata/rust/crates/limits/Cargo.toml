@@ -1,0 +1,13 @@
+[package]
+name = "limits"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[example]]
+name = "show"
+path = "examples/show.rs"
