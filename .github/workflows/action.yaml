@@ -1,13 +1,16 @@
 name: Action
 
-on: pull_request
+on:
+  pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
   group: '${{ github.workflow }} @ ${{ github.ref }}'
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   install:
@@ -67,15 +70,19 @@ jobs:
           fi
 
       # The token of this workflow cannot write, as on a fork pull request, so
-      # the log shows a warning and the outcome stays that of docgen.
+      # the log shows a warning and the outcome stays that of docgen. A push
+      # has no pull request to comment on, so these two steps run on pull
+      # requests only.
       - name: Check the stale page with a comment
         id: comment
+        if: github.event_name == 'pull_request'
         continue-on-error: true
         uses: ./
         with:
           comment: true
 
       - name: Check that the action with a comment failed
+        if: github.event_name == 'pull_request'
         env:
           OUTCOME: ${{ steps.comment.outcome }}
         run: |

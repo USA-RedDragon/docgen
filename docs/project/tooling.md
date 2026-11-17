@@ -48,6 +48,10 @@ To release, set `version` in [.docgen.yaml](../../.docgen.yaml) to the new tag, 
 
 `golangci-lint run ./...` uses [.golangci.yaml](../../.golangci.yaml).
 
+## Checks on pull requests and on `main`
+
+[go-static-checks.yaml](../../.github/workflows/go-static-checks.yaml), [rust-static-checks.yaml](../../.github/workflows/rust-static-checks.yaml) and [action.yaml](../../.github/workflows/action.yaml) run on each pull request and on each push to `main`, so a commit that lands on `main` has the same checks as its pull request. A new push to a branch cancels the run of the one before it, except on `main`, where every commit keeps its run. A push has no pull request, so the two steps of the `action` job that test the pull request comment run on pull requests only; the action posts no comment on a push.
+
 ## Rust checks
 
 The Rust helper in `internal/rustsrc/helper` and the fixture in `internal/cli/testdata/rust` have their own checks in [rust-static-checks.yaml](../../.github/workflows/rust-static-checks.yaml): `cargo fmt --check` and `cargo clippy --locked --all-targets -- -D warnings` on the helper, `cargo check --locked` on the helper with Rust 1.71, which is its `rust-version`, and `cargo metadata --locked` on the fixture. `--locked` fails when `Cargo.lock` needs a change, so each lock file in the repository is the one that builds.
