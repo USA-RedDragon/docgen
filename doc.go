@@ -113,8 +113,15 @@
 //     `[a.b]` with its keys and sub-tables, and `key[A]` is an item of the array
 //     of tables `[[key]]`. An item is found by its `name` key, or by a number,
 //     its index from 0. `\.` is a dot in a key.
-//   - `symbol=` in a C file is the `#define` of Name or the definition of the
-//     function Name.
+//   - `symbol=` in a C or header file is a `#define`, a function definition or a
+//     `typedef`, by name, as whole lines with no comment above. `symbol="struct
+//     Tag"`, `"union Tag"` or `"enum Tag"` is the definition of a tagged type, with
+//     its body. A bare name never matches a tag: `struct foo {...};` is `struct
+//     foo`, and `typedef struct foo foo;` is `foo`. `typedef struct foo {...}
+//     foo_t;` is both `struct foo` and `foo_t`. A name with more than one
+//     definition, such as one per `#ifdef` branch, is an error, and so is a
+//     definition that shares a line with other code. Only top-level definitions
+//     are found.
 //   - `region=` is the lines between the line `docgen:region <name>` and the next
 //     line `docgen:end`. Each mark is the whole line apart from comment syntax. In
 //     a page, a mark in code or in a marker body is text. Other excerpts of the

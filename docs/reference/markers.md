@@ -132,7 +132,7 @@ The arguments:
   - `symbol=` in a Go file is one func, method (`Type.Method`), type, or const or var block, with no doc comment. An Example has no output comment.
   - `symbol=` in a YAML file is the block of the key at a dotted path, such as `jobs.test` of a workflow. A last segment `key[A:B]` is the items of the list at `key` from the item with name `A` to the item with name `B`, and `key[A]` is the one item `A`.
   - `symbol=` in a JSON or TOML file uses the same path form. In JSON the excerpt is `"key": value`. In TOML it is a key with its value, or a table `[a.b]` with its keys and sub-tables, and `key[A]` is an item of the array of tables `[[key]]`. An item is found by its `name` key, or by a number, its index from 0. `\.` is a dot in a key.
-  - `symbol=` in a C file is the `#define` of Name or the definition of the function Name.
+  - `symbol=` in a C or header file is a `#define`, a function definition or a `typedef`, by name, as whole lines with no comment above. `symbol="struct Tag"`, `"union Tag"` or `"enum Tag"` is the definition of a tagged type, with its body. A bare name never matches a tag: `struct foo {...};` is `struct foo`, and `typedef struct foo foo;` is `foo`. `typedef struct foo {...} foo_t;` is both `struct foo` and `foo_t`. A name with more than one definition, such as one per `#ifdef` branch, is an error, and so is a definition that shares a line with other code. Only top-level definitions are found.
   - `region=` is the lines between the line `docgen:region <name>` and the next line `docgen:end`. Each mark is the whole line apart from comment syntax. In a page, a mark in code or in a marker body is text. Other excerpts of the file leave out those two lines.
   - `lines=` is those lines of the file. For a Go file the lines must hold whole declarations or statements. When the file changes, check and update fail. The error holds the new range when the old excerpt moved, and otherwise states that the range is out of date. A range past the last line is an error.
   - With none of these, the excerpt is the whole file.
@@ -382,7 +382,9 @@ go test ./..."""
 <!-- /docgen:docgen -->
 <!-- /site:editor -->
 
-#### A C function or #define, with `symbol=`
+#### A C function, type or #define, with `symbol=`
+
+A bare name is a `#define`, a function or a typedef. A tagged type is `"struct Tag"`, `"union Tag"` or `"enum Tag"`, so that a struct and a typedef with the same name stay apart.
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/native/lamp.c -->
@@ -390,6 +392,13 @@ go test ./..."""
 #define LAMP_MAX_TRIES 3
 
 static int tries;
+
+struct lamp_config {
+	int max_tries;
+	int (*on_fail)(int count);
+};
+
+typedef struct lamp_config lamp_config_t;
 
 int lamp_start(int count)
 {
@@ -409,6 +418,12 @@ int lamp_start(int count)
 <!-- /docgen:code -->
 
 <!-- docgen:code file=native/lamp.c symbol=lamp_start -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol="struct lamp_config" -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol=lamp_config_t -->
 <!-- /docgen:code -->
 ```
 
@@ -431,6 +446,21 @@ int lamp_start(int count)
 	tries = count;
 	return 0;
 }
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol="struct lamp_config" -->
+```c
+struct lamp_config {
+	int max_tries;
+	int (*on_fail)(int count);
+};
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol=lamp_config_t -->
+```c
+typedef struct lamp_config lamp_config_t;
 ```
 <!-- /docgen:code -->
 ````

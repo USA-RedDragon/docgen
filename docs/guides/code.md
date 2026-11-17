@@ -54,7 +54,7 @@ func (l *Lamp) Start(now time.Duration) error {
 
 ## A YAML key, with `symbol=`
 
-`symbol=` also works in [YAML](../reference/markers.md#a-yaml-key-with-symbol), [JSON](../reference/markers.md#a-json-member-with-symbol), [TOML](../reference/markers.md#a-toml-table-or-key-with-symbol) and [C](../reference/markers.md#a-c-function-or-define-with-symbol) files. In YAML, the excerpt is a key with its block, or items of a list by name:
+`symbol=` also works in [YAML](../reference/markers.md#a-yaml-key-with-symbol), [JSON](../reference/markers.md#a-json-member-with-symbol), [TOML](../reference/markers.md#a-toml-table-or-key-with-symbol) and [C](../reference/markers.md#a-c-function-type-or-define-with-symbol) files. In YAML, the excerpt is a key with its block, or items of a list by name:
 
 <!-- site:editor -->
 <!-- docgen:code file=internal/cli/testdata/repo/ci/workflow.yaml -->
@@ -243,6 +243,91 @@ name = "test"
 run = """
 go vet ./...
 go test ./..."""
+```
+<!-- /docgen:code -->
+````
+<!-- /docgen:docgen -->
+<!-- /site:editor -->
+
+## A C function, type or #define, with `symbol=`
+
+In C, the excerpt is a `#define`, a function, a `typedef`, or a struct, union or enum with its body, as whole lines. A bare name is a `#define`, a function or a typedef. A tagged type is `"struct Tag"`, `"union Tag"` or `"enum Tag"`. A name with more than one definition is an error.
+
+<!-- site:editor -->
+<!-- docgen:code file=internal/cli/testdata/repo/native/lamp.c -->
+```c
+#define LAMP_MAX_TRIES 3
+
+static int tries;
+
+struct lamp_config {
+	int max_tries;
+	int (*on_fail)(int count);
+};
+
+typedef struct lamp_config lamp_config_t;
+
+int lamp_start(int count)
+{
+	if (count > LAMP_MAX_TRIES) {
+		return -1;
+	}
+	tries = count;
+	return 0;
+}
+```
+<!-- /docgen:code -->
+<!-- docgen:docgen root=internal/cli/testdata/repo module=v2 page=docs/machines/guide-code-c.md -->
+#### Before
+
+```
+<!-- docgen:code file=native/lamp.c symbol=LAMP_MAX_TRIES -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol=lamp_start -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol="struct lamp_config" -->
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol=lamp_config_t -->
+<!-- /docgen:code -->
+```
+
+#### After
+
+````
+<!-- docgen:code file=native/lamp.c symbol=LAMP_MAX_TRIES -->
+```c
+#define LAMP_MAX_TRIES 3
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol=lamp_start -->
+```c
+int lamp_start(int count)
+{
+	if (count > LAMP_MAX_TRIES) {
+		return -1;
+	}
+	tries = count;
+	return 0;
+}
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol="struct lamp_config" -->
+```c
+struct lamp_config {
+	int max_tries;
+	int (*on_fail)(int count);
+};
+```
+<!-- /docgen:code -->
+
+<!-- docgen:code file=native/lamp.c symbol=lamp_config_t -->
+```c
+typedef struct lamp_config lamp_config_t;
 ```
 <!-- /docgen:code -->
 ````
