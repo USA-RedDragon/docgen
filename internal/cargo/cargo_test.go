@@ -65,7 +65,7 @@ func TestOpenFixture(t *testing.T) {
 	for _, p := range ws.Packages {
 		names = append(names, p.Name)
 	}
-	if want := []string{"cargo-b-cli", "cargo-b-core", "core-a", "core-a-bin", "limits", "run-c", "run-c-broken", "tool"}; !slices.Equal(names, want) {
+	if want := []string{"cargo-b-cli", "cargo-b-core", "core-a", "core-a-bin", "feat-gate", "limits", "run-c", "run-c-broken", "tool"}; !slices.Equal(names, want) {
 		t.Fatalf("packages %v, want %v", names, want)
 	}
 	limits, err := ws.Package("limits")
