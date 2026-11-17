@@ -85,6 +85,8 @@ type Item struct {
 	// Serde holds the serde attributes of a struct or enum, and is nil with
 	// no #[serde].
 	Serde *Serde `json:"serde"`
+	// Method holds the signature and the body of a fn of an inherent impl.
+	Method *Method `json:"method"`
 }
 
 // A Serde holds the serde attributes that docgen reads. Rename is the

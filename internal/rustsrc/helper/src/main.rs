@@ -339,6 +339,7 @@ impl Reader {
                         file,
                     );
                     v.insert("ret".into(), ret_text(&f.sig).into());
+                    v.insert("method".into(), method_json(f));
                     v
                 }
                 _ => continue,
@@ -516,6 +517,52 @@ impl Reader {
             .collect();
         list.into()
     }
+}
+
+/// The signature and the body of a method, for docgen:states: its `receiver`
+/// (`""` for none, `ref`, `mut`, `value`, or `typed` for `self: Type`), its
+/// `params` with an identifier pattern, `async`, `const`, `generics`, and the byte offsets of its
+/// body: `body_start` after the opening brace and any inner attributes, and
+/// `body_end` at the closing brace.
+fn method_json(f: &syn::ImplItemFn) -> Value {
+    let receiver = match f.sig.receiver() {
+        None => "",
+        Some(r) if r.colon_token.is_some() => "typed",
+        Some(r) => match (&r.reference, &r.mutability) {
+            (Some(_), Some(_)) => "mut",
+            (Some(_), None) => "ref",
+            (None, _) => "value",
+        },
+    };
+    let params: Vec<Value> = f
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|a| match a {
+            syn::FnArg::Typed(pt) => match &*pt.pat {
+                syn::Pat::Ident(pi) if pi.by_ref.is_none() && pi.subpat.is_none() => {
+                    Some(json!({ "name": pi.ident.to_string(), "type": src(&pt.ty) }))
+                }
+                _ => None,
+            },
+            syn::FnArg::Receiver(_) => None,
+        })
+        .collect();
+    let mut body_start = f.block.brace_token.span.open().byte_range().end;
+    for a in &f.attrs {
+        if matches!(a.style, syn::AttrStyle::Inner(_)) {
+            body_start = body_start.max(a.span().byte_range().end);
+        }
+    }
+    json!({
+        "receiver": receiver,
+        "params": params,
+        "async": f.sig.asyncness.is_some(),
+        "const": f.sig.constness.is_some(),
+        "generics": !f.sig.generics.params.is_empty(),
+        "body_start": body_start,
+        "body_end": f.block.brace_token.span.close().byte_range().start,
+    })
 }
 
 trait UnrawString {
