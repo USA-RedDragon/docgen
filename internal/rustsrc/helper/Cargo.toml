@@ -1,0 +1,17 @@
+[package]
+name = "docgen-rs-helper"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.71"
+publish = false
+description = "Reads the items of a Rust crate for docgen"
+
+[dependencies]
+proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
+quote = { version = "1", default-features = false }
+serde_json = "1"
+syn = { version = "2", default-features = false, features = ["full", "parsing", "printing"] }
+
+[profile.release]
+opt-level = 1
+debug = false
