@@ -1,0 +1,5 @@
+- Version: <!-- docgen:cargo field=workspace.package.version --><!-- /docgen:cargo -->
+- Minimum Rust: <!-- docgen:cargo field=package.rust-version crate=cargo-b-core --><!-- /docgen:cargo -->
+- Version of the core crate: <!-- docgen:cargo field=package.version crate=cargo-b-core code=false --><!-- /docgen:cargo -->
+- Channel: <!-- docgen:cargo field=toolchain.channel file=rust-toolchain.toml --><!-- /docgen:cargo -->
+- Components: <!-- docgen:cargo field=toolchain.components file=rust-toolchain.toml --><!-- /docgen:cargo -->

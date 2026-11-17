@@ -16,7 +16,7 @@ import (
 
 // A rustSet holds what the Rust markers of a Generator share: the runner of
 // the cargo commands, the Cargo workspace in the module directory, which opens
-// on first use, and the syn helper, which nested runs share too. A nested run
+// on first use, one build of each binary, and the syn helper, which nested runs share too. A nested run
 // has its own rustSet, with its own session and module directory.
 type rustSet struct {
 	runner *cargo.Runner
@@ -25,6 +25,8 @@ type rustSet struct {
 	once   sync.Once
 	ws     *cargo.Workspace
 	err    error
+	mu     sync.Mutex
+	builds map[string]*rustBuild
 }
 
 // newRustSet returns the rustSet of g, with the helper h. Each cargo command
@@ -34,6 +36,7 @@ func (g *Generator) newRustSet(h *rustsrc.Helper) *rustSet {
 		runner: &cargo.Runner{Session: g.session, Jobs: g.session.Jobs, Acquire: g.slots.acquire},
 		dir:    g.mod.Dir,
 		helper: h,
+		builds: map[string]*rustBuild{},
 	}
 }
 
@@ -46,9 +49,23 @@ func (g *Generator) cargoRunner() *cargo.Runner {
 // Generator reads it once.
 func (g *Generator) cargoWorkspace(ctx context.Context) (*cargo.Workspace, error) {
 	g.rust.once.Do(func() {
+		fmt.Fprintln(g.log, "docgen: reading the Cargo workspace")
 		g.rust.ws, g.rust.err = g.rust.runner.Open(ctx, g.rust.dir)
 	})
 	return g.rust.ws, g.rust.err
+}
+
+// cargoPackage returns the Cargo workspace of g and its package crate.
+func (g *Generator) cargoPackage(ctx context.Context, crate string) (*cargo.Workspace, *cargo.Package, error) {
+	ws, err := g.cargoWorkspace(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	pkg, err := ws.Package(crate)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ws, pkg, nil
 }
 
 // rustPrint returns the print= value of a Rust marker with the argument arg:

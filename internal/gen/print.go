@@ -15,7 +15,7 @@ import (
 const argCode = "code"
 
 // valueArgs holds the print= and code= arguments of a marker with a value:
-// docgen:const, docgen:config, docgen:var and docgen:gomod. printAs is the
+// docgen:const, docgen:config, docgen:var, docgen:gomod and docgen:cargo. printAs is the
 // print= value, and plain is true for code=false.
 type valueArgs struct {
 	printAs string

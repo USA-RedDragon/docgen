@@ -23,10 +23,13 @@ type plan struct {
 	tests    map[string]map[string]bool
 	tools    map[string]*toolRun
 	toolJobs []func(ctx context.Context)
-	nested   map[string]*nestedRun
-	values   []valueReader
-	rustWork *rustPlan
-	gen      *Generator
+	// cargoJobs run with no slot: each cargo command, and each program that a
+	// cargo build made, takes a slot of its own.
+	cargoJobs []func(ctx context.Context)
+	nested    map[string]*nestedRun
+	values    []valueReader
+	rustWork  *rustPlan
+	gen       *Generator
 }
 
 func (g *Generator) newPlan() *plan {
@@ -76,14 +79,25 @@ type toolRun struct {
 }
 
 // tool returns the run with the name key, and adds it to the plan with the
-// function fn when it is new.
+// function fn when it is new. fn runs in a slot.
 func (p *plan) tool(key string, fn func(ctx context.Context) (string, error)) *toolRun {
+	return p.addTool(key, fn, &p.toolJobs)
+}
+
+// cargoTool is tool for a function that runs cargo commands, or programs that
+// cargo built, with the runner of the Generator. fn runs with no slot, since
+// each of its commands takes one.
+func (p *plan) cargoTool(key string, fn func(ctx context.Context) (string, error)) *toolRun {
+	return p.addTool(key, fn, &p.cargoJobs)
+}
+
+func (p *plan) addTool(key string, fn func(ctx context.Context) (string, error), jobs *[]func(ctx context.Context)) *toolRun {
 	if r := p.tools[key]; r != nil {
 		return r
 	}
 	r := &toolRun{}
 	p.tools[key] = r
-	p.toolJobs = append(p.toolJobs, func(ctx context.Context) { r.out, r.err = fn(ctx) })
+	*jobs = append(*jobs, func(ctx context.Context) { r.out, r.err = fn(ctx) })
 	return r
 }
 
@@ -147,6 +161,9 @@ func (g *Generator) prepare(ctx context.Context, p *plan) (*prepared, error) {
 	}
 	if p.rustWork != nil {
 		w.runFree(func(ctx context.Context) { g.rustPrepare(ctx, p.rustWork) })
+	}
+	for _, job := range p.cargoJobs {
+		w.runFree(job)
 	}
 	var err error
 	res.loaded, err = load.Packages(ctx, g.mod, g.session, p.pkgs)

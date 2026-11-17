@@ -124,6 +124,10 @@ func newHandler(kind string) handler {
 		return &langHandler{goH: &docHandler{}, rustH: &rustDocHandler{}}
 	case "gomod":
 		return &goModHandler{}
+	case "cargo":
+		return &cargoHandler{}
+	case "crates":
+		return &cratesHandler{}
 	case "usage":
 		return &usageHandler{}
 	case "configulator":
