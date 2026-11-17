@@ -74,7 +74,14 @@ type Request struct {
 	// Expr.
 	Table *Table
 	// Cfg holds the cfg predicates of the item and its modules.
-	Cfg   []string
+	Cfg []string
+	// Scope names the items of the module of the item with no path, as `use
+	// super::*` does, so that Expr can hold a path of the source.
+	Scope bool
+	// Soft makes the code catch a panic of the value, which is an Err of the
+	// request, and makes a value with no Display and no Debug impl, with no
+	// print=, the text NoValue.
+	Soft  bool
 	Text  string
 	Err   error
 	done  bool
@@ -82,6 +89,14 @@ type Request struct {
 	first int
 	last  int
 }
+
+// NoValue is the Text of a request with Soft and no print= for a value that
+// has neither a Display nor a Debug impl.
+const NoValue = "\x00none"
+
+// panicMark starts the Text of a request with Soft whose code panicked, and
+// the rest is the message.
+const panicMark = "\x00panic: "
 
 // A Target is a target of a package with the requests of its values.
 type Target struct {
@@ -95,25 +110,44 @@ type Target struct {
 
 // code returns the lines of the test that print the value of r with the index i.
 func (r *Request) code(i int) []string {
+	lines := r.value(i)
+	if r.Scope {
+		return append(append([]string{"{ use super::*;"}, lines...), "}")
+	}
+	return lines
+}
+
+// value returns the lines of the test that print the value of r.
+func (r *Request) value(i int) []string {
 	emit := func(expr string) []string {
-		return []string{fmt.Sprintf("__docgen_emit(%d, &%s);", i, expr)}
+		if r.Soft {
+			expr = "&__docgen_catch(|| " + expr + ")"
+		} else {
+			expr = "&" + expr
+		}
+		return []string{fmt.Sprintf("__docgen_emit(%d, %s);", i, expr)}
 	}
 	switch {
 	case r.Table != nil:
 		return emit(fmt.Sprintf("%s::__schema::markdown(&<%s as %s::HasShadow>::fields(), %s, %s, %s)",
 			r.Table.Crate, r.Expr, r.Table.Crate, rustString(r.Table.FlagSep), rustString(r.Table.EnvPrefix), rustString(r.Table.EnvSep)))
 	case r.Print == PrintName:
-		lines := []string{"{", fmt.Sprintf("let __docgen_v = &%s;", r.Expr), "let mut __docgen_n: std::vec::Vec<&str> = std::vec::Vec::new();"}
+		block := []string{"{", fmt.Sprintf("let __docgen_v = &%s;", r.Expr), "let mut __docgen_n: std::vec::Vec<&str> = std::vec::Vec::new();"}
 		for _, c := range r.Names {
-			lines = append(lines, fmt.Sprintf("if *__docgen_v == %s { __docgen_n.push(%s); }", c.Expr, rustString(c.Name)))
+			block = append(block, fmt.Sprintf("if *__docgen_v == %s { __docgen_n.push(%s); }", c.Expr, rustString(c.Name)))
 		}
-		return append(lines, fmt.Sprintf("__docgen_emit(%d, &__docgen_n.join(\"\\n\"));", i), "}")
+		if !r.Soft {
+			return append(block[:3:3], append(block[3:], fmt.Sprintf("__docgen_emit(%d, &__docgen_n.join(\"\\n\"));", i), "}")...)
+		}
+		return emit(strings.Join(append(block, "__docgen_n.join(\"\\n\")", "}"), " "))
 	case r.Print == PrintDisplay:
 		return emit(fmt.Sprintf("std::format!(\"{}\", %s)", r.Expr))
 	case r.Print == PrintDebug:
 		return emit(fmt.Sprintf("std::format!(\"{:?}\", %s)", r.Expr))
 	case r.Print != "":
 		return emit(fmt.Sprintf("std::format!(%s, %s)", rustString(r.Print), r.Expr))
+	case r.Soft:
+		return emit(fmt.Sprintf("(&&&__DocgenC(&%s)).__docgen_text()", r.Expr))
 	}
 	return emit(fmt.Sprintf("(&__DocgenW(&%s)).__docgen_text()", r.Expr))
 }
@@ -157,6 +191,46 @@ mod __docgen_values {
     impl<T: ?Sized + std::fmt::Debug> __DocgenDebug for &__DocgenW<'_, T> {
         fn __docgen_text(&self) -> std::string::String {
             std::format!("{:?}", self.0)
+        }
+    }
+    struct __DocgenC<'a, T: ?Sized>(&'a T);
+    trait __DocgenCDisplay {
+        fn __docgen_text(&self) -> std::string::String;
+    }
+    impl<T: ?Sized + std::fmt::Display> __DocgenCDisplay for &&__DocgenC<'_, T> {
+        fn __docgen_text(&self) -> std::string::String {
+            std::format!("{}", self.0)
+        }
+    }
+    trait __DocgenCDebug {
+        fn __docgen_text(&self) -> std::string::String;
+    }
+    impl<T: ?Sized + std::fmt::Debug> __DocgenCDebug for &__DocgenC<'_, T> {
+        fn __docgen_text(&self) -> std::string::String {
+            std::format!("{:?}", self.0)
+        }
+    }
+    trait __DocgenCNone {
+        fn __docgen_text(&self) -> std::string::String;
+    }
+    impl<T: ?Sized> __DocgenCNone for __DocgenC<'_, T> {
+        fn __docgen_text(&self) -> std::string::String {
+            std::string::String::from("\u{0}none")
+        }
+    }
+    fn __docgen_catch<F: FnOnce() -> std::string::String>(f: F) -> std::string::String {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+            Ok(s) => s,
+            Err(e) => {
+                let m = if let Some(s) = e.downcast_ref::<&str>() {
+                    std::string::String::from(*s)
+                } else if let Some(s) = e.downcast_ref::<std::string::String>() {
+                    s.clone()
+                } else {
+                    std::string::String::new()
+                };
+                std::format!("\u{0}panic: {}", m)
+            }
         }
     }
     fn __docgen_emit(i: usize, s: &str) {
@@ -330,10 +404,15 @@ func runTarget(ctx context.Context, r *cargo.Runner, root, work string, t *Targe
 	for _, m := range valueLine.FindAllStringSubmatch(out, -1) {
 		i, _ := strconv.Atoi(m[1])
 		b, _ := hex.DecodeString(m[2])
-		if i < len(t.Requests) && t.Requests[i].Err == nil {
-			t.Requests[i].Text = string(b)
-			t.Requests[i].done = true
+		if i >= len(t.Requests) || t.Requests[i].Err != nil {
+			continue
 		}
+		t.Requests[i].done = true
+		if msg, ok := strings.CutPrefix(string(b), panicMark); ok {
+			t.Requests[i].Err = fmt.Errorf("the value test of %s panicked for %s: %s", what, t.Requests[i].Name, msg)
+			continue
+		}
+		t.Requests[i].Text = string(b)
 	}
 	if err == nil {
 		for _, req := range pending {
