@@ -4,7 +4,7 @@ In this step you run `docgen check` on each pull request, so that a change to th
 
 ## Add the GitHub Action
 
-Add a workflow, such as `.github/workflows/docs.yaml`. The action runs `docgen check -diff`, so a failed run shows each change in its log:
+Add a workflow, such as `.github/workflows/docs.yaml`. The action runs `docgen check -diff`, so a failed run shows each change in its log. This workflow is for a Go module. For a Cargo workspace, see [Check a Rust repository](#check-a-rust-repository).
 
 <!-- docgen:text text="name: Docs\n\non:\n  pull_request:\n  push:\n    branches:\n      - main\n\npermissions:\n  contents: read\n\njobs:\n  docs:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v7\n      - uses: actions/setup-go@v7\n        with:\n          go-version-file: go.mod\n      - uses: USA-RedDragon/docgen@{version}" code=yaml -->
 ```yaml
@@ -136,7 +136,7 @@ In your repository, run docgen by its version:
 ```
 <!-- /docgen:text -->
 
-No setup step is necessary. The go command downloads the modules at the versions that `go.mod` and `go.sum` pin.
+This is for a Go module with Go on the runner. A Rust-only repository runs the release binary instead, as the action does. The go command downloads the modules at the versions that `go.mod` and `go.sum` pin.
 
 ## Check before each commit
 
